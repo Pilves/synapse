@@ -27,7 +27,7 @@ class GeminiService(
     companion object {
         private const val TAG = "GeminiService"
         private const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models"
-        private const val DEFAULT_MODEL = "gemini-1.5-flash"
+        private const val DEFAULT_MODEL = "gemini-2.0-flash"
         private const val TIMEOUT_SECONDS = 60L
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L

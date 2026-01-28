@@ -11,7 +11,7 @@ enum class LlmProvider(
     GEMINI(
         displayName = "Google Gemini",
         requiresApiKey = true,
-        defaultModel = "gemini-1.5-flash"
+        defaultModel = "gemini-2.0-flash"
     ),
     CLAUDE(
         displayName = "Anthropic Claude",
