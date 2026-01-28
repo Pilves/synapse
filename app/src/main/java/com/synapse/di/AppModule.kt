@@ -1,0 +1,255 @@
+package com.synapse.di
+
+import android.content.Context
+import com.synapse.api.DefaultTranscriptionServiceFactory
+import com.synapse.api.TranscriptionServiceFactory
+import com.synapse.data.repository.ChunkRepository
+import com.synapse.data.repository.ChunkRepositoryImpl
+import com.synapse.data.repository.ProjectRepository
+import com.synapse.data.repository.ProjectRepositoryImpl
+import com.synapse.data.repository.SessionRepository
+import com.synapse.data.repository.SessionRepositoryImpl
+import com.synapse.data.repository.SyncRepository
+import com.synapse.data.repository.SyncRepositoryImpl
+import com.synapse.data.storage.ChunkStorage
+import com.synapse.data.storage.ImageProcessor
+import com.synapse.data.storage.ProjectStorage
+import com.synapse.data.storage.SessionStorage
+import com.synapse.data.storage.StorageHelper
+import com.synapse.data.storage.SyncStorage
+import com.synapse.data.storage.VaultManager
+import com.synapse.service.NotificationHelper
+import com.synapse.ui.onboarding.OnboardingViewModel
+import com.synapse.ui.overlay.CaptureViewModel
+import com.synapse.ui.review.ReviewViewModel
+import com.synapse.ui.settings.SettingsViewModel
+import com.synapse.ui.settings.settingsDataStore
+import com.synapse.util.PermissionHelper
+import okhttp3.OkHttpClient
+import org.koin.android.ext.koin.androidApplication
+import org.koin.android.ext.koin.androidContext
+import org.koin.core.module.dsl.viewModel
+import org.koin.dsl.module
+import java.util.concurrent.TimeUnit
+
+/**
+ * Storage module - File storage and image processing
+ *
+ * Provides singleton instances of all storage-related classes:
+ * - ChunkStorage: Manages chunk image files
+ * - SessionStorage: Manages session metadata
+ * - ProjectStorage: Manages project configurations
+ * - SyncStorage: Manages sync queue
+ * - VaultManager: Manages vault/project file operations
+ * - ImageProcessor: Handles image conversion and manipulation
+ * - StorageHelper: Utility functions for storage operations
+ */
+val storageModule = module {
+    // ChunkStorage - requires Context
+    single { ChunkStorage(androidContext()) }
+
+    // SessionStorage - requires Context and optionally ChunkStorage for cleanup
+    single { SessionStorage(androidContext(), get<ChunkStorage>()) }
+
+    // ProjectStorage - requires Context
+    single { ProjectStorage(androidContext()) }
+
+    // SyncStorage - requires Context
+    single { SyncStorage(androidContext()) }
+
+    // VaultManager - requires Context
+    single { VaultManager(androidContext()) }
+
+    // ImageProcessor - no dependencies
+    single { ImageProcessor() }
+
+    // StorageHelper - requires Context
+    single { StorageHelper(androidContext()) }
+}
+
+/**
+ * Repository module - Business logic layer
+ *
+ * Provides singleton instances of repository implementations:
+ * - ChunkRepository: Chunk management operations
+ * - SessionRepository: Session lifecycle management
+ * - ProjectRepository: Project CRUD operations
+ * - SyncRepository: Sync queue and transcription operations
+ */
+val repositoryModule = module {
+    // ChunkRepository - requires ChunkStorage and SessionStorage
+    single<ChunkRepository> {
+        ChunkRepositoryImpl(
+            chunkStorage = get(),
+            sessionStorage = get()
+        )
+    }
+
+    // SessionRepository - requires SessionStorage and ChunkStorage
+    single<SessionRepository> {
+        SessionRepositoryImpl(
+            sessionStorage = get(),
+            chunkStorage = get()
+        )
+    }
+
+    // ProjectRepository - requires ProjectStorage
+    single<ProjectRepository> {
+        ProjectRepositoryImpl(
+            projectStorage = get()
+        )
+    }
+
+    // SyncRepository - requires Context, storage classes, and TranscriptionServiceFactory
+    // Note: The transcriptionServiceProvider lambda is called at sync time to get
+    // the current transcription service based on user settings. This allows the
+    // service configuration (LLM provider, API key) to be read fresh each time.
+    single<SyncRepository> {
+        val factory: TranscriptionServiceFactory = get()
+        SyncRepositoryImpl(
+            context = androidContext(),
+            sessionStorage = get(),
+            chunkStorage = get(),
+            projectStorage = get(),
+            syncStorage = get(),
+            transcriptionServiceProvider = {
+                // TODO: Read current LLM provider and API key from settings
+                // and create the appropriate service using the factory.
+                // For now, return null - the sync will fail gracefully with
+                // "LLM service not configured" message until settings are wired up.
+                //
+                // Future implementation:
+                // val settings = settingsDataStore.data.first()
+                // val provider = settings[llmProviderKey]
+                // val apiKey = settings[apiKeyKey]
+                // factory.create(provider, apiKey)
+                null
+            }
+        )
+    }
+}
+
+/**
+ * API/Network module - HTTP clients and API services
+ *
+ * Provides singleton instances of:
+ * - OkHttpClient: Configured HTTP client with timeouts
+ * - TranscriptionServiceFactory: Factory for creating LLM service instances
+ */
+val apiModule = module {
+    // OkHttpClient with timeout configuration
+    single {
+        OkHttpClient.Builder()
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
+    // TranscriptionServiceFactory - singleton instance
+    single<TranscriptionServiceFactory> {
+        DefaultTranscriptionServiceFactory.getInstance()
+    }
+}
+
+/**
+ * ViewModel module - UI ViewModels for Compose screens
+ *
+ * Provides viewModel instances for:
+ * - CaptureViewModel: Overlay capture canvas state
+ * - ReviewViewModel: Session review and sync UI
+ * - SettingsViewModel: Application settings
+ * - OnboardingViewModel: First-run setup flow
+ */
+val viewModelModule = module {
+    // CaptureViewModel - no external dependencies, manages stroke state internally
+    viewModel { CaptureViewModel() }
+
+    // ReviewViewModel - currently uses mock data, will be updated to use repositories
+    viewModel { ReviewViewModel() }
+
+    // SettingsViewModel - requires DataStore
+    viewModel { SettingsViewModel(androidContext().settingsDataStore) }
+
+    // OnboardingViewModel - requires Application for AndroidViewModel
+    viewModel { OnboardingViewModel(androidApplication()) }
+}
+
+/**
+ * Service helpers module - Utility classes for services
+ *
+ * Provides singleton instances of:
+ * - NotificationHelper: Notification creation and management
+ * - PermissionHelper: Permission checking and requesting
+ */
+val serviceHelpersModule = module {
+    // NotificationHelper - requires Context
+    single { NotificationHelper(androidContext()) }
+
+    // PermissionHelper - requires Context
+    single { PermissionHelper(androidContext()) }
+}
+
+/**
+ * Main application module - Core dependencies
+ *
+ * This module combines DataStore configuration with any additional
+ * application-level dependencies not covered by other modules.
+ */
+val appModule = module {
+    // DataStore preferences for settings
+    single { androidContext().settingsDataStore }
+}
+
+/**
+ * Data module - Legacy compatibility
+ *
+ * This module is kept for backward compatibility but delegates to
+ * the more specific modules (storageModule, repositoryModule).
+ *
+ * @deprecated Use storageModule and repositoryModule directly
+ */
+val dataModule = module {
+    // DataStore preferences
+    single { get<Context>().settingsDataStore }
+}
+
+/**
+ * Network module - Legacy compatibility
+ *
+ * This module is kept for backward compatibility but delegates to apiModule.
+ *
+ * @deprecated Use apiModule directly
+ */
+val networkModule = module {
+    // OkHttpClient is now provided by apiModule
+}
+
+// Timeout configuration constants
+private const val CONNECT_TIMEOUT_SECONDS = 30L
+private const val READ_TIMEOUT_SECONDS = 60L
+private const val WRITE_TIMEOUT_SECONDS = 60L
+
+/**
+ * Returns all Koin modules in the correct order for dependency resolution.
+ *
+ * The order ensures that dependencies are available when needed:
+ * 1. appModule - Core application dependencies
+ * 2. storageModule - Storage layer (no repository dependencies)
+ * 3. apiModule - Network layer
+ * 4. repositoryModule - Business logic (depends on storage and API)
+ * 5. serviceHelpersModule - Service utilities
+ * 6. viewModelModule - UI layer (depends on all other modules)
+ */
+fun getAllModules() = listOf(
+    appModule,
+    storageModule,
+    apiModule,
+    repositoryModule,
+    serviceHelpersModule,
+    viewModelModule,
+    // Legacy modules for backward compatibility
+    dataModule,
+    networkModule
+)

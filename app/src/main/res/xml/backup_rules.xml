@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+   Sample backup rules for Android 11 and below.
+   Defines what data is backed up.
+-->
+<full-backup-content>
+    <!-- Include user preferences -->
+    <include domain="sharedpref" path="." />
+    <!-- Exclude cache and sensitive files -->
+    <exclude domain="cache" path="." />
+    <exclude domain="no_backup" path="." />
+</full-backup-content>

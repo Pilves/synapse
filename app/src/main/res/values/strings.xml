@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Synapse</string>
+    <string name="app_description">Handwriting Capture App</string>
+
+    <!-- Overlay Service -->
+    <string name="overlay_notification_channel_name">Overlay Service</string>
+    <string name="overlay_notification_channel_description">Shows when the capture overlay is active</string>
+    <string name="overlay_notification_title">Synapse Active</string>
+    <string name="overlay_notification_text">Tap to open settings</string>
+
+    <!-- Capture Service -->
+    <string name="capture_notification_channel_name">Capture Processing</string>
+    <string name="capture_notification_channel_description">Shows when captures are being processed</string>
+    <string name="capture_notification_title">Processing capture...</string>
+    <string name="capture_notification_text">Your handwriting is being analyzed</string>
+
+    <!-- Permissions -->
+    <string name="permission_overlay_title">Overlay Permission Required</string>
+    <string name="permission_overlay_message">Synapse needs permission to display over other apps to show the capture button.</string>
+    <string name="permission_notification_title">Notification Permission</string>
+    <string name="permission_notification_message">Allow notifications to see capture status and results.</string>
+
+    <!-- Common Actions -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_confirm">Confirm</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_dismiss">Dismiss</string>
+</resources>
