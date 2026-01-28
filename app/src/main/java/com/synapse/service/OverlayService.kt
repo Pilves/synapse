@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -296,6 +297,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         if (floatingBubbleView != null) return
 
         try {
+        // Get screen height
+        val displayMetrics = resources.displayMetrics
+        val screenHeight = displayMetrics.heightPixels
+
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -313,20 +318,32 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             y = 300
         }
 
+        // Track bubble Y position for dismiss zone detection
+        var currentBubbleY = params.y
+
         floatingBubbleView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
 
             setContent {
+                var bubbleY by remember { mutableIntStateOf(currentBubbleY) }
+
                 SynapseTheme {
                     FloatingBubble(
                         pendingCount = pendingChunkCount,
+                        screenHeight = screenHeight,
+                        bubbleY = bubbleY,
                         onClick = { showCaptureOverlay() },
-                        onLongClick = { stopOverlay() },
+                        onDismiss = { stopOverlay() },
                         onPositionChanged = { dx, dy ->
                             params.x += dx.roundToInt()
                             params.y += dy.roundToInt()
+                            currentBubbleY = params.y
+                            bubbleY = params.y
                             windowManager.updateViewLayout(this, params)
+                        },
+                        onDragStateChanged = { isDragging ->
+                            // Could show/hide dismiss zone overlay here
                         }
                     )
                 }
@@ -637,18 +654,23 @@ class TouchDifferentiatingOverlayView(
 
 /**
  * Floating bubble composable with drag support and badge.
- * Tap to open capture, long-press to close.
+ * Tap to open capture, drag to bottom X to close.
  */
 @Composable
 private fun FloatingBubble(
     pendingCount: Int,
+    screenHeight: Int,
+    bubbleY: Int,
     onClick: () -> Unit,
-    onLongClick: () -> Unit,
-    onPositionChanged: (Float, Float) -> Unit
+    onDismiss: () -> Unit,
+    onPositionChanged: (Float, Float) -> Unit,
+    onDragStateChanged: (Boolean) -> Unit
 ) {
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
     var isDragging by remember { mutableStateOf(false) }
+
+    // Check if bubble is in dismiss zone (bottom 12% of screen)
+    val dismissZoneThreshold = screenHeight * 0.88f
+    val isInDismissZone = bubbleY > dismissZoneThreshold && isDragging
 
     Box(
         contentAlignment = Alignment.TopEnd
@@ -659,34 +681,51 @@ private fun FloatingBubble(
                 .size(56.dp)
                 .pointerInput(Unit) {
                     detectDragGestures(
-                        onDragStart = { isDragging = true },
-                        onDragEnd = { isDragging = false },
+                        onDragStart = {
+                            isDragging = true
+                            onDragStateChanged(true)
+                        },
+                        onDragEnd = {
+                            isDragging = false
+                            onDragStateChanged(false)
+                            // Check if should dismiss
+                            if (bubbleY > dismissZoneThreshold) {
+                                onDismiss()
+                            }
+                        },
+                        onDragCancel = {
+                            isDragging = false
+                            onDragStateChanged(false)
+                        },
                         onDrag = { change, dragAmount ->
                             change.consume()
-                            offsetX += dragAmount.x
-                            offsetY += dragAmount.y
                             onPositionChanged(dragAmount.x, dragAmount.y)
                         }
                     )
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = { if (!isDragging) onClick() },
-                        onLongPress = { if (!isDragging) onLongClick() }
+                        onTap = { if (!isDragging) onClick() }
                     )
                 },
-            containerColor = MaterialTheme.colorScheme.primary,
+            containerColor = if (isInDismissZone)
+                MaterialTheme.colorScheme.error
+            else
+                MaterialTheme.colorScheme.primary,
             elevation = FloatingActionButtonDefaults.elevation(8.dp)
         ) {
             Icon(
-                imageVector = Icons.Default.Edit,
-                contentDescription = "Start capture (long-press to close)",
-                tint = MaterialTheme.colorScheme.onPrimary
+                imageVector = if (isInDismissZone) Icons.Default.Close else Icons.Default.Edit,
+                contentDescription = "Start capture (drag to bottom to close)",
+                tint = if (isInDismissZone)
+                    MaterialTheme.colorScheme.onError
+                else
+                    MaterialTheme.colorScheme.onPrimary
             )
         }
 
         // Badge showing pending chunk count
-        if (pendingCount > 0) {
+        if (pendingCount > 0 && !isInDismissZone) {
             Box(
                 modifier = Modifier
                     .offset(x = 4.dp, y = (-4).dp)
