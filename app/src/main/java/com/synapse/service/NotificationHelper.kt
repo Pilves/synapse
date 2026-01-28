@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import com.synapse.R
 
 /**
  * Helper class for creating and managing notifications for the Synapse overlay service.
@@ -98,7 +99,7 @@ class NotificationHelper(private val context: Context) {
         return NotificationCompat.Builder(context, CHANNEL_ID_FOREGROUND)
             .setContentTitle("Synapse")
             .setContentText(contentText)
-            .setSmallIcon(android.R.drawable.ic_menu_edit) // TODO: Replace with app icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
             .setShowWhen(false)
@@ -130,7 +131,7 @@ class NotificationHelper(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SYNC_STATUS)
             .setContentTitle("Sync Complete")
             .setContentText("$syncedCount chunk${if (syncedCount > 1) "s" else ""} synced to $projectName")
-            .setSmallIcon(android.R.drawable.ic_menu_upload) // TODO: Replace with app icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()
@@ -159,7 +160,7 @@ class NotificationHelper(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SYNC_STATUS)
             .setContentTitle("Sync Failed")
             .setContentText(contentText)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert) // TODO: Replace with app icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .apply {
@@ -183,7 +184,7 @@ class NotificationHelper(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SYNC_STATUS)
             .setContentTitle("Session Ended")
             .setContentText("Captured $chunkCount chunk${if (chunkCount > 1) "s" else ""} - Tap to review")
-            .setSmallIcon(android.R.drawable.ic_menu_edit) // TODO: Replace with app icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .apply {
@@ -203,7 +204,7 @@ class NotificationHelper(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SYNC_STATUS)
             .setContentTitle("Sync Queued")
             .setContentText("$chunkCount chunk${if (chunkCount > 1) "s" else ""} will sync when online")
-            .setSmallIcon(android.R.drawable.ic_menu_upload) // TODO: Replace with app icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setAutoCancel(true)
             .build()
@@ -220,7 +221,7 @@ class NotificationHelper(private val context: Context) {
         val notification = NotificationCompat.Builder(context, CHANNEL_ID_SYNC_STATUS)
             .setContentTitle("Sync Complete")
             .setContentText("Queued sync finished - $syncedCount chunk${if (syncedCount > 1) "s" else ""} synced")
-            .setSmallIcon(android.R.drawable.ic_menu_upload) // TODO: Replace with app icon
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .build()

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\"/c/Users/Pats/AppData/Local/Android/Sdk/platform-tools/adb.exe\" logcat -d)",
+      "Bash(\"/c/Users/Pats/AppData/Local/Android/Sdk/platform-tools/adb.exe\" logcat -c)",
+      "Bash(./gradlew.bat assembleDebug)",
+      "Bash(\"/c/Users/Pats/AppData/Local/Android/Sdk/platform-tools/adb.exe\" install -r \"/c/Users/Pats/Desktop/proge/synapse/app/build/outputs/apk/debug/app-debug.apk\")",
+      "Bash(\"/c/Users/Pats/AppData/Local/Android/Sdk/platform-tools/adb.exe\" shell am start -n com.synapse.debug/com.synapse.ui.MainActivity)"
+    ]
+  }
+}

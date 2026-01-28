@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -112,6 +113,7 @@ fun SettingsSwitch(
  * @param modifier Modifier for the component
  * @param enabled Whether the toggle is enabled
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsSegmentedToggle(
     label: String,

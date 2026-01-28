@@ -2,11 +2,13 @@ package com.synapse.ui.review
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.data.repository.ProjectRepository
+import com.synapse.data.repository.SessionRepository
+import com.synapse.data.repository.SyncRepository
 import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.Session
 import com.synapse.model.SyncStatus
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,10 +46,9 @@ data class ReviewUiState(
  * filename input, sync status, and deletion of chunks/sessions.
  */
 class ReviewViewModel(
-    // TODO: Inject repositories when available
-    // private val sessionRepository: SessionRepository,
-    // private val projectRepository: ProjectRepository,
-    // private val syncRepository: SyncRepository
+    private val sessionRepository: SessionRepository,
+    private val projectRepository: ProjectRepository,
+    private val syncRepository: SyncRepository
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReviewUiState())
@@ -65,9 +66,7 @@ class ReviewViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
-                // TODO: Replace with actual repository call
-                // val sessions = sessionRepository.getPendingSessions()
-                val sessions = getMockSessions()
+                val sessions = sessionRepository.getPendingSessions()
                 _uiState.update {
                     it.copy(
                         sessions = sessions,
@@ -91,9 +90,7 @@ class ReviewViewModel(
     private fun loadProjects() {
         viewModelScope.launch {
             try {
-                // TODO: Replace with actual repository call
-                // val projects = projectRepository.getProjects()
-                val projects = getMockProjects()
+                val projects = projectRepository.getProjects()
                 _uiState.update {
                     it.copy(
                         projects = projects,
@@ -211,8 +208,7 @@ class ReviewViewModel(
     fun deleteChunk(chunk: Chunk) {
         viewModelScope.launch {
             try {
-                // TODO: Replace with actual repository call
-                // sessionRepository.deleteChunk(chunk.id)
+                sessionRepository.deleteChunk(chunk.sessionId, chunk.id)
                 _uiState.update { state ->
                     val updatedSessions = state.sessions.map { session ->
                         if (session.id == chunk.sessionId) {
@@ -241,8 +237,7 @@ class ReviewViewModel(
     fun deleteSession(session: Session) {
         viewModelScope.launch {
             try {
-                // TODO: Replace with actual repository call
-                // sessionRepository.deleteSession(session.id)
+                sessionRepository.deleteSession(session.id)
                 _uiState.update { state ->
                     val chunkIds = session.chunks.map { it.id }.toSet()
                     state.copy(
@@ -259,7 +254,7 @@ class ReviewViewModel(
     }
 
     /**
-     * Sync all pending chunks
+     * Sync all pending sessions
      */
     fun syncAll() {
         viewModelScope.launch {
@@ -276,57 +271,64 @@ class ReviewViewModel(
             _uiState.update { it.copy(syncStatus = SyncStatus.Queued) }
 
             try {
-                val chunksToSync = if (state.viewMode == ViewMode.SEPARATE && state.selectedChunkIds.isNotEmpty()) {
-                    // Sync only selected chunks
-                    state.sessions.flatMap { it.chunks }.filter { it.id in state.selectedChunkIds }
+                // Determine which sessions to sync
+                val sessionsToSync = if (state.viewMode == ViewMode.SEPARATE && state.selectedChunkIds.isNotEmpty()) {
+                    // Sync only sessions that have selected chunks
+                    state.sessions.filter { session ->
+                        session.chunks.any { it.id in state.selectedChunkIds }
+                    }
                 } else {
-                    // Sync all chunks
-                    state.sessions.flatMap { it.chunks }
+                    // Sync all sessions
+                    state.sessions
                 }
 
-                if (chunksToSync.isEmpty()) {
+                if (sessionsToSync.isEmpty()) {
                     _uiState.update {
                         it.copy(
                             syncStatus = SyncStatus.Idle,
-                            error = "No chunks to sync"
+                            error = "No sessions to sync"
                         )
                     }
                     return@launch
                 }
 
-                val totalChunks = chunksToSync.size
+                val totalSessions = sessionsToSync.size
                 var syncedCount = 0
                 var failedCount = 0
 
-                for ((index, chunk) in chunksToSync.withIndex()) {
+                for ((index, session) in sessionsToSync.withIndex()) {
                     _uiState.update {
-                        it.copy(syncStatus = SyncStatus.InProgress((index + 1).toFloat() / totalChunks))
+                        it.copy(syncStatus = SyncStatus.InProgress((index.toFloat()) / totalSessions))
                     }
 
-                    // TODO: Replace with actual sync call
-                    // val result = syncRepository.syncChunk(chunk, state.selectedProject!!, state.filename)
-                    delay(500) // Simulate network delay
-                    val success = !chunk.isCorrupted // Simulate: corrupted chunks fail
+                    val result = syncRepository.syncSession(
+                        sessionId = session.id,
+                        projectId = state.selectedProject.id,
+                        filename = state.filename
+                    )
 
-                    if (success) {
-                        syncedCount++
-                    } else {
-                        failedCount++
+                    when (result) {
+                        is SyncStatus.Success -> syncedCount++
+                        is SyncStatus.PartialSuccess -> {
+                            syncedCount++
+                            failedCount += result.failedCount
+                        }
+                        is SyncStatus.Error -> failedCount++
+                        else -> {}
                     }
                 }
 
                 val finalStatus = when {
-                    failedCount == 0 -> SyncStatus.Success
-                    syncedCount == 0 -> SyncStatus.Error("All chunks failed to sync")
+                    failedCount == 0 && syncedCount > 0 -> SyncStatus.Success
+                    syncedCount == 0 -> SyncStatus.Error("All sessions failed to sync")
                     else -> SyncStatus.PartialSuccess(syncedCount, failedCount)
                 }
 
                 _uiState.update { it.copy(syncStatus = finalStatus) }
 
-                // If successful, remove synced chunks from the list
-                if (finalStatus == SyncStatus.Success) {
-                    delay(1500) // Show success briefly
-                    loadPendingSessions() // Refresh the list
+                // If successful, refresh the session list
+                if (finalStatus == SyncStatus.Success || finalStatus is SyncStatus.PartialSuccess) {
+                    loadPendingSessions()
                 }
             } catch (e: Exception) {
                 _uiState.update {
@@ -363,41 +365,5 @@ class ReviewViewModel(
     fun getChunkOffset(session: Session, chunk: Chunk): Float {
         val sessionStartSeconds = session.startedAt / 1000f
         return chunk.timestampSeconds - sessionStartSeconds
-    }
-
-    // Mock data for testing
-    private fun getMockSessions(): List<Session> {
-        val now = System.currentTimeMillis()
-        return listOf(
-            Session(
-                id = "session1",
-                startedAt = now - 3600000, // 1 hour ago
-                endedAt = now - 3000000,
-                chunks = listOf(
-                    Chunk("chunk1", "session1", 0, "/storage/chunk1.jpg", 0f, now - 3600000),
-                    Chunk("chunk2", "session1", 1, "/storage/chunk2.jpg", 4f, now - 3596000),
-                    Chunk("chunk3", "session1", 2, "/storage/chunk3.jpg", 8f, now - 3592000),
-                    Chunk("chunk4", "session1", 3, "/storage/chunk4.jpg", 12f, now - 3588000, isCorrupted = true)
-                )
-            ),
-            Session(
-                id = "session2",
-                startedAt = now - 1800000, // 30 mins ago
-                endedAt = now - 1200000,
-                chunks = listOf(
-                    Chunk("chunk5", "session2", 0, "/storage/chunk5.jpg", 0f, now - 1800000),
-                    Chunk("chunk6", "session2", 1, "/storage/chunk6.jpg", 4f, now - 1796000),
-                    Chunk("chunk7", "session2", 2, "/storage/chunk7.jpg", 8f, now - 1792000)
-                )
-            )
-        )
-    }
-
-    private fun getMockProjects(): List<Project> {
-        return listOf(
-            Project("proj1", "Work Notes", "/storage/projects/work", "notes.md", "meeting-notes.md"),
-            Project("proj2", "Personal Journal", "/storage/projects/personal", "journal.md"),
-            Project("proj3", "Research", "/storage/projects/research", "research.md")
-        )
     }
 }

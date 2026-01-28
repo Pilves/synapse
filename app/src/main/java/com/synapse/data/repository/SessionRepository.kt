@@ -60,6 +60,14 @@ interface SessionRepository {
     suspend fun deleteSession(sessionId: String)
 
     /**
+     * Deletes a single chunk from a session.
+     *
+     * @param sessionId The session ID
+     * @param chunkId The chunk ID to delete
+     */
+    suspend fun deleteChunk(sessionId: String, chunkId: String)
+
+    /**
      * Observes all sessions.
      *
      * @return Flow of session list, sorted by start time descending
@@ -120,6 +128,14 @@ class SessionRepositoryImpl(
 
         // Delete session metadata
         sessionStorage.deleteSession(sessionId)
+    }
+
+    override suspend fun deleteChunk(sessionId: String, chunkId: String) {
+        // Delete chunk file
+        chunkStorage.deleteChunk(sessionId, chunkId)
+
+        // Update session metadata to remove the chunk
+        sessionStorage.removeChunk(sessionId, chunkId)
     }
 
     override fun observeSessions(): Flow<List<Session>> {

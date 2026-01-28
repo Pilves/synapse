@@ -15,6 +15,7 @@ import com.synapse.ui.onboarding.OnboardingScreen
 import com.synapse.ui.onboarding.OnboardingViewModel
 import com.synapse.ui.review.ReviewScreen
 import com.synapse.ui.review.ReviewViewModel
+import org.koin.androidx.compose.koinViewModel
 import com.synapse.ui.settings.ProjectManagerScreen
 import com.synapse.ui.settings.PromptEditorScreen
 import com.synapse.ui.settings.SettingsScreen
@@ -107,7 +108,7 @@ fun SynapseNavGraph(
 
         // Main Review screen (wrapped in MainScreen scaffold)
         composable(route = Screen.Review.route) {
-            val reviewViewModel: ReviewViewModel = viewModel()
+            val reviewViewModel: ReviewViewModel = koinViewModel()
 
             MainScreen(
                 navController = navController,

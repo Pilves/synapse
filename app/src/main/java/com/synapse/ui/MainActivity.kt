@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -133,7 +134,10 @@ class MainActivity : ComponentActivity() {
                             navController = navController,
                             startDestination = destination,
                             onStartOverlay = {
-                                if (permissionHelper.hasOverlayPermission()) {
+                                Log.d(TAG, "onStartOverlay called")
+                                val hasPermission = permissionHelper.hasOverlayPermission()
+                                Log.d(TAG, "hasOverlayPermission: $hasPermission")
+                                if (hasPermission) {
                                     startOverlayService()
                                 } else {
                                     showOverlayPermissionDialog = true
@@ -234,13 +238,21 @@ class MainActivity : ComponentActivity() {
      * Starts the overlay foreground service.
      */
     private fun startOverlayService() {
+        Log.d(TAG, "startOverlayService called")
         val serviceIntent = Intent(this, OverlayService::class.java).apply {
             action = OverlayService.ACTION_START
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Log.d(TAG, "Starting foreground service")
+                startForegroundService(serviceIntent)
+            } else {
+                Log.d(TAG, "Starting service")
+                startService(serviceIntent)
+            }
+            Log.d(TAG, "Service start initiated")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start service", e)
         }
 
         // Optionally minimize the app after starting the overlay
@@ -270,6 +282,8 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        private const val TAG = "MainActivity"
+
         /** Intent action for opening the review screen from notification */
         const val ACTION_OPEN_REVIEW = "com.synapse.action.OPEN_REVIEW"
 

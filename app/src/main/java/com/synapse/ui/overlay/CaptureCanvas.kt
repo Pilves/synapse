@@ -217,7 +217,7 @@ fun CaptureCanvas(
 private fun getInputType(change: PointerInputChange): InputType {
     return when (change.type) {
         PointerType.Stylus -> InputType.STYLUS
-        PointerType.Finger -> InputType.FINGER
+        PointerType.Touch -> InputType.FINGER
         PointerType.Mouse -> InputType.MOUSE
         else -> InputType.UNKNOWN
     }

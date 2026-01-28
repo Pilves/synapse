@@ -25,10 +25,14 @@ import com.synapse.ui.review.ReviewViewModel
 import com.synapse.ui.settings.SettingsViewModel
 import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.PermissionHelper
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.synapse.api.LlmProvider
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
-import org.koin.core.module.dsl.viewModel
+import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.dsl.module
 import java.util.concurrent.TimeUnit
 
@@ -106,6 +110,10 @@ val repositoryModule = module {
     // service configuration (LLM provider, API key) to be read fresh each time.
     single<SyncRepository> {
         val factory: TranscriptionServiceFactory = get()
+        val dataStore = androidContext().settingsDataStore
+        val llmProviderKey = stringPreferencesKey("llm_provider")
+        val apiKeyKey = stringPreferencesKey("api_key")
+
         SyncRepositoryImpl(
             context = androidContext(),
             sessionStorage = get(),
@@ -113,17 +121,15 @@ val repositoryModule = module {
             projectStorage = get(),
             syncStorage = get(),
             transcriptionServiceProvider = {
-                // TODO: Read current LLM provider and API key from settings
-                // and create the appropriate service using the factory.
-                // For now, return null - the sync will fail gracefully with
-                // "LLM service not configured" message until settings are wired up.
-                //
-                // Future implementation:
-                // val settings = settingsDataStore.data.first()
-                // val provider = settings[llmProviderKey]
-                // val apiKey = settings[apiKeyKey]
-                // factory.create(provider, apiKey)
-                null
+                // Read current LLM provider and API key from settings
+                // runBlocking is acceptable here since sync runs on IO dispatcher
+                runBlocking {
+                    val prefs = dataStore.data.first()
+                    val providerName = prefs[llmProviderKey] ?: LlmProvider.GEMINI.name
+                    val apiKey = prefs[apiKeyKey]
+                    val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
+                    factory.create(provider, apiKey)
+                }
             }
         )
     }
@@ -166,8 +172,14 @@ val viewModelModule = module {
     // CaptureViewModel - no external dependencies, manages stroke state internally
     viewModel { CaptureViewModel() }
 
-    // ReviewViewModel - currently uses mock data, will be updated to use repositories
-    viewModel { ReviewViewModel() }
+    // ReviewViewModel - uses repositories for sessions, projects, and sync
+    viewModel {
+        ReviewViewModel(
+            sessionRepository = get(),
+            projectRepository = get(),
+            syncRepository = get()
+        )
+    }
 
     // SettingsViewModel - requires DataStore
     viewModel { SettingsViewModel(androidContext().settingsDataStore) }

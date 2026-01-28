@@ -9,6 +9,8 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -21,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
@@ -41,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -55,11 +59,21 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.synapse.R
 import com.synapse.SynapseApplication
+import com.synapse.data.repository.ChunkRepository
+import com.synapse.data.repository.SessionRepository
+import com.synapse.model.Chunk
 import com.synapse.ui.MainActivity
 import com.synapse.ui.overlay.CaptureCanvas
+import com.synapse.ui.overlay.CaptureEvent
 import com.synapse.ui.overlay.CaptureViewModel
 import com.synapse.ui.overlay.InputMode
 import com.synapse.ui.theme.SynapseTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 import kotlin.math.roundToInt
 
 /**
@@ -83,6 +97,16 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private var pendingChunkCount = 0
     private var isCaptureActive = false
 
+    // Repositories for saving sessions and chunks
+    private val sessionRepository: SessionRepository by inject()
+    private val chunkRepository: ChunkRepository by inject()
+
+    // Coroutine scope for the service
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // Current active session ID
+    private var currentSessionId: String? = null
+
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
 
@@ -91,14 +115,86 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d(TAG, "onCreate called")
         savedStateRegistryController.performRestore(null)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         captureViewModel = CaptureViewModel()
+
+        // Collect capture events and save chunks
+        serviceScope.launch {
+            captureViewModel?.events?.collect { event ->
+                when (event) {
+                    is CaptureEvent.ChunkCaptured -> {
+                        Log.d(TAG, "Chunk captured: index=${event.chunk.index}")
+                        saveChunk(event.chunk)
+                    }
+                    is CaptureEvent.SessionEnded -> {
+                        Log.d(TAG, "Session ended")
+                        endCurrentSession()
+                    }
+                    is CaptureEvent.SessionTimeout -> {
+                        Log.d(TAG, "Session timeout")
+                        endCurrentSession()
+                    }
+                    is CaptureEvent.Error -> {
+                        Log.e(TAG, "Capture error: ${event.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    private fun saveChunk(capturedChunk: com.synapse.ui.overlay.CapturedChunk) {
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                // Create session if not exists
+                if (currentSessionId == null) {
+                    val session = sessionRepository.createSession()
+                    currentSessionId = session.id
+                    Log.d(TAG, "Created new session: ${session.id}")
+                }
+
+                val sessionId = currentSessionId ?: return@launch
+
+                // Calculate timestamp in seconds from epoch
+                val timestampSeconds = capturedChunk.timestamp / 1000f
+
+                // Save chunk image and metadata
+                val chunk = chunkRepository.saveChunk(
+                    sessionId = sessionId,
+                    bitmap = capturedChunk.bitmap,
+                    timestampSeconds = timestampSeconds
+                )
+                Log.d(TAG, "Saved chunk: ${chunk.id} to session $sessionId")
+
+                // Update badge count
+                pendingChunkCount++
+                launch(Dispatchers.Main) {
+                    updateBubble()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to save chunk", e)
+            }
+        }
+    }
+
+    private fun endCurrentSession() {
+        val sessionId = currentSessionId ?: return
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                sessionRepository.endSession(sessionId)
+                Log.d(TAG, "Ended session: $sessionId")
+                currentSessionId = null
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to end session", e)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand: action=${intent?.action}")
         when (intent?.action) {
             ACTION_START -> startOverlay()
             ACTION_STOP -> stopOverlay()
@@ -116,17 +212,28 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onDestroy() {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        serviceScope.cancel()
         hideCaptureOverlay()
         hideFloatingBubble()
         super.onDestroy()
     }
 
     private fun startOverlay() {
+        Log.d(TAG, "startOverlay called")
+
+        // Check overlay permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+            Log.e(TAG, "Overlay permission not granted!")
+            return
+        }
+        Log.d(TAG, "Overlay permission OK")
+
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
+        Log.d(TAG, "Started foreground service")
         showFloatingBubble()
     }
 
@@ -138,8 +245,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     private fun showFloatingBubble() {
+        Log.d(TAG, "showFloatingBubble called, existing view: ${floatingBubbleView != null}")
         if (floatingBubbleView != null) return
 
+        try {
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -177,6 +286,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
 
         windowManager.addView(floatingBubbleView, params)
+            Log.d(TAG, "Floating bubble added to window manager")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to show floating bubble", e)
+        }
     }
 
     private fun hideFloatingBubble() {
@@ -213,8 +326,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         hideFloatingBubble()
 
         // Create the capture overlay with special touch handling
-        // FLAG_NOT_TOUCH_MODAL allows touches to pass through to windows below
-        // We handle stylus input in Compose and let finger touches pass through
+        // Strategy: Start with FLAG_NOT_TOUCHABLE so finger touches pass through.
+        // When stylus hovers or touches, we remove the flag to capture stylus input.
+        // After stylus leaves, we restore the flag for finger pass-through.
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -226,34 +340,37 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             // KEY FLAGS for stylus/finger differentiation:
             // - FLAG_NOT_FOCUSABLE: Don't take focus from underlying app
             // - FLAG_LAYOUT_IN_SCREEN: Full screen including status bar
-            // - FLAG_NOT_TOUCH_MODAL: Allow some touches to pass through
+            // - FLAG_NOT_TOUCHABLE: Start non-touchable, enable on stylus hover/touch
+            // - FLAG_WATCH_OUTSIDE_TOUCH: Receive outside touch notifications
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
 
         // Create a custom view that handles touch differentiation at the View level
-        val overlayView = TouchDifferentiatingOverlayView(this).apply {
+        val overlayView = TouchDifferentiatingOverlayView(this) {
+            SynapseTheme {
+                CaptureOverlayContent(
+                    viewModel = captureViewModel!!,
+                    onDone = {
+                        captureViewModel?.endSession()
+                        endCurrentSession()
+                        hideCaptureOverlay()
+                    },
+                    onDiscard = {
+                        captureViewModel?.clearStrokes()
+                        // Discard current session without ending
+                        currentSessionId = null
+                        hideCaptureOverlay()
+                    }
+                )
+            }
+        }.apply {
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
-
-            setContent {
-                SynapseTheme {
-                    CaptureOverlayContent(
-                        viewModel = captureViewModel!!,
-                        onDone = {
-                            captureViewModel?.endSession()
-                            hideCaptureOverlay()
-                        },
-                        onDiscard = {
-                            captureViewModel?.discardSession()
-                            hideCaptureOverlay()
-                        }
-                    )
-                }
-            }
+            setWindowManager(windowManager)
         }
 
         captureOverlayView = overlayView
@@ -287,6 +404,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     companion object {
+        private const val TAG = "OverlayService"
         const val ACTION_START = "com.synapse.action.START_OVERLAY"
         const val ACTION_STOP = "com.synapse.action.STOP_OVERLAY"
         const val ACTION_SHOW_CAPTURE = "com.synapse.action.SHOW_CAPTURE"
@@ -333,22 +451,128 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 /**
  * Custom ComposeView that differentiates between stylus and finger input at the View level.
  * Finger touches are passed through to the window below, stylus input is captured.
+ *
+ * Strategy:
+ * - Window starts in pass-through mode (FLAG_NOT_TOUCHABLE)
+ * - When stylus hovers or touches, we enable touch capture
+ * - After stylus leaves (hover exit or touch up), we restore pass-through after a delay
+ * - This allows finger scrolling while stylus can still draw
  */
 @SuppressLint("ViewConstructor")
-class TouchDifferentiatingOverlayView(context: Context) : ComposeView(context) {
+class TouchDifferentiatingOverlayView(
+    context: Context,
+    private val content: @Composable () -> Unit
+) : AbstractComposeView(context) {
+
+    companion object {
+        private const val TAG = "TouchDiffOverlay"
+        // Delay before returning to pass-through after stylus leaves
+        private const val PASS_THROUGH_DELAY_MS = 300L
+    }
+
+    private var windowManager: WindowManager? = null
+    // Start as non-touchable (FLAG_NOT_TOUCHABLE is set in window params)
+    private var isTouchable = false
+    private var pendingPassThroughRunnable: Runnable? = null
+
+    fun setWindowManager(wm: WindowManager) {
+        windowManager = wm
+        // Window already starts with FLAG_NOT_TOUCHABLE, so isTouchable = false is correct
+    }
+
+    @Composable
+    override fun Content() {
+        content()
+    }
+
+    override fun onGenericMotionEvent(event: MotionEvent): Boolean {
+        // Handle stylus hover events
+        if (event.isFromSource(android.view.InputDevice.SOURCE_STYLUS)) {
+            when (event.actionMasked) {
+                MotionEvent.ACTION_HOVER_ENTER -> {
+                    Log.d(TAG, "Stylus hover enter")
+                    cancelPendingPassThrough()
+                    enableTouchCapture()
+                }
+                MotionEvent.ACTION_HOVER_EXIT -> {
+                    Log.d(TAG, "Stylus hover exit")
+                    schedulePassThrough()
+                }
+            }
+        }
+        return super.onGenericMotionEvent(event)
+    }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-        // Check if this is stylus input
-        val isStylus = event.getToolType(0) == MotionEvent.TOOL_TYPE_STYLUS ||
-                       event.getToolType(0) == MotionEvent.TOOL_TYPE_ERASER
+        val toolType = event.getToolType(0)
+        val isStylus = toolType == MotionEvent.TOOL_TYPE_STYLUS ||
+                       toolType == MotionEvent.TOOL_TYPE_ERASER
 
-        return if (isStylus) {
-            // Stylus input - handle it (draw)
-            super.dispatchTouchEvent(event)
+        if (isStylus) {
+            // Stylus touch - ensure we're capturing and handle it
+            cancelPendingPassThrough()
+            if (!isTouchable) {
+                enableTouchCapture()
+            }
+
+            val result = super.dispatchTouchEvent(event)
+
+            // Schedule return to pass-through after stylus lifts
+            if (event.actionMasked == MotionEvent.ACTION_UP ||
+                event.actionMasked == MotionEvent.ACTION_CANCEL) {
+                schedulePassThrough()
+            }
+
+            return result
         } else {
-            // Finger/other input - don't handle, let it pass through
-            // Return false to indicate we didn't handle it
-            false
+            // Finger touch - should not reach here if pass-through is working
+            // But just in case, don't handle it
+            Log.d(TAG, "Finger touch received - this shouldn't happen in pass-through mode")
+            return false
+        }
+    }
+
+    private fun enableTouchCapture() {
+        if (isTouchable) return
+        isTouchable = true
+
+        val params = layoutParams as? WindowManager.LayoutParams ?: return
+        params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        try {
+            windowManager?.updateViewLayout(this, params)
+            Log.d(TAG, "Touch capture enabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enable touch capture", e)
+        }
+    }
+
+    private fun enablePassThrough() {
+        if (!isTouchable) return
+        isTouchable = false
+
+        val params = layoutParams as? WindowManager.LayoutParams ?: return
+        params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+        try {
+            windowManager?.updateViewLayout(this, params)
+            Log.d(TAG, "Pass-through enabled")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to enable pass-through", e)
+        }
+    }
+
+    private fun schedulePassThrough() {
+        cancelPendingPassThrough()
+        pendingPassThroughRunnable = Runnable {
+            enablePassThrough()
+            pendingPassThroughRunnable = null
+        }
+        postDelayed(pendingPassThroughRunnable, PASS_THROUGH_DELAY_MS)
+    }
+
+    private fun cancelPendingPassThrough() {
+        pendingPassThroughRunnable?.let {
+            removeCallbacks(it)
+            pendingPassThroughRunnable = null
         }
     }
 }
@@ -485,7 +709,7 @@ private fun CaptureOverlayContent(
                     containerColor = MaterialTheme.colorScheme.secondary
                 ) {
                     Icon(
-                        imageVector = androidx.compose.material.icons.Icons.AutoMirrored.Filled.Undo,
+                        imageVector = Icons.AutoMirrored.Filled.Undo,
                         contentDescription = "Undo",
                         tint = MaterialTheme.colorScheme.onSecondary
                     )

@@ -204,12 +204,16 @@ fun SynapseTheme(
 
     val view = LocalView.current
     if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as Activity).window
-            // Make status bar transparent for edge-to-edge
-            window.statusBarColor = Color.Transparent.toArgb()
-            // Set status bar icon color based on theme
-            WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+        // Only modify status bar when running in an Activity context
+        val activity = view.context as? Activity
+        if (activity != null) {
+            SideEffect {
+                val window = activity.window
+                // Make status bar transparent for edge-to-edge
+                window.statusBarColor = Color.Transparent.toArgb()
+                // Set status bar icon color based on theme
+                WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
+            }
         }
     }
 

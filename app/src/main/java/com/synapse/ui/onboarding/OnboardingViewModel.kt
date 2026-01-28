@@ -194,15 +194,14 @@ class OnboardingViewModel(
             _state.update { it.copy(isValidatingApiKey = true, errorMessage = null) }
 
             try {
-                // TODO: Add actual API key validation here
-                // For now, just check basic format (Gemini keys start with "AI")
-                val isValidFormat = apiKey.length >= 10
+                // Validate API key format based on common patterns
+                val validationResult = validateApiKeyFormat(apiKey.trim())
 
-                if (!isValidFormat) {
+                if (!validationResult.isValid) {
                     _state.update {
                         it.copy(
                             isValidatingApiKey = false,
-                            errorMessage = "Invalid API key format"
+                            errorMessage = validationResult.errorMessage
                         )
                     }
                     return@launch
@@ -210,7 +209,7 @@ class OnboardingViewModel(
 
                 // Save to DataStore
                 dataStore.edit { prefs ->
-                    prefs[PreferenceKeys.API_KEY] = apiKey
+                    prefs[PreferenceKeys.API_KEY] = apiKey.trim()
                 }
 
                 _state.update { currentState ->
@@ -230,6 +229,73 @@ class OnboardingViewModel(
             }
         }
     }
+
+    /**
+     * Validates API key format based on provider patterns.
+     * Supports Gemini, Claude, and OpenAI key formats.
+     */
+    private fun validateApiKeyFormat(apiKey: String): ApiKeyValidationResult {
+        // Check minimum length
+        if (apiKey.length < 20) {
+            return ApiKeyValidationResult(
+                isValid = false,
+                errorMessage = "API key is too short (minimum 20 characters)"
+            )
+        }
+
+        // Check for common invalid patterns
+        if (apiKey.contains(" ")) {
+            return ApiKeyValidationResult(
+                isValid = false,
+                errorMessage = "API key should not contain spaces"
+            )
+        }
+
+        // Validate based on detected provider format
+        return when {
+            // Gemini keys are typically alphanumeric and 39 characters
+            apiKey.length >= 30 && apiKey.all { it.isLetterOrDigit() || it == '-' || it == '_' } -> {
+                ApiKeyValidationResult(isValid = true)
+            }
+            // Claude keys start with sk-ant-
+            apiKey.startsWith("sk-ant-") -> {
+                if (apiKey.length >= 40) {
+                    ApiKeyValidationResult(isValid = true)
+                } else {
+                    ApiKeyValidationResult(
+                        isValid = false,
+                        errorMessage = "Claude API key appears incomplete"
+                    )
+                }
+            }
+            // OpenAI keys start with sk-
+            apiKey.startsWith("sk-") -> {
+                if (apiKey.length >= 40) {
+                    ApiKeyValidationResult(isValid = true)
+                } else {
+                    ApiKeyValidationResult(
+                        isValid = false,
+                        errorMessage = "OpenAI API key appears incomplete"
+                    )
+                }
+            }
+            // Accept other formats if they meet minimum requirements
+            apiKey.length >= 20 -> {
+                ApiKeyValidationResult(isValid = true)
+            }
+            else -> {
+                ApiKeyValidationResult(
+                    isValid = false,
+                    errorMessage = "Invalid API key format"
+                )
+            }
+        }
+    }
+
+    private data class ApiKeyValidationResult(
+        val isValid: Boolean,
+        val errorMessage: String? = null
+    )
 
     /**
      * Retrieves the saved API key for display (masked) or editing.
