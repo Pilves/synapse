@@ -56,8 +56,27 @@ class ReviewViewModel(
     val uiState: StateFlow<ReviewUiState> = _uiState.asStateFlow()
 
     init {
-        loadPendingSessions()
+        observeSessions()
         loadProjects()
+    }
+
+    /**
+     * Observe pending sessions - updates automatically when sessions change
+     */
+    private fun observeSessions() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
+            sessionRepository.observeSessions().collectLatest { allSessions ->
+                // Filter to only pending sessions (ended but not synced)
+                val pendingSessions = allSessions.filter { it.endedAt != null }
+                _uiState.update {
+                    it.copy(
+                        sessions = pendingSessions,
+                        isLoading = false
+                    )
+                }
+            }
+        }
     }
 
     /**
