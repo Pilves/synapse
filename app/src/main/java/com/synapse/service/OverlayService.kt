@@ -281,10 +281,14 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     private fun stopOverlay() {
-        hideCaptureOverlay()
-        hideFloatingBubble()
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        // Delay to let ripple animation finish before removing views
+        serviceScope.launch {
+            kotlinx.coroutines.delay(100)
+            hideCaptureOverlay()
+            hideFloatingBubble()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+        }
     }
 
     private fun showFloatingBubble() {
