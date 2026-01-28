@@ -654,7 +654,7 @@ private fun FloatingBubble(
         contentAlignment = Alignment.TopEnd
     ) {
         FloatingActionButton(
-            onClick = { if (!isDragging) onClick() },
+            onClick = { },
             modifier = Modifier
                 .size(56.dp)
                 .pointerInput(Unit) {
@@ -671,7 +671,8 @@ private fun FloatingBubble(
                 }
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onLongPress = { onLongClick() }
+                        onTap = { if (!isDragging) onClick() },
+                        onLongPress = { if (!isDragging) onLongClick() }
                     )
                 },
             containerColor = MaterialTheme.colorScheme.primary,
