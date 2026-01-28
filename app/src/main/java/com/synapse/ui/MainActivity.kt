@@ -58,6 +58,12 @@ class MainActivity : ComponentActivity() {
     // DataStore key for onboarding completion
     private val onboardingCompleteKey = booleanPreferencesKey("onboarding_complete")
 
+    // Navigation callback to trigger navigation from intents
+    private var navigateToReview: (() -> Unit)? = null
+
+    // Flag to request navigation to review on next composition
+    private var pendingNavigateToReview = false
+
     // Overlay permission request launcher
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -130,6 +136,20 @@ class MainActivity : ComponentActivity() {
 
                     // Show the navigation graph once we've determined the start destination
                     startDestination?.let { destination ->
+                        // Set up navigation callback for intent handling
+                        navigateToReview = {
+                            navController.navigate(Screen.Review.route) {
+                                popUpTo(navController.graph.startDestinationId) { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        }
+
+                        // Check if there's a pending navigation request
+                        if (pendingNavigateToReview) {
+                            pendingNavigateToReview = false
+                            navigateToReview?.invoke()
+                        }
+
                         SynapseNavGraph(
                             navController = navController,
                             startDestination = destination,
@@ -193,8 +213,12 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         when (intent?.action) {
             ACTION_OPEN_REVIEW -> {
-                // Navigate to review screen if app was opened from notification
-                // The navigation will be handled by the start destination logic
+                // Navigate to review screen - try immediately or set pending flag
+                if (navigateToReview != null) {
+                    navigateToReview?.invoke()
+                } else {
+                    pendingNavigateToReview = true
+                }
             }
             ACTION_STOP_OVERLAY -> {
                 stopOverlayService()

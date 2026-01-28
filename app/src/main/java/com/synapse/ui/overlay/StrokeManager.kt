@@ -159,43 +159,83 @@ class StrokeManager {
     }
 
     /**
-     * Converts all strokes to a Bitmap with only the stroke content (no outline).
-     * Useful for clean image output for OCR processing.
+     * Converts all strokes to a Bitmap cropped to stroke bounds and scaled for OCR.
+     * Much smaller than full-screen capture - reduces API token usage.
      *
-     * @param width The width of the output bitmap
-     * @param height The height of the output bitmap
+     * @param width The original canvas width
+     * @param height The original canvas height
      * @param backgroundColor The background color (default: white)
      * @param strokeColor The stroke color (default: black)
-     * @return A Bitmap containing all strokes
+     * @param maxDimension Maximum dimension for output (default: 800px)
+     * @param padding Padding around strokes (default: 20px)
+     * @return A Bitmap containing all strokes, cropped and scaled
      */
     fun toBitmapForOcr(
         width: Int,
         height: Int,
         backgroundColor: Int = android.graphics.Color.WHITE,
-        strokeColor: Int = android.graphics.Color.BLACK
+        strokeColor: Int = android.graphics.Color.BLACK,
+        maxDimension: Int = 800,
+        padding: Int = 20
     ): Bitmap {
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-
-        // Fill with background color
-        canvas.drawColor(backgroundColor)
-
-        val strokePaint = Paint().apply {
-            isAntiAlias = true
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-            color = strokeColor
-        }
-
         synchronized(lock) {
+            // Calculate bounding box of all strokes
+            var minX = Float.MAX_VALUE
+            var minY = Float.MAX_VALUE
+            var maxX = Float.MIN_VALUE
+            var maxY = Float.MIN_VALUE
+
+            for (stroke in strokes) {
+                for (point in stroke.points) {
+                    minX = minOf(minX, point.x)
+                    minY = minOf(minY, point.y)
+                    maxX = maxOf(maxX, point.x)
+                    maxY = maxOf(maxY, point.y)
+                }
+            }
+
+            // Add padding and clamp to canvas bounds
+            minX = maxOf(0f, minX - padding)
+            minY = maxOf(0f, minY - padding)
+            maxX = minOf(width.toFloat(), maxX + padding)
+            maxY = minOf(height.toFloat(), maxY + padding)
+
+            // Calculate cropped dimensions
+            val cropWidth = (maxX - minX).toInt().coerceAtLeast(50)
+            val cropHeight = (maxY - minY).toInt().coerceAtLeast(50)
+
+            // Calculate scale to fit within maxDimension
+            val scale = if (cropWidth > maxDimension || cropHeight > maxDimension) {
+                maxDimension.toFloat() / maxOf(cropWidth, cropHeight)
+            } else {
+                1f
+            }
+
+            val outputWidth = (cropWidth * scale).toInt()
+            val outputHeight = (cropHeight * scale).toInt()
+
+            val bitmap = Bitmap.createBitmap(outputWidth, outputHeight, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            canvas.drawColor(backgroundColor)
+
+            // Scale and translate to crop region
+            canvas.scale(scale, scale)
+            canvas.translate(-minX, -minY)
+
+            val strokePaint = Paint().apply {
+                isAntiAlias = true
+                style = Paint.Style.STROKE
+                strokeCap = Paint.Cap.ROUND
+                strokeJoin = Paint.Join.ROUND
+                color = strokeColor
+            }
+
             for (stroke in strokes) {
                 if (stroke.points.size < 2) continue
 
                 val path = Path()
                 path.moveTo(stroke.points[0].x, stroke.points[0].y)
 
-                // Use quadratic bezier curves for smooth lines
                 for (i in 1 until stroke.points.size) {
                     val prev = stroke.points[i - 1]
                     val current = stroke.points[i]
@@ -207,8 +247,8 @@ class StrokeManager {
                 strokePaint.strokeWidth = stroke.strokeWidth
                 canvas.drawPath(path, strokePaint)
             }
-        }
 
-        return bitmap
+            return bitmap
+        }
     }
 }

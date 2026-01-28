@@ -130,13 +130,17 @@ class GeminiService(
 
         httpClient.newCall(request).execute().use { response ->
             val responseBody = response.body?.string() ?: ""
+            Log.d(TAG, "Gemini response code: ${response.code}")
+            if (!response.isSuccessful) {
+                Log.e(TAG, "Gemini error response: $responseBody")
+            }
 
             when {
                 response.isSuccessful -> {
                     return parseResponse(responseBody, chunks.size)
                 }
                 response.code == 401 || response.code == 403 -> {
-                    throw TranscriptionError.ApiKeyInvalid("Invalid or unauthorized API key")
+                    throw TranscriptionError.ApiKeyInvalid("Invalid or unauthorized API key: $responseBody")
                 }
                 response.code == 429 -> {
                     val retryAfter = response.header("Retry-After")?.toIntOrNull()

@@ -73,9 +73,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
 import kotlin.math.roundToInt
+import androidx.datastore.preferences.core.floatPreferencesKey
+import com.synapse.ui.settings.settingsDataStore
 
 /**
  * Foreground service that manages the floating overlay capture system.
@@ -107,6 +111,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     // Current active session ID
     private var currentSessionId: String? = null
+
+    // Settings keys
+    private val chunkTimeoutKey = floatPreferencesKey("chunk_timeout_seconds")
+
+    // Cached settings values (read when overlay opens)
+    private var chunkTimeoutMs: Long = 3000L
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -190,6 +200,37 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 currentSessionId = null
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to end session", e)
+            }
+        }
+    }
+
+    /**
+     * Ends the session and opens Review screen after session is saved.
+     */
+    private fun finishSessionAndOpenReview() {
+        val sessionId = currentSessionId
+        captureViewModel?.endSession()
+
+        // Reset badge count since user is going to review
+        pendingChunkCount = 0
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                if (sessionId != null) {
+                    sessionRepository.endSession(sessionId)
+                    Log.d(TAG, "Ended session: $sessionId")
+                    currentSessionId = null
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to end session", e)
+            }
+
+            // Hide overlay and open review on main thread after session is saved
+            // Small delay to let ripple animation finish
+            launch(Dispatchers.Main) {
+                kotlinx.coroutines.delay(50)
+                hideCaptureOverlay()
+                openReviewScreen()
             }
         }
     }
@@ -323,6 +364,17 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         if (captureOverlayView != null || isCaptureActive) return
         isCaptureActive = true
 
+        // Read settings
+        try {
+            runBlocking {
+                val prefs = settingsDataStore.data.first()
+                val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 3f
+                chunkTimeoutMs = (chunkTimeoutSeconds * 1000).toLong()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to read settings", e)
+        }
+
         // Hide bubble while capturing
         hideFloatingBubble()
 
@@ -352,14 +404,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 SynapseTheme {
                     CaptureOverlayContent(
                         viewModel = captureViewModel!!,
+                        chunkTimeoutMs = chunkTimeoutMs,
                         onMinimize = {
                             // Hide overlay but keep session active
                             hideCaptureOverlay()
                         },
                         onDone = {
-                            captureViewModel?.endSession()
-                            endCurrentSession()
-                            hideCaptureOverlay()
+                            finishSessionAndOpenReview()
                         },
                         onDiscard = {
                             captureViewModel?.clearStrokes()
@@ -383,6 +434,14 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
         isCaptureActive = false
         showFloatingBubble()
+    }
+
+    private fun openReviewScreen() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_OPEN_REVIEW
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        startActivity(intent)
     }
 
     private fun createNotification(): Notification {
@@ -640,6 +699,7 @@ private fun FloatingBubble(
 @Composable
 private fun CaptureOverlayContent(
     viewModel: CaptureViewModel,
+    chunkTimeoutMs: Long,
     onMinimize: () -> Unit,
     onDone: () -> Unit,
     onDiscard: () -> Unit
@@ -651,6 +711,11 @@ private fun CaptureOverlayContent(
         modifier = Modifier
             .background(Color.Transparent)
     ) {
+        // Apply chunk timeout setting to viewModel
+        androidx.compose.runtime.LaunchedEffect(chunkTimeoutMs) {
+            viewModel.setChunkTimeout(chunkTimeoutMs)
+        }
+
         // Transparent capture canvas - both stylus and finger can write
         CaptureCanvas(
             viewModel = viewModel,

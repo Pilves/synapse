@@ -104,6 +104,11 @@ fun ReviewScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Reload sessions when screen appears
+    LaunchedEffect(Unit) {
+        viewModel.loadPendingSessions()
+    }
+
     // Show error in snackbar
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->

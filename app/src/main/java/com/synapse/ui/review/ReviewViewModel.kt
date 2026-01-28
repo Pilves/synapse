@@ -32,7 +32,7 @@ data class ReviewUiState(
     val viewMode: ViewMode = ViewMode.STITCHED,
     val projects: List<Project> = emptyList(),
     val selectedProject: Project? = null,
-    val filename: String = "quick-notes.md",
+    val filename: String = "quick notes.md",
     val syncStatus: SyncStatus = SyncStatus.Idle,
     val selectedChunkIds: Set<String> = emptySet(),
     val isLoading: Boolean = false,
@@ -311,10 +311,16 @@ class ReviewViewModel(
                     )
 
                     when (result) {
-                        is SyncStatus.Success -> syncedCount++
+                        is SyncStatus.Success -> {
+                            syncedCount++
+                            // Delete successfully synced session
+                            sessionRepository.deleteSession(session.id)
+                        }
                         is SyncStatus.PartialSuccess -> {
                             syncedCount++
                             failedCount += result.failedCount
+                            // Still delete the session - partial success means some chunks synced
+                            sessionRepository.deleteSession(session.id)
                         }
                         is SyncStatus.Error -> failedCount++
                         else -> {}
