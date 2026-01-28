@@ -337,39 +337,34 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             else
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE,
-            // KEY FLAGS:
-            // - FLAG_NOT_FOCUSABLE: Don't take focus from underlying app
-            // - FLAG_LAYOUT_IN_SCREEN: Full screen including status bar
-            // - FLAG_WATCH_OUTSIDE_TOUCH: Receive outside touch notifications
-            // NOTE: Removed FLAG_NOT_TOUCHABLE - canvas handles stylus/finger differentiation
+            // Simple flags - overlay captures all input when open
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         )
 
-        // Create a custom view that handles touch differentiation at the View level
-        val overlayView = TouchDifferentiatingOverlayView(this) {
-            SynapseTheme {
-                CaptureOverlayContent(
-                    viewModel = captureViewModel!!,
-                    onDone = {
-                        captureViewModel?.endSession()
-                        endCurrentSession()
-                        hideCaptureOverlay()
-                    },
-                    onDiscard = {
-                        captureViewModel?.clearStrokes()
-                        // Discard current session without ending
-                        currentSessionId = null
-                        hideCaptureOverlay()
-                    }
-                )
-            }
-        }.apply {
+        // Simple ComposeView - when overlay is open, all input draws
+        val overlayView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
-            setWindowManager(windowManager)
+            setContent {
+                SynapseTheme {
+                    CaptureOverlayContent(
+                        viewModel = captureViewModel!!,
+                        onDone = {
+                            captureViewModel?.endSession()
+                            endCurrentSession()
+                            hideCaptureOverlay()
+                        },
+                        onDiscard = {
+                            captureViewModel?.clearStrokes()
+                            // Discard current session without ending
+                            currentSessionId = null
+                            hideCaptureOverlay()
+                        }
+                    )
+                }
+            }
         }
 
         captureOverlayView = overlayView
@@ -650,11 +645,10 @@ private fun CaptureOverlayContent(
         modifier = Modifier
             .background(Color.Transparent)
     ) {
-        // Transparent capture canvas
-        // Stylus writes, finger passes through to app below
+        // Transparent capture canvas - both stylus and finger can write
         CaptureCanvas(
             viewModel = viewModel,
-            inputMode = InputMode.STYLUS_WRITE_FINGER_SCROLL,
+            inputMode = InputMode.BOTH_WRITE,
             onInputTypeChanged = { inputType ->
                 // Could show indicator for input type
             },
