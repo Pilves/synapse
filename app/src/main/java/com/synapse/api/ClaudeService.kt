@@ -27,7 +27,7 @@ class ClaudeService(
     companion object {
         private const val TAG = "ClaudeService"
         private const val BASE_URL = "https://api.anthropic.com/v1/messages"
-        private const val DEFAULT_MODEL = "claude-3-haiku-20240307"
+        private const val DEFAULT_MODEL = "claude-3-5-haiku-20241022"
         private const val ANTHROPIC_VERSION = "2023-06-01"
         private const val TIMEOUT_SECONDS = 90L
         private const val MAX_RETRIES = 3

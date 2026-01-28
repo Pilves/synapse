@@ -16,7 +16,7 @@ enum class LlmProvider(
     CLAUDE(
         displayName = "Anthropic Claude",
         requiresApiKey = true,
-        defaultModel = "claude-3-haiku-20240307"
+        defaultModel = "claude-3-5-haiku-20241022"
     ),
     OPENAI(
         displayName = "OpenAI",
