@@ -93,10 +93,10 @@ class SessionRepositoryImpl(
 ) : SessionRepository {
 
     override suspend fun createSession(): Session {
-        // Check for existing active session
+        // Return existing active session if one exists, otherwise create new
         val activeSession = sessionStorage.getActiveSession()
         if (activeSession != null) {
-            throw IllegalStateException("Cannot create session while another is active: ${activeSession.id}")
+            return activeSession
         }
 
         return sessionStorage.createSession()
