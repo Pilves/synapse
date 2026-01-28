@@ -17,6 +17,7 @@ import android.view.View
 import android.view.WindowManager
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -317,6 +318,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     FloatingBubble(
                         pendingCount = pendingChunkCount,
                         onClick = { showCaptureOverlay() },
+                        onLongClick = { stopOverlay() },
                         onPositionChanged = { dx, dy ->
                             params.x += dx.roundToInt()
                             params.y += dy.roundToInt()
@@ -631,11 +633,13 @@ class TouchDifferentiatingOverlayView(
 
 /**
  * Floating bubble composable with drag support and badge.
+ * Tap to open capture, long-press to close.
  */
 @Composable
 private fun FloatingBubble(
     pendingCount: Int,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onPositionChanged: (Float, Float) -> Unit
 ) {
     var offsetX by remember { mutableFloatStateOf(0f) }
@@ -660,13 +664,18 @@ private fun FloatingBubble(
                             onPositionChanged(dragAmount.x, dragAmount.y)
                         }
                     )
+                }
+                .pointerInput(Unit) {
+                    detectTapGestures(
+                        onLongPress = { onLongClick() }
+                    )
                 },
             containerColor = MaterialTheme.colorScheme.primary,
             elevation = FloatingActionButtonDefaults.elevation(8.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Edit,
-                contentDescription = "Start capture",
+                contentDescription = "Start capture (long-press to close)",
                 tint = MaterialTheme.colorScheme.onPrimary
             )
         }
