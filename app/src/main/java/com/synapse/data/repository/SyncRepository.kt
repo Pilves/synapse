@@ -91,24 +91,24 @@ class SyncRepositoryImpl(
 
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
 
-    override suspend fun syncSession(sessionId: String, projectId: String, filename: String): SyncStatus {
+    override suspend fun syncSession(sessionId: String, projectId: String, filename: String): SyncStatus = withContext(Dispatchers.IO) {
         _syncStatus.value = SyncStatus.InProgress(0f)
 
-        return try {
+        try {
             // Get session and validate
             val session = sessionStorage.getSession(sessionId)
             if (session == null) {
                 Log.e(TAG, "Session not found: $sessionId")
                 val error = SyncStatus.Error("Session not found")
                 _syncStatus.value = error
-                return error
+                return@withContext error
             }
 
             if (session.chunks.isEmpty()) {
                 Log.w(TAG, "Session has no chunks: $sessionId")
                 val error = SyncStatus.Error("Session has no chunks to sync")
                 _syncStatus.value = error
-                return error
+                return@withContext error
             }
 
             // Get project and validate
@@ -117,7 +117,7 @@ class SyncRepositoryImpl(
                 Log.e(TAG, "Project not found: $projectId")
                 val error = SyncStatus.Error("Project not found")
                 _syncStatus.value = error
-                return error
+                return@withContext error
             }
 
             // Get transcription service
@@ -126,7 +126,7 @@ class SyncRepositoryImpl(
                 Log.e(TAG, "Transcription service not configured")
                 val error = SyncStatus.Error("LLM service not configured")
                 _syncStatus.value = error
-                return error
+                return@withContext error
             }
 
             // Load chunk images
@@ -151,7 +151,7 @@ class SyncRepositoryImpl(
                 Log.e(TAG, "No valid chunks to transcribe")
                 val error = SyncStatus.Error("No valid chunks to transcribe")
                 _syncStatus.value = error
-                return error
+                return@withContext error
             }
 
             // Transcribe in batches
@@ -184,7 +184,7 @@ class SyncRepositoryImpl(
                 Log.e(TAG, "All chunks failed to transcribe")
                 val error = SyncStatus.Error("Transcription failed for all chunks")
                 _syncStatus.value = error
-                return error
+                return@withContext error
             }
 
             // Write to file
@@ -194,7 +194,7 @@ class SyncRepositoryImpl(
             if (!writeSuccess) {
                 val error = SyncStatus.Error("Failed to write to file")
                 _syncStatus.value = error
-                return error
+                return@withContext error
             }
 
             // Update last used file
