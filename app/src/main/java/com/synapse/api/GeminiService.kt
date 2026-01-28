@@ -67,12 +67,8 @@ class GeminiService(
             return TranscriptionResult.empty()
         }
 
-        // Check rate limits
-        if (!canMakeRequest()) {
-            val waitTime = getWaitTimeMs()
-            Log.d(TAG, "Rate limited, waiting ${waitTime}ms")
-            delay(waitTime)
-        }
+        // Note: Removed internal rate limit pre-check - let API return 429 if needed
+        // Our internal tracker was blocking requests after previous failures
 
         val prompt = PromptTemplate.buildPrompt(cleanupEnabled, advancedFormatting, customPrompt)
         val chunkContext = PromptTemplate.buildChunkContext(chunks)
