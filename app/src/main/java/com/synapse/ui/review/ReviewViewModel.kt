@@ -12,6 +12,7 @@ import com.synapse.model.SyncStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -85,21 +86,23 @@ class ReviewViewModel(
     }
 
     /**
-     * Load available projects for the dropdown
+     * Observe projects for the dropdown - updates when projects change
      */
     private fun loadProjects() {
         viewModelScope.launch {
-            try {
-                val projects = projectRepository.getProjects()
-                _uiState.update {
-                    it.copy(
+            projectRepository.observeProjects().collectLatest { projects ->
+                _uiState.update { state ->
+                    // Keep current selection if still valid, otherwise select first
+                    val currentSelection = state.selectedProject
+                    val newSelection = if (currentSelection != null && projects.any { it.id == currentSelection.id }) {
+                        currentSelection
+                    } else {
+                        projects.firstOrNull()
+                    }
+                    state.copy(
                         projects = projects,
-                        selectedProject = projects.firstOrNull()
+                        selectedProject = newSelection
                     )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = "Failed to load projects: ${e.message}")
                 }
             }
         }

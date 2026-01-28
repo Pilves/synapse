@@ -101,9 +101,10 @@ class VaultManager(private val context: Context) {
      * Useful for letting users select a project folder within the vault.
      *
      * @param parentUri The parent folder URI to list
+     * @param maxDepth Maximum depth to recurse (default 3)
      * @return List of folder information, sorted alphabetically by name
      */
-    suspend fun listFolders(parentUri: Uri): List<FolderInfo> = withContext(Dispatchers.IO) {
+    suspend fun listFolders(parentUri: Uri, maxDepth: Int = 3): List<FolderInfo> = withContext(Dispatchers.IO) {
         try {
             val parentDoc = DocumentFile.fromTreeUri(context, parentUri)
             if (parentDoc == null || !parentDoc.exists()) {
@@ -111,18 +112,33 @@ class VaultManager(private val context: Context) {
                 return@withContext emptyList()
             }
 
-            parentDoc.listFiles()
-                .filter { it.isDirectory }
-                .mapNotNull { folder ->
-                    folder.name?.let { name ->
-                        FolderInfo(name = name, uri = folder.uri)
-                    }
-                }
+            listFoldersRecursive(parentDoc, maxDepth, 0)
                 .sortedBy { it.name.lowercase() }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list folders", e)
             emptyList()
         }
+    }
+
+    /**
+     * Recursively lists folders up to maxDepth.
+     */
+    private fun listFoldersRecursive(parent: DocumentFile, maxDepth: Int, currentDepth: Int): List<FolderInfo> {
+        if (currentDepth >= maxDepth) return emptyList()
+
+        val result = mutableListOf<FolderInfo>()
+
+        parent.listFiles()
+            .filter { it.isDirectory }
+            .forEach { folder ->
+                folder.name?.let { name ->
+                    result.add(FolderInfo(name = name, uri = folder.uri))
+                    // Recurse into subfolders
+                    result.addAll(listFoldersRecursive(folder, maxDepth, currentDepth + 1))
+                }
+            }
+
+        return result
     }
 
     /**
