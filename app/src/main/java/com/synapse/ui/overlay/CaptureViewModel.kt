@@ -160,12 +160,14 @@ class CaptureViewModel : ViewModel() {
     fun endSession() {
         if (!_uiState.value.isSessionActive) return
 
-        // Cancel all timers
+        // Cancel all timers and animations
         cancelAllTimers()
+        fadeAnimationJob?.cancel()
+        fadeAnimationJob = null
 
-        // Capture any remaining strokes
+        // Capture any remaining strokes without fade (view will be removed)
         if (!strokeManager.isEmpty() && canvasWidth > 0 && canvasHeight > 0) {
-            captureChunk()
+            captureChunkWithoutFade()
         }
 
         _uiState.value = _uiState.value.copy(isSessionActive = false)
@@ -312,6 +314,14 @@ class CaptureViewModel : ViewModel() {
     }
 
     private fun captureChunk() {
+        captureChunkInternal(withFade = true)
+    }
+
+    private fun captureChunkWithoutFade() {
+        captureChunkInternal(withFade = false)
+    }
+
+    private fun captureChunkInternal(withFade: Boolean) {
         if (strokeManager.isEmpty()) return
 
         val bitmap = strokeManager.toBitmapForOcr(canvasWidth, canvasHeight)
@@ -330,8 +340,14 @@ class CaptureViewModel : ViewModel() {
             _events.emit(CaptureEvent.ChunkCaptured(chunk))
         }
 
-        // Start fade animation
-        startFadeAnimation()
+        // Start fade animation only if requested
+        if (withFade) {
+            startFadeAnimation()
+        } else {
+            // Just clear strokes without animation
+            strokeManager.clear()
+            _strokes.value = emptyList()
+        }
     }
 
     private fun startFadeAnimation() {
