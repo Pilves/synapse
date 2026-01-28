@@ -471,13 +471,14 @@ class TouchDifferentiatingOverlayView(
     }
 
     private var windowManager: WindowManager? = null
-    // Start as non-touchable (FLAG_NOT_TOUCHABLE is set in window params)
     private var isTouchable = false
     private var pendingPassThroughRunnable: Runnable? = null
 
     fun setWindowManager(wm: WindowManager) {
         windowManager = wm
-        // Window already starts with FLAG_NOT_TOUCHABLE, so isTouchable = false is correct
+        // Enable touch capture immediately so first stylus tap works
+        // This means finger scrolling won't pass through, but writing works reliably
+        post { enableTouchCapture() }
     }
 
     @Composable
@@ -514,20 +515,15 @@ class TouchDifferentiatingOverlayView(
             if (!isTouchable) {
                 enableTouchCapture()
             }
-
-            val result = super.dispatchTouchEvent(event)
-
-            // Schedule return to pass-through after stylus lifts
-            if (event.actionMasked == MotionEvent.ACTION_UP ||
-                event.actionMasked == MotionEvent.ACTION_CANCEL) {
-                schedulePassThrough()
-            }
-
-            return result
+            // Once stylus is used, keep overlay touchable so user can tap toolbar buttons
+            // Don't schedule pass-through - overlay stays touchable until closed
+            return super.dispatchTouchEvent(event)
         } else {
-            // Finger touch - should not reach here if pass-through is working
-            // But just in case, don't handle it
-            Log.d(TAG, "Finger touch received - this shouldn't happen in pass-through mode")
+            // Finger touch on toolbar buttons - handle it if we're in touchable mode
+            if (isTouchable) {
+                return super.dispatchTouchEvent(event)
+            }
+            Log.d(TAG, "Finger touch received in pass-through mode")
             return false
         }
     }
