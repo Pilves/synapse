@@ -25,8 +25,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
@@ -351,6 +352,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 SynapseTheme {
                     CaptureOverlayContent(
                         viewModel = captureViewModel!!,
+                        onMinimize = {
+                            // Hide overlay but keep session active
+                            hideCaptureOverlay()
+                        },
                         onDone = {
                             captureViewModel?.endSession()
                             endCurrentSession()
@@ -635,6 +640,7 @@ private fun FloatingBubble(
 @Composable
 private fun CaptureOverlayContent(
     viewModel: CaptureViewModel,
+    onMinimize: () -> Unit,
     onDone: () -> Unit,
     onDiscard: () -> Unit
 ) {
@@ -678,19 +684,19 @@ private fun CaptureOverlayContent(
             androidx.compose.foundation.layout.Row(
                 horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
             ) {
-                // Done button
+                // Minimize - hide overlay, keep session (tap bubble to continue)
                 SmallFloatingActionButton(
-                    onClick = onDone,
-                    containerColor = MaterialTheme.colorScheme.primary
+                    onClick = onMinimize,
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Done",
-                        tint = MaterialTheme.colorScheme.onPrimary
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Minimize",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                // Undo button
+                // Undo last stroke
                 SmallFloatingActionButton(
                     onClick = { viewModel.undoLastStroke() },
                     containerColor = MaterialTheme.colorScheme.secondary
@@ -702,13 +708,25 @@ private fun CaptureOverlayContent(
                     )
                 }
 
-                // Discard button
+                // Done - end session and save
+                SmallFloatingActionButton(
+                    onClick = onDone,
+                    containerColor = MaterialTheme.colorScheme.primary
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "End Session",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+
+                // Discard - clear all and close
                 SmallFloatingActionButton(
                     onClick = onDiscard,
                     containerColor = MaterialTheme.colorScheme.error
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Close,
+                        imageVector = Icons.Default.Delete,
                         contentDescription = "Discard",
                         tint = MaterialTheme.colorScheme.onError
                     )
