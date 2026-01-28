@@ -1,6 +1,7 @@
 package com.synapse.ui.settings
 
 import android.content.Context
+import android.net.Uri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -13,6 +14,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.api.LlmProvider
 import com.synapse.api.PromptTemplate
+import com.synapse.data.repository.ProjectRepository
 import com.synapse.model.Project
 import com.synapse.ui.overlay.InputMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,8 +24,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 // Extension property for DataStore
 val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "synapse_settings")
@@ -33,7 +33,8 @@ val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(na
  * Handles loading, saving, and validation of settings via DataStore.
  */
 class SettingsViewModel(
-    private val dataStore: DataStore<Preferences>
+    private val dataStore: DataStore<Preferences>,
+    private val projectRepository: ProjectRepository
 ) : ViewModel() {
 
     // Preference Keys
@@ -57,7 +58,6 @@ class SettingsViewModel(
 
         // Vault settings
         val VAULT_LOCATION = stringPreferencesKey("vault_location")
-        val PROJECTS_JSON = stringPreferencesKey("projects_json")
         val DEFAULT_PROJECT_ID = stringPreferencesKey("default_project_id")
     }
 
@@ -139,16 +139,7 @@ class SettingsViewModel(
         .map { it[PreferenceKeys.VAULT_LOCATION] ?: Defaults.VAULT_LOCATION }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Defaults.VAULT_LOCATION)
 
-    val projects: StateFlow<List<Project>> = dataStore.data
-        .map { prefs ->
-            prefs[PreferenceKeys.PROJECTS_JSON]?.let { json ->
-                try {
-                    Json.decodeFromString<List<Project>>(json)
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            } ?: emptyList()
-        }
+    val projects: StateFlow<List<Project>> = projectRepository.observeProjects()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val defaultProjectId: StateFlow<String?> = dataStore.data
@@ -282,33 +273,29 @@ class SettingsViewModel(
     fun setVaultLocation(path: String) {
         viewModelScope.launch {
             dataStore.edit { it[PreferenceKeys.VAULT_LOCATION] = path }
+            // Auto-sync projects from vault folders
+            if (path.isNotBlank()) {
+                projectRepository.syncProjectsFromVault(Uri.parse(path))
+            }
         }
     }
 
-    // Project management
+    // Project management - delegates to ProjectRepository for shared storage
     fun addProject(project: Project) {
         viewModelScope.launch {
-            val currentProjects = projects.value.toMutableList()
-            currentProjects.add(project)
-            saveProjects(currentProjects)
+            projectRepository.addProject(project.name, project.pathUri, project.defaultFile)
         }
     }
 
     fun updateProject(project: Project) {
         viewModelScope.launch {
-            val currentProjects = projects.value.toMutableList()
-            val index = currentProjects.indexOfFirst { it.id == project.id }
-            if (index != -1) {
-                currentProjects[index] = project
-                saveProjects(currentProjects)
-            }
+            projectRepository.updateProject(project)
         }
     }
 
     fun deleteProject(projectId: String) {
         viewModelScope.launch {
-            val currentProjects = projects.value.filter { it.id != projectId }
-            saveProjects(currentProjects)
+            projectRepository.deleteProject(projectId)
             // Clear default if deleted project was default
             if (defaultProjectId.value == projectId) {
                 setDefaultProject(null)
@@ -326,11 +313,6 @@ class SettingsViewModel(
                 }
             }
         }
-    }
-
-    private suspend fun saveProjects(projects: List<Project>) {
-        val json = Json.encodeToString(projects)
-        dataStore.edit { it[PreferenceKeys.PROJECTS_JSON] = json }
     }
 
     // UI state management

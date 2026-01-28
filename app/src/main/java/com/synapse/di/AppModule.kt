@@ -97,10 +97,11 @@ val repositoryModule = module {
         )
     }
 
-    // ProjectRepository - requires ProjectStorage
+    // ProjectRepository - requires ProjectStorage and VaultManager
     single<ProjectRepository> {
         ProjectRepositoryImpl(
-            projectStorage = get()
+            projectStorage = get(),
+            vaultManager = get()
         )
     }
 
@@ -181,8 +182,8 @@ val viewModelModule = module {
         )
     }
 
-    // SettingsViewModel - requires DataStore
-    viewModel { SettingsViewModel(androidContext().settingsDataStore) }
+    // SettingsViewModel - requires DataStore and ProjectRepository
+    viewModel { SettingsViewModel(androidContext().settingsDataStore, get()) }
 
     // OnboardingViewModel - requires Application for AndroidViewModel
     viewModel { OnboardingViewModel(androidApplication()) }

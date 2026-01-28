@@ -385,7 +385,7 @@ private fun ProjectEditBottomSheet(
 ) {
     var name by rememberSaveable { mutableStateOf(project?.name ?: "") }
     var pathUri by rememberSaveable { mutableStateOf(project?.pathUri ?: "") }
-    var defaultFile by rememberSaveable { mutableStateOf(project?.defaultFile ?: "Inbox.md") }
+    var defaultFile by rememberSaveable { mutableStateOf(project?.defaultFile ?: "quick-notes.md") }
 
     val isEditing = project != null
     val isValid = name.isNotBlank() && pathUri.isNotBlank() && defaultFile.isNotBlank()

@@ -20,7 +20,6 @@ import com.synapse.ui.settings.ProjectManagerScreen
 import com.synapse.ui.settings.PromptEditorScreen
 import com.synapse.ui.settings.SettingsScreen
 import com.synapse.ui.settings.SettingsViewModel
-import com.synapse.ui.settings.settingsDataStore
 
 /**
  * Sealed class representing all navigation destinations in the app.
@@ -64,10 +63,8 @@ fun SynapseNavGraph(
 ) {
     val context = LocalContext.current
 
-    // Create shared SettingsViewModel with DataStore
-    val settingsViewModel: SettingsViewModel = viewModel {
-        SettingsViewModel(context.settingsDataStore)
-    }
+    // Create shared SettingsViewModel via Koin DI
+    val settingsViewModel: SettingsViewModel = koinViewModel()
 
     // Folder picker callback holder - using a simple mutable reference
     val folderPickerCallback = remember { mutableStateOf<((String) -> Unit)?>(null) }
