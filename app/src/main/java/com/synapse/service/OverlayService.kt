@@ -337,14 +337,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             else
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE,
-            // KEY FLAGS for stylus/finger differentiation:
+            // KEY FLAGS:
             // - FLAG_NOT_FOCUSABLE: Don't take focus from underlying app
             // - FLAG_LAYOUT_IN_SCREEN: Full screen including status bar
-            // - FLAG_NOT_TOUCHABLE: Start non-touchable, enable on stylus hover/touch
             // - FLAG_WATCH_OUTSIDE_TOUCH: Receive outside touch notifications
+            // NOTE: Removed FLAG_NOT_TOUCHABLE - canvas handles stylus/finger differentiation
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                     WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         )
@@ -471,14 +470,12 @@ class TouchDifferentiatingOverlayView(
     }
 
     private var windowManager: WindowManager? = null
-    private var isTouchable = false
+    private var isTouchable = true  // Window now starts touchable
     private var pendingPassThroughRunnable: Runnable? = null
 
     fun setWindowManager(wm: WindowManager) {
         windowManager = wm
-        // Enable touch capture immediately so first stylus tap works
-        // This means finger scrolling won't pass through, but writing works reliably
-        post { enableTouchCapture() }
+        // Window starts touchable, no need to enable
     }
 
     @Composable
