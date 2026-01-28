@@ -14,6 +14,7 @@ import androidx.lifecycle.viewModelScope
 import com.synapse.api.LlmProvider
 import com.synapse.api.PromptTemplate
 import com.synapse.model.Project
+import com.synapse.ui.overlay.InputMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -41,6 +42,7 @@ class SettingsViewModel(
         val CHUNK_TIMEOUT = floatPreferencesKey("chunk_timeout_seconds")
         val FADE_ANIMATION = floatPreferencesKey("fade_animation_seconds")
         val SESSION_AUTO_END = intPreferencesKey("session_auto_end_minutes")
+        val INPUT_MODE = stringPreferencesKey("input_mode")
 
         // Review settings
         val DEFAULT_VIEW_STITCHED = booleanPreferencesKey("default_view_stitched")
@@ -64,6 +66,7 @@ class SettingsViewModel(
         const val CHUNK_TIMEOUT = 3f
         const val FADE_ANIMATION = 0.3f
         const val SESSION_AUTO_END = 15
+        val INPUT_MODE = InputMode.STYLUS_WRITE_FINGER_SCROLL
         const val DEFAULT_VIEW_STITCHED = true
         val LLM_PROVIDER = LlmProvider.GEMINI
         const val CLEANUP_MODE = false
@@ -88,6 +91,18 @@ class SettingsViewModel(
     val sessionAutoEnd: StateFlow<Int> = dataStore.data
         .map { it[PreferenceKeys.SESSION_AUTO_END] ?: Defaults.SESSION_AUTO_END }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Defaults.SESSION_AUTO_END)
+
+    val inputMode: StateFlow<InputMode> = dataStore.data
+        .map { prefs ->
+            prefs[PreferenceKeys.INPUT_MODE]?.let { name ->
+                try {
+                    InputMode.valueOf(name)
+                } catch (e: IllegalArgumentException) {
+                    Defaults.INPUT_MODE
+                }
+            } ?: Defaults.INPUT_MODE
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Defaults.INPUT_MODE)
 
     val defaultViewStitched: StateFlow<Boolean> = dataStore.data
         .map { it[PreferenceKeys.DEFAULT_VIEW_STITCHED] ?: Defaults.DEFAULT_VIEW_STITCHED }
@@ -156,6 +171,12 @@ class SettingsViewModel(
     fun setSessionAutoEnd(minutes: Int) {
         viewModelScope.launch {
             dataStore.edit { it[PreferenceKeys.SESSION_AUTO_END] = minutes.coerceIn(5, 60) }
+        }
+    }
+
+    fun setInputMode(mode: InputMode) {
+        viewModelScope.launch {
+            dataStore.edit { it[PreferenceKeys.INPUT_MODE] = mode.name }
         }
     }
 

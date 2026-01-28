@@ -39,6 +39,27 @@ enum class InputType {
 }
 
 /**
+ * Input mode determining how finger and stylus inputs are handled.
+ */
+enum class InputMode {
+    /**
+     * Stylus writes, finger passes through to app below (for scrolling).
+     * This is the recommended mode for note-taking over other apps.
+     */
+    STYLUS_WRITE_FINGER_SCROLL,
+
+    /**
+     * Both stylus and finger can write. No pass-through.
+     */
+    BOTH_WRITE,
+
+    /**
+     * Only stylus can write. Finger is ignored entirely.
+     */
+    STYLUS_ONLY
+}
+
+/**
  * Configuration for stroke appearance.
  */
 data class StrokeConfig(
@@ -56,35 +77,29 @@ data class StrokeConfig(
  * - Stylus/finger stroke capture with smooth rendering
  * - White strokes with dark outline for visibility on any background
  * - Fade animation support when chunks are captured
- * - Stylus preference over finger input
+ * - Configurable input mode: stylus-only, both, or stylus-write/finger-scroll
  *
  * @param viewModel The CaptureViewModel managing state
  * @param modifier Modifier for the canvas
  * @param strokeConfig Configuration for stroke appearance
- * @param preferStylus If true, ignores finger input when stylus has been used
+ * @param inputMode How to handle stylus vs finger input
  * @param onInputTypeChanged Callback when input type changes
+ * @param onFingerTouchPassThrough Callback when finger touch should pass through (for scrolling)
  */
 @Composable
 fun CaptureCanvas(
     viewModel: CaptureViewModel,
     modifier: Modifier = Modifier,
     strokeConfig: StrokeConfig = StrokeConfig(),
-    preferStylus: Boolean = true,
-    onInputTypeChanged: ((InputType) -> Unit)? = null
+    inputMode: InputMode = InputMode.STYLUS_WRITE_FINGER_SCROLL,
+    onInputTypeChanged: ((InputType) -> Unit)? = null,
+    onFingerTouchPassThrough: (() -> Unit)? = null
 ) {
     val strokes by viewModel.strokes.collectAsState()
     val currentStroke by viewModel.currentStroke.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
     var lastInputType by remember { mutableStateOf(InputType.UNKNOWN) }
-    var stylusUsedInSession by remember { mutableStateOf(false) }
-
-    // Reset stylus tracking when session ends
-    LaunchedEffect(uiState.isSessionActive) {
-        if (!uiState.isSessionActive) {
-            stylusUsedInSession = false
-        }
-    }
 
     val density = LocalDensity.current
 
@@ -95,20 +110,35 @@ fun CaptureCanvas(
             .onSizeChanged { size ->
                 viewModel.setCanvasSize(size.width, size.height)
             }
-            .pointerInput(Unit) {
+            .pointerInput(inputMode) {
                 awaitEachGesture {
                     // Wait for first touch/pen down
+                    // requireUnconsumed = true allows unconsumed events to pass through
                     val down = awaitFirstDown(requireUnconsumed = false)
                     val inputType = getInputType(down)
 
-                    // Track if stylus has been used
-                    if (inputType == InputType.STYLUS) {
-                        stylusUsedInSession = true
+                    // Determine if we should handle this input based on mode
+                    val shouldHandle = when (inputMode) {
+                        InputMode.STYLUS_WRITE_FINGER_SCROLL -> {
+                            // Only handle stylus input, let finger pass through
+                            inputType == InputType.STYLUS
+                        }
+                        InputMode.STYLUS_ONLY -> {
+                            // Only stylus, ignore finger completely
+                            inputType == InputType.STYLUS
+                        }
+                        InputMode.BOTH_WRITE -> {
+                            // Handle both stylus and finger
+                            inputType == InputType.STYLUS || inputType == InputType.FINGER
+                        }
                     }
 
-                    // If preferStylus is enabled and stylus has been used, ignore finger input
-                    if (preferStylus && stylusUsedInSession && inputType == InputType.FINGER) {
-                        // Consume but ignore finger input
+                    if (!shouldHandle) {
+                        // DON'T consume the event - let it pass through to the app below
+                        // This enables scrolling in the underlying app with finger
+                        if (inputMode == InputMode.STYLUS_WRITE_FINGER_SCROLL && inputType == InputType.FINGER) {
+                            onFingerTouchPassThrough?.invoke()
+                        }
                         return@awaitEachGesture
                     }
 
@@ -117,7 +147,7 @@ fun CaptureCanvas(
                         onInputTypeChanged?.invoke(inputType)
                     }
 
-                    // Start drawing
+                    // Start drawing - consume the stylus input
                     viewModel.onDrawStart(down.position)
                     down.consume()
 
@@ -277,6 +307,7 @@ private fun createSmoothPath(points: List<Offset>): Path {
  *
  * @param modifier Modifier for the canvas
  * @param strokeConfig Configuration for stroke appearance
+ * @param inputMode How to handle stylus vs finger input (default: stylus writes, finger scrolls)
  * @param onChunkCaptured Callback when a chunk is captured
  * @param onSessionEnded Callback when session ends
  */
@@ -284,6 +315,7 @@ private fun createSmoothPath(points: List<Offset>): Path {
 fun SimpleCaptureCanvas(
     modifier: Modifier = Modifier,
     strokeConfig: StrokeConfig = StrokeConfig(),
+    inputMode: InputMode = InputMode.STYLUS_WRITE_FINGER_SCROLL,
     chunkTimeoutMs: Long = CaptureViewModel.DEFAULT_CHUNK_TIMEOUT_MS,
     onChunkCaptured: (CapturedChunk) -> Unit = {},
     onSessionEnded: () -> Unit = {}
@@ -308,6 +340,7 @@ fun SimpleCaptureCanvas(
     CaptureCanvas(
         viewModel = viewModel,
         modifier = modifier,
-        strokeConfig = strokeConfig
+        strokeConfig = strokeConfig,
+        inputMode = inputMode
     )
 }
