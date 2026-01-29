@@ -83,9 +83,8 @@ class ChunkStorage(private val context: Context) {
      * @param sessionId The session ID whose mutex to clean up
      */
     fun cleanupSessionMutex(sessionId: String) {
-        val mutex = sessionMutexes[sessionId]
-        if (mutex != null && !mutex.isLocked) {
-            sessionMutexes.remove(sessionId)
+        sessionMutexes.compute(sessionId) { _, mutex ->
+            if (mutex != null && !mutex.isLocked) null else mutex
         }
     }
 
