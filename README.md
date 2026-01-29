@@ -8,7 +8,7 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 
 1. **Tap the floating bubble** -- appears over any app
 2. **Scribble your notes** -- on a transparent fullscreen canvas
-3. **Auto-chunks after 3s** -- keeps capturing as you write
+3. **Auto-chunks after 1s** -- keeps capturing as you write
 4. **Tap Done** -- session ends
 5. **Review & Sync** -- select destination, transcribe via LLM, sync to vault
 
@@ -16,14 +16,14 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 
 ### Core Capture
 - **Floating Overlay** -- capture notes without switching apps
-- **Automatic Chunking** -- 3-second timeout creates natural breaks between strokes
+- **Automatic Chunking** -- 1-second timeout creates natural breaks between strokes (configurable 1-10s)
 - **Smart Transcription** -- messy handwriting to clean markdown via LLM
 - **Mermaid Diagrams** -- hand-drawn flowcharts converted to Mermaid code via LLM (advanced formatting mode)
 - **Undo Support** -- undo last stroke while capturing
 
 ### Multi-Provider LLM
 - **Gemini** -- Google's Gemini 2.0 Flash (free tier available)
-- **Claude** -- Anthropic's Claude 3.5 Haiku
+- **Claude** -- Anthropic's Claude 3.5 Haiku (claude-3-5-haiku-20241022)
 - **OpenAI** -- GPT-4o Mini
 - **Ollama** -- local LLaVA for fully offline transcription
 - **Separate providers** -- configure different LLMs for transcription (image-based) vs. question answering (text-based)

@@ -60,7 +60,7 @@ Your API keys are stored locally in Android DataStore (encrypted app preferences
 ## Data Retention
 
 - Handwriting chunks: stored in app cache until synced or manually deleted
-- Session metadata: stored in app-private DataStore
+- Session metadata: stored as JSON files in app-private internal storage
 - Usage statistics (cost tracking): stored locally, never transmitted
 - Captured context: stored with the session, deleted when the session is deleted
 

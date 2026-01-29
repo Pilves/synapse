@@ -34,7 +34,7 @@ Initial release.
 ### Added
 - **Floating overlay** -- capture notes without leaving your current app
 - **Transparent canvas** -- fullscreen stylus/finger drawing surface
-- **Automatic chunking** -- 3-second inactivity timeout saves strokes as WebP chunks
+- **Automatic chunking** -- 1-second default inactivity timeout saves strokes as WebP chunks (configurable 1-10s)
 - **Session management** -- group chunks into sessions with timestamps
 - **Obsidian vault sync** -- append transcribed notes as markdown via SAF
 - **LLM transcription** -- handwriting to text via Gemini, Claude, OpenAI, or Ollama
