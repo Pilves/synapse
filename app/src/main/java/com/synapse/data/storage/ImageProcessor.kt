@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.IOException
+import kotlin.math.ceil
 
 /**
  * Image processing utilities for Synapse.
@@ -346,7 +347,7 @@ class ImageProcessor {
                     MAX_STITCHED_DIMENSION.toFloat() / totalHeight
                 )
                 maxWidth = (maxWidth * scaleFactor).toInt()
-                totalHeight = (totalHeight * scaleFactor).toInt()
+                totalHeight = ceil(totalHeight * scaleFactor).toInt()
             }
 
             // Create output bitmap
@@ -379,7 +380,7 @@ class ImageProcessor {
                 // Scale chunk to match width if needed
                 val scaledChunk = if (chunkBitmap.width != maxWidth) {
                     val scaleFactor = maxWidth.toFloat() / chunkBitmap.width
-                    val scaledHeight = (chunkBitmap.height * scaleFactor).toInt()
+                    val scaledHeight = ceil(chunkBitmap.height * scaleFactor).toInt()
                     Bitmap.createScaledBitmap(chunkBitmap, maxWidth, scaledHeight, true).also {
                         if (it !== chunkBitmap) chunkBitmap.recycle()
                     }
@@ -499,7 +500,7 @@ class ImageProcessor {
         )
 
         val scaledWidth = (width * scaleFactor).toInt()
-        val scaledHeight = (height * scaleFactor).toInt()
+        val scaledHeight = ceil(height * scaleFactor).toInt()
 
         return Bitmap.createScaledBitmap(bitmap, scaledWidth, scaledHeight, true)
     }
