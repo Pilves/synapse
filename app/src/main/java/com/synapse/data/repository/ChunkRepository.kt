@@ -1,6 +1,7 @@
 package com.synapse.data.repository
 
 import android.graphics.Bitmap
+import android.util.LruCache
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.SessionStorage
 import com.synapse.model.Chunk
@@ -89,6 +90,8 @@ class ChunkRepositoryImpl(
     private val sessionStorage: SessionStorage
 ) : ChunkRepository {
 
+    private val imageCache = LruCache<String, Bitmap>(20)
+
     override suspend fun saveChunk(sessionId: String, bitmap: Bitmap, timestampSeconds: Float): Chunk {
         // Validate session exists
         sessionStorage.getSession(sessionId)
@@ -129,12 +132,18 @@ class ChunkRepositoryImpl(
     }
 
     override suspend fun getChunkImage(chunkId: String): Bitmap? {
+        imageCache.get(chunkId)?.let { return it }
+
         val result = sessionStorage.findChunk(chunkId) ?: return null
         val (sessionId, chunk) = result
 
         if (chunk.isCorrupted) return null
 
-        return chunkStorage.loadChunk(sessionId, chunkId)
+        val bitmap = chunkStorage.loadChunk(sessionId, chunkId)
+        if (bitmap != null) {
+            imageCache.put(chunkId, bitmap)
+        }
+        return bitmap
     }
 
     override suspend fun getChunkThumbnail(chunkId: String): Bitmap? {
@@ -145,6 +154,8 @@ class ChunkRepositoryImpl(
     }
 
     override suspend fun deleteChunk(chunkId: String) {
+        imageCache.remove(chunkId)
+
         val result = sessionStorage.findChunk(chunkId) ?: return
         val (sessionId, _) = result
 
