@@ -230,7 +230,9 @@ class ScreenshotManager(private val context: Context) {
         val right = bounds.right.coerceIn(left + 1, width)
         val bottom = bounds.bottom.coerceIn(top + 1, height)
 
-        Bitmap.createBitmap(fullBitmap, left, top, right - left, bottom - top)
+        val croppedBitmap = Bitmap.createBitmap(fullBitmap, left, top, right - left, bottom - top)
+        if (fullBitmap !== croppedBitmap) fullBitmap.recycle()
+        croppedBitmap
     }
 
     private fun imageToBitmap(image: Image): Bitmap {
