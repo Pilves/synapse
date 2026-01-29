@@ -172,10 +172,7 @@ class OpenAiService(
             return null
         }
 
-        val finishReason = choices.getJSONObject(0).optString("finish_reason", "")
-        if (finishReason == "length") {
-            Log.w(tag, "Response was truncated due to max tokens")
-        }
+        checkTruncation(choices.getJSONObject(0).optString("finish_reason", ""), "length")
 
         val message = choices.getJSONObject(0).optJSONObject("message")
         return message?.optString("content", "")

@@ -148,10 +148,7 @@ class ClaudeService(
     override fun parseTranscriptionContent(responseBody: String): String? {
         val jsonResponse = JSONObject(responseBody)
 
-        val stopReason = jsonResponse.optString("stop_reason", "")
-        if (stopReason == "max_tokens") {
-            Log.w(tag, "Response was truncated due to max tokens")
-        }
+        checkTruncation(jsonResponse.optString("stop_reason", ""), "max_tokens")
 
         val content = jsonResponse.optJSONArray("content")
         if (content == null || content.length() == 0) {

@@ -139,6 +139,18 @@ abstract class BaseLlmService(
         }
     }
 
+    /**
+     * Checks if an LLM response was truncated and logs a warning.
+     *
+     * @param field The field value indicating stop reason
+     * @param truncationValues Values that indicate truncation (e.g., "max_tokens", "length")
+     */
+    protected fun checkTruncation(field: String?, vararg truncationValues: String) {
+        if (field != null && field in truncationValues) {
+            Log.w(tag, "Response was truncated (stop_reason=$field)")
+        }
+    }
+
     // ── Shared state ────────────────────────────────────────────────────
     /** Lazy is safe because [requestsPerMinute] is effectively immutable in all subclasses. */
     private val rateLimitConfig by lazy { RateLimitConfig(requestsPerMinute) }
