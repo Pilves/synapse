@@ -304,6 +304,150 @@ class OpenAiService(
         }
     }
 
+    override suspend fun textQuery(prompt: String, systemPrompt: String?): String {
+        if (!isConfigured()) {
+            throw TranscriptionError.ApiKeyMissing()
+        }
+
+        if (!canMakeRequest()) {
+            val waitTime = getWaitTimeMs()
+            Log.d(TAG, "Rate limited, waiting ${waitTime}ms")
+            delay(waitTime)
+        }
+
+        return executeTextQueryWithRetry(prompt, systemPrompt)
+    }
+
+    private suspend fun executeTextQueryWithRetry(
+        prompt: String,
+        systemPrompt: String?
+    ): String {
+        var lastException: Exception? = null
+        var retryDelay = INITIAL_RETRY_DELAY_MS
+
+        repeat(MAX_RETRIES) { attempt ->
+            try {
+                return executeTextQueryRequest(prompt, systemPrompt)
+            } catch (e: TranscriptionError.RateLimitError) {
+                Log.w(TAG, "Rate limited on attempt ${attempt + 1}, waiting...")
+                val waitTime = e.retryAfterSeconds?.times(1000L) ?: retryDelay
+                delay(waitTime)
+                retryDelay *= 2
+                lastException = e
+            } catch (e: TranscriptionError.ServerError) {
+                if (e.statusCode in 500..599) {
+                    Log.w(TAG, "Server error on attempt ${attempt + 1}: ${e.message}")
+                    delay(retryDelay)
+                    retryDelay *= 2
+                    lastException = e
+                } else {
+                    throw e
+                }
+            } catch (e: IOException) {
+                Log.w(TAG, "Network error on attempt ${attempt + 1}: ${e.message}")
+                delay(retryDelay)
+                retryDelay *= 2
+                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
+            }
+        }
+
+        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
+    }
+
+    private fun executeTextQueryRequest(prompt: String, systemPrompt: String?): String {
+        val messages = JSONArray()
+
+        if (systemPrompt != null) {
+            messages.put(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt)
+            })
+        }
+
+        messages.put(JSONObject().apply {
+            put("role", "user")
+            put("content", prompt)
+        })
+
+        val requestBody = JSONObject().apply {
+            put("model", modelId)
+            put("messages", messages)
+            put("max_tokens", 4096)
+            put("temperature", 0.3)
+            put("top_p", 0.9)
+        }
+
+        val request = Request.Builder()
+            .url(BASE_URL)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        rateLimitState.recordRequest()
+
+        httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string() ?: ""
+
+            when {
+                response.isSuccessful -> {
+                    return parseTextQueryResponse(responseBody)
+                }
+                response.code == 401 -> {
+                    throw TranscriptionError.ApiKeyInvalid("Invalid API key")
+                }
+                response.code == 403 -> {
+                    val errorJson = try { JSONObject(responseBody) } catch (e: Exception) { null }
+                    val errorMessage = errorJson?.optJSONObject("error")?.optString("message", "")
+                        ?: "Access denied"
+                    throw TranscriptionError.ApiKeyInvalid(errorMessage)
+                }
+                response.code == 429 -> {
+                    val retryAfter = response.header("retry-after")?.toIntOrNull()
+                        ?: response.header("x-ratelimit-reset-tokens")?.toIntOrNull()
+                    throw TranscriptionError.RateLimitError(retryAfter)
+                }
+                response.code in 500..599 -> {
+                    throw TranscriptionError.ServerError(response.code, responseBody)
+                }
+                else -> {
+                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+                }
+            }
+        }
+    }
+
+    private fun parseTextQueryResponse(responseBody: String): String {
+        val jsonResponse = JSONObject(responseBody)
+
+        if (jsonResponse.has("error")) {
+            val error = jsonResponse.getJSONObject("error")
+            val message = error.optString("message", "Unknown error")
+            val code = error.optString("code", "")
+
+            when {
+                code == "invalid_api_key" -> throw TranscriptionError.ApiKeyInvalid(message)
+                code == "rate_limit_exceeded" -> throw TranscriptionError.RateLimitError(null)
+                code == "insufficient_quota" -> throw TranscriptionError.ApiKeyInvalid("Insufficient quota: $message")
+                else -> throw TranscriptionError.InvalidResponse("API error: $message")
+            }
+        }
+
+        val choices = jsonResponse.optJSONArray("choices")
+        if (choices == null || choices.length() == 0) {
+            throw TranscriptionError.InvalidResponse("No choices in response")
+        }
+
+        val message = choices.getJSONObject(0).optJSONObject("message")
+        val content = message?.optString("content", "") ?: ""
+
+        if (content.isBlank()) {
+            throw TranscriptionError.InvalidResponse("Empty content in response")
+        }
+
+        return content.trim()
+    }
+
     override fun isConfigured(): Boolean {
         return !apiKey.isNullOrBlank()
     }
