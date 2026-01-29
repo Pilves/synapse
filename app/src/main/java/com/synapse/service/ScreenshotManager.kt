@@ -249,6 +249,8 @@ class ScreenshotManager(private val context: Context) {
         )
         bitmap.copyPixelsFromBuffer(buffer)
 
-        return Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
+        val resultBitmap = Bitmap.createBitmap(bitmap, 0, 0, image.width, image.height)
+        if (bitmap !== resultBitmap) bitmap.recycle()
+        return resultBitmap
     }
 }
