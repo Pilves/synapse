@@ -48,6 +48,7 @@ class ScreenshotManager(private val context: Context) {
         }
     }
 
+    private val lock = Any()
     private var mediaProjection: MediaProjection? = null
     private var permissionGranted = false
     private var callbackRegistered = false
@@ -60,19 +61,23 @@ class ScreenshotManager(private val context: Context) {
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
             Log.w(TAG, "MediaProjection stopped via callback")
-            tearDownVirtualDisplay()
-            mediaProjection = null
-            permissionGranted = false
-            callbackRegistered = false
+            synchronized(lock) {
+                tearDownVirtualDisplay()
+                mediaProjection = null
+                permissionGranted = false
+                callbackRegistered = false
+            }
         }
     }
 
-    fun hasPermission(): Boolean = permissionGranted || MediaProjectionHolder.hasResult()
+    fun hasPermission(): Boolean = synchronized(lock) { permissionGranted } || MediaProjectionHolder.hasResult()
 
     fun setMediaProjection(projection: MediaProjection) {
-        mediaProjection = projection
-        permissionGranted = true
-        registerCallback(projection)
+        synchronized(lock) {
+            mediaProjection = projection
+            permissionGranted = true
+            registerCallback(projection)
+        }
         // Don't create virtual display eagerly — it will be created on first capture
         Log.d(TAG, "MediaProjection set directly")
     }
@@ -127,7 +132,9 @@ class ScreenshotManager(private val context: Context) {
     }
 
     fun tryRestoreProjection(): Boolean {
-        if (mediaProjection != null && virtualDisplay != null) return true
+        synchronized(lock) {
+            if (mediaProjection != null && virtualDisplay != null && imageReader != null) return true
+        }
         if (!MediaProjectionHolder.hasResult()) return false
 
         val resultCode = MediaProjectionHolder.getResultCode() ?: return false
@@ -138,10 +145,12 @@ class ScreenshotManager(private val context: Context) {
                 as MediaProjectionManager
             val projection = projectionManager.getMediaProjection(resultCode, resultData)
             if (projection != null) {
-                mediaProjection = projection
-                permissionGranted = true
-                registerCallback(projection)
-                setupVirtualDisplay(projection)
+                synchronized(lock) {
+                    mediaProjection = projection
+                    permissionGranted = true
+                    registerCallback(projection)
+                    setupVirtualDisplay(projection)
+                }
                 Log.d(TAG, "MediaProjection restored from holder")
                 true
             } else {
@@ -160,7 +169,9 @@ class ScreenshotManager(private val context: Context) {
      * The virtual display and projection stay alive for reuse.
      */
     fun pauseCapture() {
-        virtualDisplay?.surface = null
+        synchronized(lock) {
+            virtualDisplay?.surface = null
+        }
         Log.d(TAG, "Capture paused — surface detached")
     }
 
@@ -169,22 +180,27 @@ class ScreenshotManager(private val context: Context) {
      * Call before captureRegion() if pauseCapture() was called.
      */
     fun resumeCapture() {
-        val reader = imageReader ?: return
-        virtualDisplay?.surface = reader.surface
+        synchronized(lock) {
+            val reader = imageReader ?: return
+            if (virtualDisplay?.surface != null) return
+            virtualDisplay?.surface = reader.surface
+        }
         Log.d(TAG, "Capture resumed — surface reattached")
     }
 
     fun releaseProjection() {
-        if (callbackRegistered) {
-            try {
-                mediaProjection?.unregisterCallback(projectionCallback)
-            } catch (_: Exception) {}
-            callbackRegistered = false
+        synchronized(lock) {
+            if (callbackRegistered) {
+                try {
+                    mediaProjection?.unregisterCallback(projectionCallback)
+                } catch (_: Exception) {}
+                callbackRegistered = false
+            }
+            tearDownVirtualDisplay()
+            mediaProjection?.stop()
+            mediaProjection = null
+            permissionGranted = false
         }
-        tearDownVirtualDisplay()
-        mediaProjection?.stop()
-        mediaProjection = null
-        permissionGranted = false
         MediaProjectionHolder.clear()
         Log.d(TAG, "MediaProjection released")
     }
@@ -195,41 +211,52 @@ class ScreenshotManager(private val context: Context) {
      */
     fun invalidateProjection() {
         Log.w(TAG, "Invalidating stale MediaProjection state")
-        tearDownVirtualDisplay()
-        mediaProjection = null
-        permissionGranted = false
-        callbackRegistered = false
+        synchronized(lock) {
+            tearDownVirtualDisplay()
+            mediaProjection = null
+            permissionGranted = false
+            callbackRegistered = false
+        }
     }
 
     suspend fun captureRegion(bounds: Rect): Bitmap? = withContext(Dispatchers.IO) {
         // Lazily create virtual display on first capture
-        val projection = mediaProjection
-        if (projection == null) {
-            Log.w(TAG, "No MediaProjection for capture — invalidating stale state")
-            invalidateProjection()
-            return@withContext null
-        }
-        if (virtualDisplay == null) {
-            setupVirtualDisplay(projection)
-        }
+        val projection: MediaProjection?
+        val reader: ImageReader?
+        synchronized(lock) {
+            projection = mediaProjection
+            if (projection == null) {
+                Log.w(TAG, "No MediaProjection for capture — invalidating stale state")
+                tearDownVirtualDisplay()
+                mediaProjection = null
+                permissionGranted = false
+                callbackRegistered = false
+                return@withContext null
+            }
+            if (virtualDisplay == null) {
+                setupVirtualDisplay(projection)
+            }
 
-        val reader = imageReader
-        if (reader == null || virtualDisplay == null) {
-            Log.w(TAG, "No active VirtualDisplay — projection is likely dead")
-            // Projection is stale, clear state so permission is re-requested
-            invalidateProjection()
-            return@withContext null
-        }
+            reader = imageReader
+            if (reader == null || virtualDisplay == null) {
+                Log.w(TAG, "No active VirtualDisplay — projection is likely dead")
+                tearDownVirtualDisplay()
+                mediaProjection = null
+                permissionGranted = false
+                callbackRegistered = false
+                return@withContext null
+            }
 
-        // Ensure surface is attached (may have been paused)
-        if (virtualDisplay?.surface == null) {
-            virtualDisplay?.surface = reader.surface
+            // Ensure surface is attached (may have been paused)
+            if (virtualDisplay?.surface == null) {
+                virtualDisplay?.surface = reader.surface
+            }
         }
 
         // Wait for a fresh frame after reattaching surface
         delay(200)
 
-        val image = reader.acquireLatestImage()
+        val image = reader!!.acquireLatestImage()
         val fullBitmap = image?.let { imageToBitmap(it) }
         image?.close()
 
