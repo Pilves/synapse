@@ -15,6 +15,7 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
+import org.koin.java.KoinJavaComponent.get
 
 /**
  * Application class for Synapse - Handwriting Capture App
@@ -37,6 +38,7 @@ class SynapseApplication : Application() {
 
         initKoin()
         createNotificationChannels()
+        get<com.synapse.service.NotificationHelper>(com.synapse.service.NotificationHelper::class.java).createNotificationChannels()
     }
 
     /**
