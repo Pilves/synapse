@@ -15,6 +15,7 @@ import android.content.Intent
  */
 object MediaProjectionHolder {
 
+    private val lock = Any()
     private var resultCode: Int? = null
     private var resultData: Intent? = null
 
@@ -23,30 +24,34 @@ object MediaProjectionHolder {
      * Called from MainActivity when the user grants screen capture permission.
      */
     fun setResult(resultCode: Int, data: Intent) {
-        this.resultCode = resultCode
-        this.resultData = data
+        synchronized(lock) {
+            this.resultCode = resultCode
+            this.resultData = data
+        }
     }
 
     /**
      * Get the stored result code, or null if no permission has been granted.
      */
-    fun getResultCode(): Int? = resultCode
+    fun getResultCode(): Int? = synchronized(lock) { resultCode }
 
     /**
      * Get the stored result data Intent, or null if no permission has been granted.
      */
-    fun getResultData(): Intent? = resultData
+    fun getResultData(): Intent? = synchronized(lock) { resultData }
 
     /**
      * Check whether a MediaProjection result has been stored.
      */
-    fun hasResult(): Boolean = resultCode != null && resultData != null
+    fun hasResult(): Boolean = synchronized(lock) { resultCode != null && resultData != null }
 
     /**
      * Clear the stored result (e.g., when the projection is released).
      */
     fun clear() {
-        resultCode = null
-        resultData = null
+        synchronized(lock) {
+            resultCode = null
+            resultData = null
+        }
     }
 }
