@@ -90,9 +90,12 @@ class ChunkRepositoryImpl(
 ) : ChunkRepository {
 
     override suspend fun saveChunk(sessionId: String, bitmap: Bitmap, timestampSeconds: Float): Chunk {
-        // Get current session to determine chunk index
-        val session = sessionStorage.getSession(sessionId)
+        // Validate session exists
+        sessionStorage.getSession(sessionId)
             ?: throw IllegalArgumentException("Session not found: $sessionId")
+
+        // Use single authoritative source for chunk index
+        val nextIndex = sessionStorage.getNextChunkIndex(sessionId)
 
         // Save the image to storage
         val (chunkId, filePath) = chunkStorage.saveChunk(sessionId, bitmap)
@@ -102,7 +105,7 @@ class ChunkRepositoryImpl(
         val chunk = Chunk(
             id = chunkId,
             sessionId = sessionId,
-            index = session.chunks.size,
+            index = nextIndex,
             filePath = filePath,
             timestampSeconds = timestampSeconds,
             createdAt = System.currentTimeMillis(),
