@@ -22,7 +22,10 @@ class SynapseAccessibilityService : AccessibilityService() {
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             )
-            return enabledServices?.contains(context.packageName) == true
+            val packageName = context.packageName
+            return enabledServices?.split(":")?.any {
+                it.split("/").firstOrNull() == packageName
+            } == true
         }
     }
 
@@ -206,7 +209,7 @@ class SynapseAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        instance = null
+        // Do not clear instance here — onInterrupt() is temporary and the service may resume
     }
 
     override fun onDestroy() {
