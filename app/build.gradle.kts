@@ -88,11 +88,11 @@ dependencies {
     implementation(libs.ktor.client.android)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.kotlinx.json)
-    implementation(libs.ktor.client.logging)
+    debugImplementation(libs.ktor.client.logging)
 
     // OkHttp - Alternative/Supplemental HTTP client
     implementation(libs.okhttp)
-    implementation(libs.okhttp.logging.interceptor)
+    debugImplementation(libs.okhttp.logging.interceptor)
 
     // DataStore - Preferences storage
     implementation(libs.androidx.datastore.preferences)
