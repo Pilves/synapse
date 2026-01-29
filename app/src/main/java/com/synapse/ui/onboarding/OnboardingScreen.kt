@@ -136,7 +136,11 @@ fun OnboardingScreen(
                     putExtra(com.synapse.service.OverlayService.EXTRA_PROJECTION_RESULT_CODE, result.resultCode)
                     putExtra(com.synapse.service.OverlayService.EXTRA_PROJECTION_DATA, result.data)
                 }
-                context.startService(serviceIntent)
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
             } catch (e: Exception) {
                 // Service might not be running yet during onboarding, that's ok
             }

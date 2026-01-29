@@ -87,7 +87,11 @@ class MainActivity : ComponentActivity() {
                 putExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, resultCode)
                 putExtra(OverlayService.EXTRA_PROJECTION_DATA, data)
             }
-            startService(serviceIntent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent)
+            } else {
+                startService(serviceIntent)
+            }
             Log.d(TAG, "MediaProjection result forwarded to OverlayService")
         } else {
             Log.w(TAG, "MediaProjection permission denied")
