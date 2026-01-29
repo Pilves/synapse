@@ -55,7 +55,16 @@ Format your response in markdown. Use code blocks with language tags for code ex
         val contextImages = contexts.filterIsInstance<CapturedContext.RegionImage>().mapNotNull { ctx ->
             try {
                 val file = File(ctx.imagePath)
+                // Validate canonical path to prevent path traversal attacks
+                val canonical = file.canonicalPath
+                if (canonical != file.absolutePath && ctx.imagePath.contains("..")) {
+                    Log.w(TAG, "Path traversal detected, skipping image")
+                    return@mapNotNull null
+                }
                 if (file.exists()) file.readBytes() else null
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Security exception reading image path", e)
+                null
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to read image at ${ctx.imagePath}", e)
                 null
