@@ -225,6 +225,13 @@ fun CaptureCanvas(
                 }
             )
     ) {
+        // Cache Path objects for completed strokes to avoid recreating on every frame
+        val cachedPaths = remember(strokes) {
+            strokes.map { stroke ->
+                if (stroke.points.size >= 2) createSmoothPath(stroke.points) else null
+            }
+        }
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
@@ -233,10 +240,11 @@ fun CaptureCanvas(
                     alpha = uiState.fadeProgress
                 }
         ) {
-            // Draw completed strokes
-            for (stroke in strokes) {
-                drawStrokeWithOutline(
-                    points = stroke.points,
+            // Draw completed strokes using cached paths
+            for ((index, stroke) in strokes.withIndex()) {
+                val path = cachedPaths.getOrNull(index) ?: continue
+                drawPathWithOutline(
+                    path = path,
                     strokeWidth = stroke.strokeWidth,
                     strokeColor = strokeConfig.strokeColor,
                     outlineColor = strokeConfig.outlineColor,
@@ -289,6 +297,40 @@ private fun DrawScope.drawStrokeWithOutline(
 
     val path = createSmoothPath(points)
 
+    // Draw outline first (thicker, behind the main stroke)
+    drawPath(
+        path = path,
+        color = outlineColor,
+        style = Stroke(
+            width = strokeWidth + outlineWidth * 2,
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+    )
+
+    // Draw main stroke on top
+    drawPath(
+        path = path,
+        color = strokeColor,
+        style = Stroke(
+            width = strokeWidth,
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+    )
+}
+
+/**
+ * Draws a pre-built path with an outline for visibility on any background.
+ * Used for completed strokes with cached Path objects.
+ */
+private fun DrawScope.drawPathWithOutline(
+    path: Path,
+    strokeWidth: Float,
+    strokeColor: Color,
+    outlineColor: Color,
+    outlineWidth: Float
+) {
     // Draw outline first (thicker, behind the main stroke)
     drawPath(
         path = path,
