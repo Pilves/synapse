@@ -119,10 +119,11 @@ class GeminiService(
         chunkContext: String
     ): TranscriptionResult {
         val requestBody = buildRequestBody(chunks, prompt, chunkContext)
-        val url = "$BASE_URL/$modelId:generateContent?key=$apiKey"
+        val url = "$BASE_URL/$modelId:generateContent"
 
         val request = Request.Builder()
             .url(url)
+            .addHeader("x-goog-api-key", apiKey!!)
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -365,10 +366,11 @@ class GeminiService(
             put("generationConfig", generationConfig)
         }
 
-        val url = "$BASE_URL/$modelId:generateContent?key=$apiKey"
+        val url = "$BASE_URL/$modelId:generateContent"
 
         val request = Request.Builder()
             .url(url)
+            .addHeader("x-goog-api-key", apiKey!!)
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -459,10 +461,11 @@ class GeminiService(
             put("generationConfig", generationConfig)
         }
 
-        val url = "$BASE_URL/$modelId:generateContent?key=$apiKey"
+        val url = "$BASE_URL/$modelId:generateContent"
 
         val request = Request.Builder()
             .url(url)
+            .addHeader("x-goog-api-key", apiKey!!)
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
