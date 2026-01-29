@@ -33,7 +33,7 @@ class DefaultTranscriptionServiceFactory : TranscriptionServiceFactory {
                 LlmProvider.OLLAMA -> OllamaService()
             }
         }.also { service ->
-            apiKey?.let { service.setApiKey(it) }
+            service.setApiKey(apiKey)
         }
     }
 
