@@ -30,10 +30,8 @@ class GeminiService(
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
 
-        // TODO: make rate limits configurable per account tier (see QA audit #18)
         // Free tier rate limits
         private const val REQUESTS_PER_MINUTE = 15
-        private const val REQUESTS_PER_DAY = 1500
 
         /** Safety threshold applied to all categories. Change to e.g. "BLOCK_MEDIUM_AND_ABOVE" for stricter filtering. */
         const val DEFAULT_SAFETY_THRESHOLD = "BLOCK_NONE"
@@ -42,7 +40,7 @@ class GeminiService(
     override val provider: LlmProvider = LlmProvider.GEMINI
     override val modelId: String = DEFAULT_MODEL
 
-    private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE, REQUESTS_PER_DAY)
+    private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE)
     private val rateLimitState = RateLimitState()
 
     private val httpClient = (sharedHttpClient?.newBuilder() ?: OkHttpClient.Builder())

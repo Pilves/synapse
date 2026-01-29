@@ -32,16 +32,14 @@ class OpenAiService(
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
 
-        // TODO: make rate limits configurable per account tier (see QA audit #18)
-        // OpenAI rate limits (varies by tier, using conservative defaults for Tier 1)
+        // OpenAI rate limits (conservative defaults)
         private const val REQUESTS_PER_MINUTE = 500
-        private const val REQUESTS_PER_DAY = 10000
     }
 
     override val provider: LlmProvider = LlmProvider.OPENAI
     override val modelId: String = DEFAULT_MODEL
 
-    private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE, REQUESTS_PER_DAY)
+    private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE)
     private val rateLimitState = RateLimitState()
 
     private val httpClient = (sharedHttpClient?.newBuilder() ?: OkHttpClient.Builder())

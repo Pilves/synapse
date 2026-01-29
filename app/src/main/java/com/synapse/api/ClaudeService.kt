@@ -33,16 +33,14 @@ class ClaudeService(
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
 
-        // TODO: make rate limits configurable per account tier (see QA audit #18)
-        // Claude API rate limits (varies by tier, using conservative defaults)
+        // Claude API rate limits (conservative defaults)
         private const val REQUESTS_PER_MINUTE = 50
-        private const val REQUESTS_PER_DAY = 10000
     }
 
     override val provider: LlmProvider = LlmProvider.CLAUDE
     override val modelId: String = DEFAULT_MODEL
 
-    private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE, REQUESTS_PER_DAY)
+    private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE)
     private val rateLimitState = RateLimitState()
 
     // TODO: Consolidate OkHttpClient instances into a shared singleton (#42)

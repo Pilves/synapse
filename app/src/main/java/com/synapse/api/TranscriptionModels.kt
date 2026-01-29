@@ -137,30 +137,16 @@ sealed class TranscriptionError : Exception() {
  * Rate limiting configuration and state.
  */
 data class RateLimitConfig(
-    val requestsPerMinute: Int,
-    val requestsPerDay: Int
+    val requestsPerMinute: Int
 )
 
 data class RateLimitState(
-    val requestTimestamps: MutableList<Long> = java.util.Collections.synchronizedList(mutableListOf()),
-    val dailyRequestCount: Int = 0,
-    val lastDayReset: Long = System.currentTimeMillis()
+    val requestTimestamps: MutableList<Long> = java.util.Collections.synchronizedList(mutableListOf())
 ) {
     fun canMakeRequest(config: RateLimitConfig): Boolean {
         synchronized(requestTimestamps) {
             cleanOldTimestamps()
-            val now = System.currentTimeMillis()
-
-            // Check daily limit
-            if (shouldResetDaily(now)) {
-                return true
-            }
-            if (dailyRequestCount >= config.requestsPerDay) {
-                return false
-            }
-
-            // Check per-minute limit
-            val oneMinuteAgo = now - 60_000
+            val oneMinuteAgo = System.currentTimeMillis() - 60_000
             val recentRequests = requestTimestamps.count { it > oneMinuteAgo }
             return recentRequests < config.requestsPerMinute
         }
@@ -177,11 +163,6 @@ data class RateLimitState(
     private fun cleanOldTimestamps() {
         val oneMinuteAgo = System.currentTimeMillis() - 60_000
         requestTimestamps.removeAll { it < oneMinuteAgo }
-    }
-
-    private fun shouldResetDaily(now: Long): Boolean {
-        val oneDayMs = 24 * 60 * 60 * 1000
-        return now - lastDayReset > oneDayMs
     }
 
     fun getWaitTimeMs(config: RateLimitConfig): Long {
