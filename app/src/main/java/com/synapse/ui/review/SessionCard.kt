@@ -343,12 +343,13 @@ private fun calculateOffset(session: Session, chunk: Chunk): Float {
     return chunk.timestampSeconds
 }
 
+private val sessionTimeFormatter = SimpleDateFormat("HH:mm", Locale.getDefault())
+
 /**
  * Format session timestamp to display time
  */
 private fun formatSessionTime(timestamp: Long): String {
-    val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
-    return formatter.format(Date(timestamp))
+    return sessionTimeFormatter.format(Date(timestamp))
 }
 
 @Preview(showBackground = true)

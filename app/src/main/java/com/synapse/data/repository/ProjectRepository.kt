@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import java.io.Closeable
 
 /**
  * Repository interface for managing projects.
@@ -17,7 +18,7 @@ import kotlinx.coroutines.launch
  * will be appended. They typically point to Obsidian vaults, markdown
  * files, or other note-taking system directories.
  */
-interface ProjectRepository {
+interface ProjectRepository : Closeable {
 
     /**
      * Adds a new project.
@@ -85,6 +86,8 @@ interface ProjectRepository {
      * @param vaultUri The vault root URI
      */
     suspend fun syncProjectsFromVault(vaultUri: Uri)
+
+    override fun close() {}
 }
 
 /**
@@ -97,13 +100,18 @@ class ProjectRepositoryImpl(
     private val vaultManager: VaultManager
 ) : ProjectRepository {
 
-    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val initJob = SupervisorJob()
+    private val initScope = CoroutineScope(initJob + Dispatchers.IO)
 
     init {
         // Initialize storage to load existing projects from disk
         initScope.launch {
             projectStorage.initialize()
         }
+    }
+
+    override fun close() {
+        initJob.cancel()
     }
 
     override suspend fun addProject(name: String, pathUri: String, defaultFile: String): Project {

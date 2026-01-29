@@ -18,6 +18,7 @@ import com.synapse.data.repository.ProjectRepository
 import com.synapse.model.LlmConfig
 import com.synapse.model.Project
 import com.synapse.ui.overlay.InputMode
+import com.synapse.util.ApiKeyValidator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -223,39 +224,9 @@ class SettingsViewModel(
     }
 
     fun validateApiKey(): Boolean {
-        val currentKey = apiKey.value
-        val currentProvider = llmProvider.value
-
-        // Ollama doesn't require an API key
-        if (currentProvider == LlmProvider.OLLAMA) {
-            _uiState.update { it.copy(apiKeyError = null) }
-            return true
-        }
-
-        if (currentKey.isBlank()) {
-            _uiState.update { it.copy(
-                apiKeyError = "API key is required for ${currentProvider.displayName}"
-            ) }
-            return false
-        }
-
-        // Basic format validation per provider
-        val isValid = when (currentProvider) {
-            LlmProvider.GEMINI -> currentKey.length >= 20
-            LlmProvider.CLAUDE -> currentKey.startsWith("sk-ant-")
-            LlmProvider.OPENAI -> currentKey.startsWith("sk-")
-            LlmProvider.OLLAMA -> true
-        }
-
-        if (!isValid) {
-            _uiState.update { it.copy(
-                apiKeyError = "Invalid API key format for ${currentProvider.displayName}"
-            ) }
-            return false
-        }
-
-        _uiState.update { it.copy(apiKeyError = null) }
-        return true
+        val result = ApiKeyValidator.validateForProvider(apiKey.value, llmProvider.value)
+        _uiState.update { it.copy(apiKeyError = result.errorMessage) }
+        return result.isValid
     }
 
     fun setLlmConfig(config: LlmConfig) {

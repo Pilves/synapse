@@ -100,17 +100,4 @@ class DefaultTranscriptionServiceFactory : TranscriptionServiceFactory {
         return serviceCache.filter { it.value.isConfigured() }.keys.toList()
     }
 
-    companion object {
-        @Volatile
-        private var instance: DefaultTranscriptionServiceFactory? = null
-
-        /**
-         * Gets the singleton instance of the factory.
-         */
-        fun getInstance(): DefaultTranscriptionServiceFactory {
-            return instance ?: synchronized(this) {
-                instance ?: DefaultTranscriptionServiceFactory().also { instance = it }
-            }
-        }
-    }
 }

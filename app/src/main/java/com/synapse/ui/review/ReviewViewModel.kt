@@ -54,34 +54,17 @@ data class ReviewUiState(
     val pendingSyncCount: Int = 0,
     val queuedSyncCount: Int = 0,
     val failedSyncCount: Int = 0,
-    val pendingIntentConfirmation: PendingIntentConfirmation? = null,
-    val pendingQuestionAnswer: PendingQuestionAnswer? = null,
-    val pendingReminder: PendingReminder? = null
+    val pendingDialog: PendingDialog? = null
 )
 
 /**
- * Data for a pending intent confirmation dialog
+ * Sealed class representing the single pending dialog that can be shown at a time.
  */
-data class PendingIntentConfirmation(
-    val noteText: String,
-    val suggestedType: IntentType
-)
-
-/**
- * Data for a pending question/answer dialog
- */
-data class PendingQuestionAnswer(
-    val question: String,
-    val answer: String
-)
-
-/**
- * Data for a pending reminder dialog
- */
-data class PendingReminder(
-    val reminderText: String,
-    val timeText: String?
-)
+sealed class PendingDialog {
+    data class IntentConfirmation(val noteText: String, val suggestedType: IntentType) : PendingDialog()
+    data class QuestionAnswer(val question: String, val answer: String) : PendingDialog()
+    data class Reminder(val reminderText: String, val timeText: String?) : PendingDialog()
+}
 
 /**
  * ViewModel for the Review screen
@@ -491,9 +474,7 @@ class ReviewViewModel(
      */
     fun showIntentConfirmation(noteText: String, suggestedType: IntentType) {
         _uiState.update { state ->
-            state.copy(
-                pendingIntentConfirmation = PendingIntentConfirmation(noteText, suggestedType)
-            )
+            state.copy(pendingDialog = PendingDialog.IntentConfirmation(noteText, suggestedType))
         }
     }
 
@@ -501,14 +482,14 @@ class ReviewViewModel(
      * Handle intent confirmation result
      */
     fun confirmIntent(intentType: IntentType) {
-        _uiState.update { it.copy(pendingIntentConfirmation = null) }
+        _uiState.update { it.copy(pendingDialog = null) }
     }
 
     /**
      * Dismiss intent confirmation dialog
      */
     fun dismissIntentConfirmation() {
-        _uiState.update { it.copy(pendingIntentConfirmation = null) }
+        _uiState.update { it.copy(pendingDialog = null) }
     }
 
     /**
@@ -516,7 +497,7 @@ class ReviewViewModel(
      */
     fun showQuestionAnswer(question: String, answer: String) {
         _uiState.update { state ->
-            state.copy(pendingQuestionAnswer = PendingQuestionAnswer(question, answer))
+            state.copy(pendingDialog = PendingDialog.QuestionAnswer(question, answer))
         }
     }
 
@@ -524,21 +505,21 @@ class ReviewViewModel(
      * Handle saving both question and answer
      */
     fun saveQuestionAndAnswer() {
-        _uiState.update { it.copy(pendingQuestionAnswer = null) }
+        _uiState.update { it.copy(pendingDialog = null) }
     }
 
     /**
      * Handle saving question only
      */
     fun saveQuestionOnly() {
-        _uiState.update { it.copy(pendingQuestionAnswer = null) }
+        _uiState.update { it.copy(pendingDialog = null) }
     }
 
     /**
      * Dismiss question/answer dialog
      */
     fun dismissQuestionAnswer() {
-        _uiState.update { it.copy(pendingQuestionAnswer = null) }
+        _uiState.update { it.copy(pendingDialog = null) }
     }
 
     /**
@@ -546,7 +527,7 @@ class ReviewViewModel(
      */
     fun showReminder(reminderText: String, timeText: String?) {
         _uiState.update { state ->
-            state.copy(pendingReminder = PendingReminder(reminderText, timeText))
+            state.copy(pendingDialog = PendingDialog.Reminder(reminderText, timeText))
         }
     }
 
@@ -554,7 +535,7 @@ class ReviewViewModel(
      * Dismiss reminder dialog
      */
     fun dismissReminder() {
-        _uiState.update { it.copy(pendingReminder = null) }
+        _uiState.update { it.copy(pendingDialog = null) }
     }
 
     /**

@@ -193,36 +193,35 @@ fun ReviewScreen(
             )
         }
 
-        // Intent confirmation dialog
-        uiState.pendingIntentConfirmation?.let { pending ->
-            IntentConfirmationDialog(
-                noteText = pending.noteText,
-                suggestedType = pending.suggestedType,
-                onConfirm = viewModel::confirmIntent,
-                onDismiss = viewModel::dismissIntentConfirmation
-            )
-        }
-
-        // Question/answer dialog
-        uiState.pendingQuestionAnswer?.let { pending ->
-            QuestionAnswerDialog(
-                question = pending.question,
-                answer = pending.answer,
-                onSaveBoth = viewModel::saveQuestionAndAnswer,
-                onSaveQuestionOnly = viewModel::saveQuestionOnly,
-                onDiscard = viewModel::dismissQuestionAnswer
-            )
-        }
-
-        // Reminder dialog
-        uiState.pendingReminder?.let { pending ->
-            ReminderDialog(
-                reminderText = pending.reminderText,
-                timeText = pending.timeText,
-                onCreateAlarm = viewModel::dismissReminder,
-                onCreateCalendarEvent = viewModel::dismissReminder,
-                onSaveAsNote = viewModel::dismissReminder
-            )
+        // Pending dialog (only one at a time)
+        when (val dialog = uiState.pendingDialog) {
+            is PendingDialog.IntentConfirmation -> {
+                IntentConfirmationDialog(
+                    noteText = dialog.noteText,
+                    suggestedType = dialog.suggestedType,
+                    onConfirm = viewModel::confirmIntent,
+                    onDismiss = viewModel::dismissIntentConfirmation
+                )
+            }
+            is PendingDialog.QuestionAnswer -> {
+                QuestionAnswerDialog(
+                    question = dialog.question,
+                    answer = dialog.answer,
+                    onSaveBoth = viewModel::saveQuestionAndAnswer,
+                    onSaveQuestionOnly = viewModel::saveQuestionOnly,
+                    onDiscard = viewModel::dismissQuestionAnswer
+                )
+            }
+            is PendingDialog.Reminder -> {
+                ReminderDialog(
+                    reminderText = dialog.reminderText,
+                    timeText = dialog.timeText,
+                    onCreateAlarm = viewModel::dismissReminder,
+                    onCreateCalendarEvent = viewModel::dismissReminder,
+                    onSaveAsNote = viewModel::dismissReminder
+                )
+            }
+            null -> {}
         }
     }
 }

@@ -14,6 +14,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.ui.settings.settingsDataStore
+import com.synapse.util.ApiKeyValidator
 import com.synapse.util.PermissionHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -57,10 +58,17 @@ class OnboardingViewModel(
     private val _state = MutableStateFlow(OnboardingState.Initial)
     val state: StateFlow<OnboardingState> = _state.asStateFlow()
 
-    // Preference keys
+    // Preference keys — onboarding-specific state only
     private object PreferenceKeys {
         val ONBOARDING_COMPLETE = booleanPreferencesKey("onboarding_complete")
-        val VAULT_PATH = stringPreferencesKey("vault_path")
+    }
+
+    // Settings keys — app-wide source of truth for vault/API config
+    private object SettingsKeys {
+        val VAULT_LOCATION = stringPreferencesKey("vault_location")
+        val TRANSCRIPTION_PROVIDER = stringPreferencesKey("transcription_provider")
+        val TRANSCRIPTION_API_KEY = stringPreferencesKey("transcription_api_key")
+        val LLM_PROVIDER = stringPreferencesKey("llm_provider")
         val API_KEY = stringPreferencesKey("api_key")
     }
 
@@ -77,11 +85,15 @@ class OnboardingViewModel(
             val hasOverlay = permissionHelper.hasOverlayPermission()
             val hasNotification = permissionHelper.hasNotificationPermission()
 
-            // Load saved preferences
-            val prefs = dataStore.data.first()
-            val isComplete = prefs[PreferenceKeys.ONBOARDING_COMPLETE] ?: false
-            val vaultPath = prefs[PreferenceKeys.VAULT_PATH]
-            val apiKey = prefs[PreferenceKeys.API_KEY]
+            // Load onboarding-specific state
+            val onboardingPrefs = dataStore.data.first()
+            val isComplete = onboardingPrefs[PreferenceKeys.ONBOARDING_COMPLETE] ?: false
+
+            // Load vault/API key from settings (the app-wide source of truth)
+            val settingsPrefs = context.settingsDataStore.data.first()
+            val vaultPath = settingsPrefs[SettingsKeys.VAULT_LOCATION]
+            val apiKey = settingsPrefs[SettingsKeys.TRANSCRIPTION_API_KEY]
+                ?: settingsPrefs[SettingsKeys.API_KEY]
 
             _state.update { currentState ->
                 currentState.copy(
@@ -173,16 +185,9 @@ class OnboardingViewModel(
 
                 val vaultPath = uri.toString()
 
-                // Save to onboarding DataStore
-                dataStore.edit { prefs ->
-                    prefs[PreferenceKeys.VAULT_PATH] = vaultPath
-                }
-                Log.d(TAG, "Saved vault path to onboarding DataStore: $vaultPath")
-
-                // Also save to settings DataStore so it's available app-wide
-                val vaultLocationKey = stringPreferencesKey("vault_location")
+                // Save to settings DataStore (app-wide source of truth)
                 context.settingsDataStore.edit { prefs ->
-                    prefs[vaultLocationKey] = vaultPath
+                    prefs[SettingsKeys.VAULT_LOCATION] = vaultPath
                 }
                 Log.d(TAG, "Saved vault path to settings DataStore: $vaultPath")
 
@@ -217,7 +222,7 @@ class OnboardingViewModel(
 
             try {
                 // Validate API key format based on common patterns
-                val validationResult = validateApiKeyFormat(apiKey.trim())
+                val validationResult = ApiKeyValidator.validateFormat(apiKey.trim())
 
                 if (!validationResult.isValid) {
                     _state.update {
@@ -229,30 +234,14 @@ class OnboardingViewModel(
                     return@launch
                 }
 
-                // Save to onboarding DataStore
-                dataStore.edit { prefs ->
-                    prefs[PreferenceKeys.API_KEY] = apiKey.trim()
-                }
-
-                // Also save to settings DataStore so it's available for sync/transcription
-                val transcriptionProviderKey = stringPreferencesKey("transcription_provider")
-                val transcriptionApiKeyKey = stringPreferencesKey("transcription_api_key")
-                val legacyProviderKey = stringPreferencesKey("llm_provider")
-                val legacyApiKeyKey = stringPreferencesKey("api_key")
+                // Save to settings DataStore (app-wide source of truth)
+                val trimmedKey = apiKey.trim()
+                val provider = ApiKeyValidator.detectProvider(trimmedKey)
                 context.settingsDataStore.edit { prefs ->
-                    // Detect provider from key format
-                    val trimmedKey = apiKey.trim()
-                    val provider = when {
-                        trimmedKey.startsWith("AIza") -> "gemini"
-                        trimmedKey.startsWith("sk-ant-") -> "claude"
-                        trimmedKey.startsWith("sk-") -> "openai"
-                        else -> "gemini"
-                    }
-                    prefs[transcriptionProviderKey] = provider
-                    prefs[transcriptionApiKeyKey] = trimmedKey
-                    // Also write legacy keys for backward compat
-                    prefs[legacyProviderKey] = provider
-                    prefs[legacyApiKeyKey] = trimmedKey
+                    prefs[SettingsKeys.TRANSCRIPTION_PROVIDER] = provider
+                    prefs[SettingsKeys.TRANSCRIPTION_API_KEY] = trimmedKey
+                    prefs[SettingsKeys.LLM_PROVIDER] = provider
+                    prefs[SettingsKeys.API_KEY] = trimmedKey
                 }
 
                 _state.update { currentState ->
@@ -274,84 +263,19 @@ class OnboardingViewModel(
     }
 
     /**
-     * Validates API key format based on provider patterns.
-     * Supports Gemini, Claude, and OpenAI key formats.
-     */
-    private fun validateApiKeyFormat(apiKey: String): ApiKeyValidationResult {
-        // Check minimum length
-        if (apiKey.length < 20) {
-            return ApiKeyValidationResult(
-                isValid = false,
-                errorMessage = "API key is too short (minimum 20 characters)"
-            )
-        }
-
-        // Check for common invalid patterns
-        if (apiKey.contains(" ")) {
-            return ApiKeyValidationResult(
-                isValid = false,
-                errorMessage = "API key should not contain spaces"
-            )
-        }
-
-        // Validate based on detected provider format
-        return when {
-            // Gemini keys are typically alphanumeric and 39 characters
-            apiKey.length >= 30 && apiKey.all { it.isLetterOrDigit() || it == '-' || it == '_' } -> {
-                ApiKeyValidationResult(isValid = true)
-            }
-            // Claude keys start with sk-ant-
-            apiKey.startsWith("sk-ant-") -> {
-                if (apiKey.length >= 40) {
-                    ApiKeyValidationResult(isValid = true)
-                } else {
-                    ApiKeyValidationResult(
-                        isValid = false,
-                        errorMessage = "Claude API key appears incomplete"
-                    )
-                }
-            }
-            // OpenAI keys start with sk-
-            apiKey.startsWith("sk-") -> {
-                if (apiKey.length >= 40) {
-                    ApiKeyValidationResult(isValid = true)
-                } else {
-                    ApiKeyValidationResult(
-                        isValid = false,
-                        errorMessage = "OpenAI API key appears incomplete"
-                    )
-                }
-            }
-            // Accept other formats if they meet minimum requirements
-            apiKey.length >= 20 -> {
-                ApiKeyValidationResult(isValid = true)
-            }
-            else -> {
-                ApiKeyValidationResult(
-                    isValid = false,
-                    errorMessage = "Invalid API key format"
-                )
-            }
-        }
-    }
-
-    private data class ApiKeyValidationResult(
-        val isValid: Boolean,
-        val errorMessage: String? = null
-    )
-
-    /**
      * Retrieves the saved API key for display (masked) or editing.
      */
-    fun getApiKeyFlow() = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.API_KEY] ?: ""
+    fun getApiKeyFlow() = context.settingsDataStore.data.map { prefs ->
+        prefs[SettingsKeys.TRANSCRIPTION_API_KEY]
+            ?: prefs[SettingsKeys.API_KEY]
+            ?: ""
     }
 
     /**
      * Retrieves the saved vault path.
      */
-    fun getVaultPathFlow() = dataStore.data.map { prefs ->
-        prefs[PreferenceKeys.VAULT_PATH]
+    fun getVaultPathFlow() = context.settingsDataStore.data.map { prefs ->
+        prefs[SettingsKeys.VAULT_LOCATION]
     }
 
     /**

@@ -158,7 +158,7 @@ val apiModule = module {
 
     // TranscriptionServiceFactory - singleton instance
     single<TranscriptionServiceFactory> {
-        DefaultTranscriptionServiceFactory.getInstance()
+        DefaultTranscriptionServiceFactory()
     }
 }
 

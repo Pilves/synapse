@@ -14,6 +14,8 @@ import com.synapse.model.IntentType
 import com.synapse.api.TranscribedNote
 import kotlinx.coroutines.delay
 
+private const val INTENT_DIALOG_AUTO_DISMISS_MS = 5_000L
+
 @Composable
 fun IntentConfirmationDialog(
     noteText: String,
@@ -70,7 +72,7 @@ fun IntentConfirmationDialog(
     )
 
     LaunchedEffect(Unit) {
-        delay(5000)
+        delay(INTENT_DIALOG_AUTO_DISMISS_MS)
         if (!dismissed) {
             dismissed = true
             onConfirm(IntentType.NOTE)
