@@ -21,6 +21,9 @@
     <string name="permission_notification_title">Notification Permission</string>
     <string name="permission_notification_message">Allow notifications to see capture status and results.</string>
 
+    <!-- Accessibility Service -->
+    <string name="accessibility_description">Synapse uses accessibility to capture text from your screen to provide context for your handwritten notes. No data is stored or sent unless you explicitly capture it.</string>
+
     <!-- Common Actions -->
     <string name="action_cancel">Cancel</string>
     <string name="action_confirm">Confirm</string>
