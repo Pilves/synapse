@@ -10,6 +10,8 @@ import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.model.CapturedContext
 import com.synapse.model.CostEstimate
 import com.synapse.model.Destination
+import com.synapse.model.IntentData
+import com.synapse.model.IntentType
 import com.synapse.model.QueueStatus
 import com.synapse.model.Chunk
 import com.synapse.model.Project
@@ -51,7 +53,34 @@ data class ReviewUiState(
     val queueStatus: QueueStatus? = null,
     val pendingSyncCount: Int = 0,
     val queuedSyncCount: Int = 0,
-    val failedSyncCount: Int = 0
+    val failedSyncCount: Int = 0,
+    val pendingIntentConfirmation: PendingIntentConfirmation? = null,
+    val pendingQuestionAnswer: PendingQuestionAnswer? = null,
+    val pendingReminder: PendingReminder? = null
+)
+
+/**
+ * Data for a pending intent confirmation dialog
+ */
+data class PendingIntentConfirmation(
+    val noteText: String,
+    val suggestedType: IntentType
+)
+
+/**
+ * Data for a pending question/answer dialog
+ */
+data class PendingQuestionAnswer(
+    val question: String,
+    val answer: String
+)
+
+/**
+ * Data for a pending reminder dialog
+ */
+data class PendingReminder(
+    val reminderText: String,
+    val timeText: String?
 )
 
 /**
@@ -442,6 +471,77 @@ class ReviewViewModel(
         _uiState.update { state ->
             state.copy(contexts = state.contexts.filter { it.id != contextId })
         }
+    }
+
+    /**
+     * Show an intent confirmation dialog for a transcribed note
+     */
+    fun showIntentConfirmation(noteText: String, suggestedType: IntentType) {
+        _uiState.update { state ->
+            state.copy(
+                pendingIntentConfirmation = PendingIntentConfirmation(noteText, suggestedType)
+            )
+        }
+    }
+
+    /**
+     * Handle intent confirmation result
+     */
+    fun confirmIntent(intentType: IntentType) {
+        _uiState.update { it.copy(pendingIntentConfirmation = null) }
+    }
+
+    /**
+     * Dismiss intent confirmation dialog
+     */
+    fun dismissIntentConfirmation() {
+        _uiState.update { it.copy(pendingIntentConfirmation = null) }
+    }
+
+    /**
+     * Show a question/answer dialog
+     */
+    fun showQuestionAnswer(question: String, answer: String) {
+        _uiState.update { state ->
+            state.copy(pendingQuestionAnswer = PendingQuestionAnswer(question, answer))
+        }
+    }
+
+    /**
+     * Handle saving both question and answer
+     */
+    fun saveQuestionAndAnswer() {
+        _uiState.update { it.copy(pendingQuestionAnswer = null) }
+    }
+
+    /**
+     * Handle saving question only
+     */
+    fun saveQuestionOnly() {
+        _uiState.update { it.copy(pendingQuestionAnswer = null) }
+    }
+
+    /**
+     * Dismiss question/answer dialog
+     */
+    fun dismissQuestionAnswer() {
+        _uiState.update { it.copy(pendingQuestionAnswer = null) }
+    }
+
+    /**
+     * Show a reminder dialog
+     */
+    fun showReminder(reminderText: String, timeText: String?) {
+        _uiState.update { state ->
+            state.copy(pendingReminder = PendingReminder(reminderText, timeText))
+        }
+    }
+
+    /**
+     * Dismiss reminder dialog
+     */
+    fun dismissReminder() {
+        _uiState.update { it.copy(pendingReminder = null) }
     }
 
     /**

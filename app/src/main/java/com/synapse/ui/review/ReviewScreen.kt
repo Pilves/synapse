@@ -77,6 +77,9 @@ import com.synapse.model.CostEstimate
 import com.synapse.model.Destination
 import com.synapse.ui.components.ContextSection
 import com.synapse.ui.components.DestinationSelectionRow
+import com.synapse.ui.components.IntentConfirmationDialog
+import com.synapse.ui.components.QuestionAnswerDialog
+import com.synapse.ui.components.ReminderDialog
 import com.synapse.ui.components.SyncCostBanner
 import com.synapse.ui.components.SyncQueueSummary
 import com.synapse.ui.components.SyncStatusIndicator
@@ -199,6 +202,38 @@ fun ReviewScreen(
             ChunkPreviewDialog(
                 chunk = chunk,
                 onDismiss = { viewModel.setPreviewChunk(null) }
+            )
+        }
+
+        // Intent confirmation dialog
+        uiState.pendingIntentConfirmation?.let { pending ->
+            IntentConfirmationDialog(
+                noteText = pending.noteText,
+                suggestedType = pending.suggestedType,
+                onConfirm = viewModel::confirmIntent,
+                onDismiss = viewModel::dismissIntentConfirmation
+            )
+        }
+
+        // Question/answer dialog
+        uiState.pendingQuestionAnswer?.let { pending ->
+            QuestionAnswerDialog(
+                question = pending.question,
+                answer = pending.answer,
+                onSaveBoth = viewModel::saveQuestionAndAnswer,
+                onSaveQuestionOnly = viewModel::saveQuestionOnly,
+                onDiscard = viewModel::dismissQuestionAnswer
+            )
+        }
+
+        // Reminder dialog
+        uiState.pendingReminder?.let { pending ->
+            ReminderDialog(
+                reminderText = pending.reminderText,
+                timeText = pending.timeText,
+                onCreateAlarm = viewModel::dismissReminder,
+                onCreateCalendarEvent = viewModel::dismissReminder,
+                onSaveAsNote = viewModel::dismissReminder
             )
         }
     }
