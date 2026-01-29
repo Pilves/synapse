@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
@@ -147,7 +148,7 @@ class CaptureViewModel : ViewModel() {
         sessionStartTime = System.currentTimeMillis()
         chunkIndex = 0
 
-        _uiState.value = CaptureUiState(isSessionActive = true)
+        _uiState.update { CaptureUiState(isSessionActive = true) }
         strokeManager.clear()
         _strokes.value = emptyList()
 
@@ -172,7 +173,7 @@ class CaptureViewModel : ViewModel() {
             captureChunkWithoutFade()
         }
 
-        _uiState.value = _uiState.value.copy(isSessionActive = false)
+        _uiState.update { it.copy(isSessionActive = false) }
 
         viewModelScope.launch {
             _events.emit(CaptureEvent.SessionEnded)
@@ -201,7 +202,7 @@ class CaptureViewModel : ViewModel() {
 
         // Start new stroke
         _currentStroke.value = listOf(offset)
-        _uiState.value = _uiState.value.copy(isDrawing = true)
+        _uiState.update { it.copy(isDrawing = true) }
     }
 
     /**
@@ -231,10 +232,10 @@ class CaptureViewModel : ViewModel() {
         }
 
         _currentStroke.value = emptyList()
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             isDrawing = false,
             strokeCount = strokeManager.strokeCount()
-        )
+        ) }
 
         // Start chunk timeout timer
         startChunkTimeout()
@@ -245,7 +246,7 @@ class CaptureViewModel : ViewModel() {
      */
     fun cancelCurrentStroke() {
         _currentStroke.value = emptyList()
-        _uiState.value = _uiState.value.copy(isDrawing = false)
+        _uiState.update { it.copy(isDrawing = false) }
     }
 
     /**
@@ -257,9 +258,9 @@ class CaptureViewModel : ViewModel() {
         val result = strokeManager.undoLastStroke()
         if (result) {
             _strokes.value = strokeManager.getStrokes()
-            _uiState.value = _uiState.value.copy(
+            _uiState.update { it.copy(
                 strokeCount = strokeManager.strokeCount()
-            )
+            ) }
 
             // Reset chunk timeout since we modified strokes
             if (!strokeManager.isEmpty()) {
@@ -279,10 +280,10 @@ class CaptureViewModel : ViewModel() {
         strokeManager.clear()
         _strokes.value = emptyList()
         _currentStroke.value = emptyList()
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             strokeCount = 0,
             isDrawing = false
-        )
+        ) }
 
         chunkTimeoutJob?.cancel()
         chunkTimeoutJob = null
@@ -333,9 +334,9 @@ class CaptureViewModel : ViewModel() {
             index = chunkIndex++
         )
 
-        _uiState.value = _uiState.value.copy(
+        _uiState.update { it.copy(
             chunkCount = chunkIndex
-        )
+        ) }
 
         // Emit the chunk
         viewModelScope.launch {
@@ -355,7 +356,7 @@ class CaptureViewModel : ViewModel() {
     private fun startFadeAnimation() {
         fadeAnimationJob?.cancel()
         fadeAnimationJob = viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isFading = true, fadeProgress = 1f)
+            _uiState.update { it.copy(isFading = true, fadeProgress = 1f) }
 
             val startTime = System.currentTimeMillis()
             val duration = FADE_ANIMATION_DURATION_MS
@@ -364,7 +365,7 @@ class CaptureViewModel : ViewModel() {
                 val elapsed = System.currentTimeMillis() - startTime
                 val progress = 1f - (elapsed.toFloat() / duration).coerceIn(0f, 1f)
 
-                _uiState.value = _uiState.value.copy(fadeProgress = progress)
+                _uiState.update { it.copy(fadeProgress = progress) }
 
                 if (elapsed >= duration) break
                 delay(16) // ~60fps
@@ -373,11 +374,11 @@ class CaptureViewModel : ViewModel() {
             // Clear strokes after fade
             strokeManager.clear()
             _strokes.value = emptyList()
-            _uiState.value = _uiState.value.copy(
+            _uiState.update { it.copy(
                 isFading = false,
                 fadeProgress = 1f,
                 strokeCount = 0
-            )
+            ) }
         }
     }
 
@@ -389,11 +390,11 @@ class CaptureViewModel : ViewModel() {
             // If we were fading, clear immediately
             strokeManager.clear()
             _strokes.value = emptyList()
-            _uiState.value = _uiState.value.copy(
+            _uiState.update { it.copy(
                 isFading = false,
                 fadeProgress = 1f,
                 strokeCount = 0
-            )
+            ) }
         }
     }
 
@@ -414,7 +415,7 @@ class CaptureViewModel : ViewModel() {
         sessionTimerJob = viewModelScope.launch {
             while (_uiState.value.isSessionActive) {
                 val elapsed = System.currentTimeMillis() - sessionStartTime
-                _uiState.value = _uiState.value.copy(sessionDurationMs = elapsed)
+                _uiState.update { it.copy(sessionDurationMs = elapsed) }
                 delay(SESSION_TIMER_INTERVAL_MS)
             }
         }
