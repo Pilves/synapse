@@ -73,7 +73,9 @@ import coil.request.ImageRequest
 import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.SyncStatus
+import com.synapse.model.Destination
 import com.synapse.ui.components.ContextSection
+import com.synapse.ui.components.DestinationSelectionRow
 import com.synapse.ui.theme.SynapseTheme
 
 /**
@@ -152,9 +154,12 @@ fun ReviewScreen(
                         } else {
                             uiState.sessions.sumOf { it.chunks.size }
                         },
+                        availableDestinations = uiState.availableDestinations,
+                        selectedDestinations = uiState.selectedDestinations,
                         onProjectSelected = viewModel::selectProject,
                         onFilenameChanged = viewModel::updateFilename,
-                        onSyncAll = viewModel::syncAll
+                        onSyncAll = viewModel::syncAll,
+                        onDestinationsChanged = viewModel::updateSelectedDestinations
                     )
                 }
             }
@@ -332,9 +337,12 @@ private fun BottomControls(
     filename: String,
     syncStatus: SyncStatus,
     selectedCount: Int,
+    availableDestinations: List<Destination>,
+    selectedDestinations: List<String>,
     onProjectSelected: (Project) -> Unit,
     onFilenameChanged: (String) -> Unit,
-    onSyncAll: () -> Unit
+    onSyncAll: () -> Unit,
+    onDestinationsChanged: (List<String>) -> Unit
 ) {
     val isSyncing = syncStatus is SyncStatus.InProgress || syncStatus is SyncStatus.Queued
 
@@ -355,6 +363,18 @@ private fun BottomControls(
                 onProjectSelected = onProjectSelected,
                 modifier = Modifier.fillMaxWidth()
             )
+
+            // Destination selector
+            if (availableDestinations.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(12.dp))
+
+                DestinationSelectionRow(
+                    selectedDestinations = selectedDestinations,
+                    availableDestinations = availableDestinations,
+                    onDestinationChange = onDestinationsChanged,
+                    onAddDestination = { /* TODO: Open destination picker */ }
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
 

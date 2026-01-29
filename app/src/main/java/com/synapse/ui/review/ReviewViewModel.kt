@@ -2,10 +2,12 @@ package com.synapse.ui.review
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.data.destination.DestinationRepository
 import com.synapse.data.repository.ProjectRepository
 import com.synapse.data.repository.SessionRepository
 import com.synapse.data.repository.SyncRepository
 import com.synapse.model.CapturedContext
+import com.synapse.model.Destination
 import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.Session
@@ -39,7 +41,9 @@ data class ReviewUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val previewChunk: Chunk? = null,
-    val contexts: List<CapturedContext> = emptyList()
+    val contexts: List<CapturedContext> = emptyList(),
+    val availableDestinations: List<Destination> = emptyList(),
+    val selectedDestinations: List<String> = emptyList()
 )
 
 /**
@@ -51,7 +55,8 @@ data class ReviewUiState(
 class ReviewViewModel(
     private val sessionRepository: SessionRepository,
     private val projectRepository: ProjectRepository,
-    private val syncRepository: SyncRepository
+    private val syncRepository: SyncRepository,
+    private val destinationRepository: DestinationRepository? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReviewUiState())
@@ -60,6 +65,7 @@ class ReviewViewModel(
     init {
         observeSessions()
         loadProjects()
+        loadDestinations()
     }
 
     /**
@@ -127,6 +133,29 @@ class ReviewViewModel(
                 }
             }
         }
+    }
+
+    /**
+     * Load available destinations for the destination selector
+     */
+    private fun loadDestinations() {
+        viewModelScope.launch {
+            val destinations = destinationRepository?.getAllDestinations() ?: emptyList()
+            val mainDest = destinationRepository?.mainDestination?.value
+            _uiState.update { state ->
+                state.copy(
+                    availableDestinations = destinations,
+                    selectedDestinations = if (mainDest != null) listOf(mainDest) else emptyList()
+                )
+            }
+        }
+    }
+
+    /**
+     * Update the selected destinations list
+     */
+    fun updateSelectedDestinations(destinations: List<String>) {
+        _uiState.update { it.copy(selectedDestinations = destinations) }
     }
 
     /**
