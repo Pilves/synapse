@@ -21,8 +21,14 @@ fun IntentConfirmationDialog(
     onConfirm: (IntentType) -> Unit,
     onDismiss: () -> Unit
 ) {
+    var dismissed by remember { mutableStateOf(false) }
+    if (dismissed) return
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            dismissed = true
+            onDismiss()
+        },
         title = {
             Text(
                 when (suggestedType) {
@@ -39,7 +45,10 @@ fun IntentConfirmationDialog(
             )
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(suggestedType) }) {
+            TextButton(onClick = {
+                dismissed = true
+                onConfirm(suggestedType)
+            }) {
                 Text(
                     when (suggestedType) {
                         IntentType.TASK -> "Yes, it's a task"
@@ -51,7 +60,10 @@ fun IntentConfirmationDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = { onConfirm(IntentType.NOTE) }) {
+            TextButton(onClick = {
+                dismissed = true
+                onConfirm(IntentType.NOTE)
+            }) {
                 Text("No, just a note")
             }
         }
@@ -59,7 +71,10 @@ fun IntentConfirmationDialog(
 
     LaunchedEffect(Unit) {
         delay(5000)
-        onConfirm(IntentType.NOTE)
+        if (!dismissed) {
+            dismissed = true
+            onConfirm(IntentType.NOTE)
+        }
     }
 }
 
