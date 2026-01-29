@@ -16,6 +16,8 @@ import com.synapse.data.storage.SessionStorage
 import com.synapse.data.storage.SyncStorage
 import com.synapse.model.Chunk
 import com.synapse.model.SyncStatus
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -246,17 +248,22 @@ class SyncRepositoryImpl(
                         // Load chunk image bytes for sending directly to the vision LLM (with size cap)
                         val chunkImageBytes = mutableListOf<ByteArray>()
                         if (hasImageContext) {
+                            val loadedImageBytes = coroutineScope {
+                                segment.chunks.filter { !it.isCorrupted }.map { chunk ->
+                                    async {
+                                        chunkStorage.loadChunkBytes(sessionId, chunk.id)
+                                    }
+                                }.map { it.await() }
+                            }
                             var cumulativeSize = 0L
-                            for (chunk in segment.chunks.filter { !it.isCorrupted }) {
+                            for (bytes in loadedImageBytes) {
+                                if (bytes == null) continue
                                 if (cumulativeSize >= MAX_BATCH_BYTES) {
                                     Log.w(TAG, "Chunk image batch size cap reached ($cumulativeSize bytes), skipping remaining")
                                     break
                                 }
-                                val bytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
-                                if (bytes != null) {
-                                    cumulativeSize += bytes.size
-                                    chunkImageBytes.add(bytes)
-                                }
+                                cumulativeSize += bytes.size
+                                chunkImageBytes.add(bytes)
                             }
                         }
 
@@ -402,18 +409,24 @@ class SyncRepositoryImpl(
         val chunkDataList = mutableListOf<ChunkData>()
         val validChunks = chunks.filter { !it.isCorrupted }
 
-        for ((index, chunk) in validChunks.withIndex()) {
-            val imageBytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
-            if (imageBytes != null) {
-                chunkDataList.add(ChunkData(
-                    image = imageBytes,
-                    timestampSeconds = chunk.timestampSeconds,
-                    index = index
-                ))
-            } else {
-                Log.w(TAG, "Failed to load chunk image: ${chunk.id}")
-            }
+        val loadedChunks = coroutineScope {
+            validChunks.mapIndexed { index, chunk ->
+                async {
+                    val imageBytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
+                    if (imageBytes != null) {
+                        ChunkData(
+                            image = imageBytes,
+                            timestampSeconds = chunk.timestampSeconds,
+                            index = index
+                        )
+                    } else {
+                        Log.w(TAG, "Failed to load chunk image: ${chunk.id}")
+                        null
+                    }
+                }
+            }.mapNotNull { it.await() }
         }
+        chunkDataList.addAll(loadedChunks)
 
         if (chunkDataList.isEmpty()) {
             return Pair(emptyList(), chunks.size)
