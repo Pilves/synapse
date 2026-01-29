@@ -90,7 +90,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
@@ -680,15 +679,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             requestScreenCapturePermission()
         }
 
-        // Read settings
-        try {
-            runBlocking {
+        // Read settings asynchronously (use cached default until loaded)
+        serviceScope.launch {
+            try {
                 val prefs = settingsDataStore.data.first()
                 val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 1f
                 chunkTimeoutMs = (chunkTimeoutSeconds * 1000).toLong()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to read settings", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to read settings", e)
         }
 
         // Hide bubble while capturing
