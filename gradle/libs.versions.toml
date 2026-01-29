@@ -26,7 +26,6 @@ koin = "3.5.3"
 koinCompose = "3.5.3"
 
 # Networking
-ktor = "2.3.8"
 okhttp = "4.12.0"
 
 # Data
@@ -76,11 +75,6 @@ koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compos
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
 
 # Ktor
-ktor-client-core = { group = "io.ktor", name = "ktor-client-core", version.ref = "ktor" }
-ktor-client-android = { group = "io.ktor", name = "ktor-client-android", version.ref = "ktor" }
-ktor-client-content-negotiation = { group = "io.ktor", name = "ktor-client-content-negotiation", version.ref = "ktor" }
-ktor-serialization-kotlinx-json = { group = "io.ktor", name = "ktor-serialization-kotlinx-json", version.ref = "ktor" }
-ktor-client-logging = { group = "io.ktor", name = "ktor-client-logging", version.ref = "ktor" }
 
 # OkHttp (optional, for fallback)
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }

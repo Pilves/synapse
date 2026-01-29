@@ -83,14 +83,7 @@ dependencies {
     implementation(libs.koin.android)
     implementation(libs.koin.androidx.compose)
 
-    // Ktor - Networking
-    implementation(libs.ktor.client.core)
-    implementation(libs.ktor.client.android)
-    implementation(libs.ktor.client.content.negotiation)
-    implementation(libs.ktor.serialization.kotlinx.json)
-    debugImplementation(libs.ktor.client.logging)
-
-    // OkHttp - Alternative/Supplemental HTTP client
+    // OkHttp - HTTP client
     implementation(libs.okhttp)
     debugImplementation(libs.okhttp.logging.interceptor)
 
