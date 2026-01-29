@@ -265,8 +265,18 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                                 capturedTextPreview.value = "[Failed to save screenshot]"
                             }
                         } else {
-                            Log.w(TAG, "Screenshot capture returned null")
-                            capturedTextPreview.value = "[Screenshot failed]"
+                            Log.w(TAG, "Screenshot capture returned null — projection may be dead")
+                            // captureRegion already called invalidateProjection() if VD setup failed
+                            if (!screenshotManager.hasPermission()) {
+                                Log.d(TAG, "Projection invalidated, requesting permission again")
+                                capturedTextPreview.value = "[Re-requesting screen permission...]"
+                                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                                    hideCaptureOverlay()
+                                    requestScreenCapturePermission()
+                                }
+                            } else {
+                                capturedTextPreview.value = "[Screenshot failed]"
+                            }
                         }
                     } else {
                         Log.d(TAG, "No screenshot permission, requesting it now")
@@ -486,6 +496,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         // Auto-request screen capture permission so user doesn't get prompted mid-workflow
         if (!screenshotManager.hasPermission()) {
             Log.d(TAG, "No screen capture permission, requesting upfront")
+            requestScreenCapturePermission()
+        } else if (screenshotManager.hasPermission() && !ensureProjectionReady()) {
+            // hasPermission() returned true (e.g. stale MediaProjectionHolder) but
+            // actual restoration failed — clear stale state and re-request
+            Log.w(TAG, "Permission flag is stale, projection restore failed — re-requesting")
+            screenshotManager.invalidateProjection()
             requestScreenCapturePermission()
         }
     }

@@ -172,11 +172,24 @@ class ScreenshotManager(private val context: Context) {
         Log.d(TAG, "MediaProjection released")
     }
 
+    /**
+     * Clears stale projection state when the projection is detected as dead.
+     * After this, hasPermission() will return false, triggering a re-request.
+     */
+    fun invalidateProjection() {
+        Log.w(TAG, "Invalidating stale MediaProjection state")
+        tearDownVirtualDisplay()
+        mediaProjection = null
+        permissionGranted = false
+        callbackRegistered = false
+    }
+
     suspend fun captureRegion(bounds: Rect): Bitmap? = withContext(Dispatchers.IO) {
         // Lazily create virtual display on first capture
         val projection = mediaProjection
         if (projection == null) {
-            Log.w(TAG, "No MediaProjection for capture")
+            Log.w(TAG, "No MediaProjection for capture — invalidating stale state")
+            invalidateProjection()
             return@withContext null
         }
         if (virtualDisplay == null) {
@@ -185,7 +198,9 @@ class ScreenshotManager(private val context: Context) {
 
         val reader = imageReader
         if (reader == null || virtualDisplay == null) {
-            Log.w(TAG, "No active VirtualDisplay for capture")
+            Log.w(TAG, "No active VirtualDisplay — projection is likely dead")
+            // Projection is stale, clear state so permission is re-requested
+            invalidateProjection()
             return@withContext null
         }
 
