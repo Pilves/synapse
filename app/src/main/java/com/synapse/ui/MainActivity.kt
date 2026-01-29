@@ -72,6 +72,9 @@ class MainActivity : ComponentActivity() {
     // Flag to request navigation to review on next composition
     private var pendingNavigateToReview = false
 
+    // Flag to show screen capture permission dialog on next composition
+    private val showScreenCaptureDialog = mutableStateOf(false)
+
     // MediaProjection permission request launcher
     private val mediaProjectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -149,6 +152,9 @@ class MainActivity : ComponentActivity() {
 
                     // State for showing permission rationale dialog
                     var showOverlayPermissionDialog by remember { mutableStateOf(false) }
+
+                    // Observe screen capture dialog state from intent handling
+                    val showScreenCapturePermissionDialog by showScreenCaptureDialog
 
                     // Check if onboarding is complete
                     LaunchedEffect(Unit) {
@@ -232,6 +238,43 @@ class MainActivity : ComponentActivity() {
                             }
                         )
                     }
+
+                    // Screen capture permission rationale dialog
+                    if (showScreenCapturePermissionDialog) {
+                        AlertDialog(
+                            onDismissRequest = {
+                                showScreenCaptureDialog.value = false
+                            },
+                            title = { Text("Screen Capture Permission") },
+                            text = {
+                                Text(
+                                    "Synapse needs screen capture permission to take screenshots " +
+                                            "of selected regions. This is used when text cannot be " +
+                                            "extracted directly from the screen content. Your screen " +
+                                            "will only be captured when you explicitly select a region."
+                                )
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    onClick = {
+                                        showScreenCaptureDialog.value = false
+                                        requestMediaProjectionPermission()
+                                    }
+                                ) {
+                                    Text("Allow Screen Capture")
+                                }
+                            },
+                            dismissButton = {
+                                TextButton(
+                                    onClick = {
+                                        showScreenCaptureDialog.value = false
+                                    }
+                                ) {
+                                    Text("Not Now")
+                                }
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -265,6 +308,10 @@ class MainActivity : ComponentActivity() {
             }
             OverlayService.ACTION_STOP -> {
                 stopOverlayService()
+            }
+            ACTION_REQUEST_SCREEN_CAPTURE -> {
+                Log.d(TAG, "Screen capture permission requested via intent")
+                showScreenCaptureDialog.value = true
             }
         }
     }
@@ -358,5 +405,8 @@ class MainActivity : ComponentActivity() {
 
         /** Intent action for stopping the overlay from notification */
         const val ACTION_STOP_OVERLAY = "com.synapse.action.STOP_OVERLAY"
+
+        /** Intent action for requesting screen capture (MediaProjection) permission */
+        const val ACTION_REQUEST_SCREEN_CAPTURE = "com.synapse.action.REQUEST_SCREEN_CAPTURE"
     }
 }
