@@ -264,20 +264,7 @@ class SyncStorage(private val context: Context) {
             val dto = SyncQueueDto(
                 items = queue.map { SyncQueueItemDto.fromSyncQueueItem(it) }
             )
-            val tempFile = File(queueFile.parent, "${queueFile.name}.tmp")
-
-            // Write to temp file first
-            tempFile.writeText(StorageJson.instance.encodeToString(dto))
-
-            // Atomic rename
-            if (queueFile.exists()) {
-                queueFile.delete()
-            }
-
-            if (!tempFile.renameTo(queueFile)) {
-                tempFile.copyTo(queueFile, overwrite = true)
-                tempFile.delete()
-            }
+            StorageHelper.atomicWriteText(queueFile, StorageJson.instance.encodeToString(dto))
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save sync queue", e)
         }

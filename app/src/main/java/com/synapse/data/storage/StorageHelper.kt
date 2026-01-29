@@ -49,6 +49,46 @@ class StorageHelper(private val context: Context) {
                 else -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
             }
         }
+
+        /**
+         * Atomically writes text content to a file.
+         * Writes to a temporary file first, then renames to the target.
+         * Falls back to copy+delete if rename fails.
+         *
+         * @param file The target file
+         * @param content The text content to write
+         */
+        fun atomicWriteText(file: File, content: String) {
+            val tempFile = File(file.parent, "${file.name}${TEMP_EXTENSION}")
+            tempFile.writeText(content)
+            if (file.exists()) {
+                file.delete()
+            }
+            if (!tempFile.renameTo(file)) {
+                tempFile.copyTo(file, overwrite = true)
+                tempFile.delete()
+            }
+        }
+
+        /**
+         * Atomically writes binary content to a file.
+         * Writes to a temporary file first, then renames to the target.
+         * Falls back to copy+delete if rename fails.
+         *
+         * @param file The target file
+         * @param bytes The binary content to write
+         */
+        fun atomicWriteBytes(file: File, bytes: ByteArray) {
+            val tempFile = File(file.parent, "${file.name}${TEMP_EXTENSION}")
+            tempFile.writeBytes(bytes)
+            if (file.exists()) {
+                file.delete()
+            }
+            if (!tempFile.renameTo(file)) {
+                tempFile.copyTo(file, overwrite = true)
+                tempFile.delete()
+            }
+        }
     }
 
     /**

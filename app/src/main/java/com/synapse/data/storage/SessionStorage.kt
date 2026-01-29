@@ -138,18 +138,9 @@ class SessionStorage(
                 chunks = emptyList()
             )
 
-            // Use atomic write
             val metadataFile = File(sessionsDir, "$id$JSON_EXTENSION")
-            val tempFile = File(sessionsDir, "$id$JSON_EXTENSION$TEMP_EXTENSION")
-
             val dto = SessionDto.fromSession(session)
-            tempFile.writeText(StorageJson.instance.encodeToString(dto))
-
-            // Atomic rename
-            if (!tempFile.renameTo(metadataFile)) {
-                tempFile.copyTo(metadataFile, overwrite = true)
-                tempFile.delete()
-            }
+            StorageHelper.atomicWriteText(metadataFile, StorageJson.instance.encodeToString(dto))
 
             refreshSessionInMemory(session)
 
@@ -568,22 +559,8 @@ class SessionStorage(
 
     private suspend fun saveSessionInternal(session: Session) {
         val file = File(sessionsDir, "${session.id}$JSON_EXTENSION")
-        val tempFile = File(sessionsDir, "${session.id}$JSON_EXTENSION$TEMP_EXTENSION")
-
         val dto = SessionDto.fromSession(session)
-
-        // Write to temp file first
-        tempFile.writeText(StorageJson.instance.encodeToString(dto))
-
-        // Atomic rename
-        if (file.exists()) {
-            file.delete()
-        }
-
-        if (!tempFile.renameTo(file)) {
-            tempFile.copyTo(file, overwrite = true)
-            tempFile.delete()
-        }
+        StorageHelper.atomicWriteText(file, StorageJson.instance.encodeToString(dto))
     }
 
     private suspend fun loadAllSessions() {
