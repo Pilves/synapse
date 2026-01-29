@@ -124,7 +124,7 @@ fun SyncQueueSummary(
             }
             if (queuedCount > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.CloudOff, null, modifier = Modifier.size(14.dp),
+                    Icon(Icons.Default.CloudOff, contentDescription = "Queued offline", modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.secondary)
                     Spacer(Modifier.width(4.dp))
                     Text("$queuedCount queued", style = MaterialTheme.typography.bodySmall)
@@ -132,7 +132,7 @@ fun SyncQueueSummary(
             }
             if (failedCount > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Error, null, modifier = Modifier.size(14.dp),
+                    Icon(Icons.Default.Error, contentDescription = "Sync failed", modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.width(4.dp))
                     Text("$failedCount failed", style = MaterialTheme.typography.bodySmall)
