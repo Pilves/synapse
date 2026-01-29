@@ -30,6 +30,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -106,6 +107,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private var captureViewModel: CaptureViewModel? = null
     private var pendingChunkCount = 0
     private var isCaptureActive = false
+    private var isRegionMode = false
 
     // Repositories for saving sessions and chunks
     private val sessionRepository: SessionRepository by inject()
@@ -316,6 +318,14 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 pendingChunkCount = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
                 updateBubble()
             }
+            ACTION_TOGGLE_REGION_MODE -> {
+                isRegionMode = !isRegionMode
+                Log.d(TAG, "Region capture mode: $isRegionMode")
+                // Re-show overlay to apply the mode change
+                if (isCaptureActive) {
+                    refreshCaptureOverlay()
+                }
+            }
         }
         return START_STICKY
     }
@@ -486,6 +496,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     CaptureOverlayContent(
                         viewModel = captureViewModel!!,
                         chunkTimeoutMs = chunkTimeoutMs,
+                        isRegionMode = isRegionMode,
                         onMinimize = {
                             // Hide overlay but keep session active
                             hideCaptureOverlay()
@@ -498,6 +509,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                             // Discard current session without ending
                             currentSessionId = null
                             hideCaptureOverlay()
+                        },
+                        onToggleRegionMode = {
+                            isRegionMode = !isRegionMode
+                            Log.d(TAG, "Region mode toggled: $isRegionMode")
+                            refreshCaptureOverlay()
                         },
                         onRegionSelected = { rect ->
                             handleRegionSelected(rect)
@@ -514,12 +530,27 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         windowManager.addView(overlayView, params)
     }
 
+    /**
+     * Re-creates the capture overlay to apply mode changes (e.g. region mode toggle).
+     * Preserves the active session state.
+     */
+    private fun refreshCaptureOverlay() {
+        captureOverlayView?.let {
+            windowManager.removeView(it)
+            captureOverlayView = null
+        }
+        // Don't reset isCaptureActive - we're just refreshing
+        isCaptureActive = false
+        showCaptureOverlay()
+    }
+
     private fun hideCaptureOverlay() {
         captureOverlayView?.let {
             windowManager.removeView(it)
             captureOverlayView = null
         }
         isCaptureActive = false
+        isRegionMode = false
         showFloatingBubble()
     }
 
@@ -555,6 +586,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         const val ACTION_SHOW_CAPTURE = "com.synapse.action.SHOW_CAPTURE"
         const val ACTION_HIDE_CAPTURE = "com.synapse.action.HIDE_CAPTURE"
         const val ACTION_UPDATE_BADGE = "com.synapse.action.UPDATE_BADGE"
+        const val ACTION_TOGGLE_REGION_MODE = "com.synapse.action.TOGGLE_REGION_MODE"
         const val EXTRA_CHUNK_COUNT = "chunk_count"
         private const val NOTIFICATION_ID = 1001
 
@@ -587,6 +619,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             val intent = Intent(context, OverlayService::class.java).apply {
                 action = ACTION_UPDATE_BADGE
                 putExtra(EXTRA_CHUNK_COUNT, count)
+            }
+            context.startService(intent)
+        }
+
+        fun toggleRegionMode(context: Context) {
+            val intent = Intent(context, OverlayService::class.java).apply {
+                action = ACTION_TOGGLE_REGION_MODE
             }
             context.startService(intent)
         }
@@ -810,9 +849,11 @@ private fun FloatingBubble(
 private fun CaptureOverlayContent(
     viewModel: CaptureViewModel,
     chunkTimeoutMs: Long,
+    isRegionMode: Boolean = false,
     onMinimize: () -> Unit,
     onDone: () -> Unit,
     onDiscard: () -> Unit,
+    onToggleRegionMode: (() -> Unit)? = null,
     onRegionSelected: ((android.graphics.Rect) -> Unit)? = null,
     onVibrate: (() -> Unit)? = null
 ) {
@@ -838,7 +879,7 @@ private fun CaptureOverlayContent(
             onFingerTouchPassThrough = {
                 // Finger touch is passing through to app below
             },
-            regionSelectionEnabled = onRegionSelected != null,
+            regionSelectionEnabled = isRegionMode,
             onRegionSelected = onRegionSelected,
             onVibrate = onVibrate
         )
@@ -885,6 +926,24 @@ private fun CaptureOverlayContent(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
                         contentDescription = "Undo",
                         tint = MaterialTheme.colorScheme.onSecondary
+                    )
+                }
+
+                // Toggle region capture mode
+                SmallFloatingActionButton(
+                    onClick = { onToggleRegionMode?.invoke() },
+                    containerColor = if (isRegionMode)
+                        MaterialTheme.colorScheme.tertiary
+                    else
+                        MaterialTheme.colorScheme.surfaceVariant
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Crop,
+                        contentDescription = if (isRegionMode) "Exit Region Mode" else "Region Select",
+                        tint = if (isRegionMode)
+                            MaterialTheme.colorScheme.onTertiary
+                        else
+                            MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
