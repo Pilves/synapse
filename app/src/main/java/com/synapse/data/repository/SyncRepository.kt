@@ -84,9 +84,9 @@ class SyncRepositoryImpl(
     private val chunkStorage: ChunkStorage,
     private val projectStorage: ProjectStorage,
     private val syncStorage: SyncStorage,
-    private val transcriptionServiceProvider: () -> TranscriptionService?,
+    private val transcriptionServiceProvider: suspend () -> TranscriptionService?,
     private val questionAnswerService: QuestionAnswerService? = null,
-    private val llmConfigProvider: (() -> LlmConfig?)? = null
+    private val llmConfigProvider: (suspend () -> LlmConfig?)? = null
 ) : SyncRepository {
 
     companion object {

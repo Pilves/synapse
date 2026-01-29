@@ -196,21 +196,9 @@ class VaultManager(private val context: Context) {
                 Log.d(TAG, "Created new file: $filename")
             }
 
-            // Read existing content
-            val existingContent = readFileContent(fileDoc.uri)
-
-            // Prepare new content with proper separation
-            val newContent = if (existingContent.isNullOrBlank()) {
-                content
-            } else {
-                // Ensure proper line separation
-                val trimmedExisting = existingContent.trimEnd()
-                "$trimmedExisting\n\n$content"
-            }
-
-            // Write the combined content
-            context.contentResolver.openOutputStream(fileDoc.uri, "wt")?.use { outputStream ->
-                outputStream.write(newContent.toByteArray(Charsets.UTF_8))
+            // Append content directly
+            context.contentResolver.openOutputStream(fileDoc.uri, "wa")?.use { outputStream ->
+                outputStream.write(content.toByteArray(Charsets.UTF_8))
                 outputStream.flush()
             } ?: return@withContext WriteResult.Error("Failed to open file for writing")
 

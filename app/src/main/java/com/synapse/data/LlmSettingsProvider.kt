@@ -7,7 +7,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import com.synapse.api.LlmProvider
 import com.synapse.model.LlmConfig
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 
 /**
  * Reads LLM-related settings from DataStore.
@@ -30,43 +29,39 @@ class LlmSettingsProvider(private val dataStore: DataStore<Preferences>) {
      * Reads the current transcription provider, API key, and rate-limiting flag.
      * Falls back to legacy keys when the new keys are absent.
      */
-    fun readLlmSettings(): Triple<LlmProvider, String?, Boolean> {
-        return runBlocking {
-            val prefs = dataStore.data.first()
-            val providerName = prefs[transcriptionProviderKey]
-                ?: prefs[legacyProviderKey]
-                ?: LlmProvider.GEMINI.name
-            val apiKey = prefs[transcriptionApiKeyKey]
-                ?: prefs[legacyApiKeyKey]
-            val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
-            val rateLimitingSafe = prefs[rateLimitingSafeKey] ?: true
-            Triple(provider, apiKey, rateLimitingSafe)
-        }
+    suspend fun readLlmSettings(): Triple<LlmProvider, String?, Boolean> {
+        val prefs = dataStore.data.first()
+        val providerName = prefs[transcriptionProviderKey]
+            ?: prefs[legacyProviderKey]
+            ?: LlmProvider.GEMINI.name
+        val apiKey = prefs[transcriptionApiKeyKey]
+            ?: prefs[legacyApiKeyKey]
+        val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
+        val rateLimitingSafe = prefs[rateLimitingSafeKey] ?: true
+        return Triple(provider, apiKey, rateLimitingSafe)
     }
 
     /**
      * Reads the full LLM configuration including answering provider settings.
      * Returns null when no API key is configured.
      */
-    fun readFullLlmConfig(): LlmConfig? {
-        return runBlocking {
-            val prefs = dataStore.data.first()
-            val providerName = prefs[transcriptionProviderKey]
-                ?: prefs[legacyProviderKey]
-                ?: LlmProvider.GEMINI.name
-            val apiKey = prefs[transcriptionApiKeyKey]
-                ?: prefs[legacyApiKeyKey]
-            val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
-            if (apiKey != null) {
-                val answeringProv = prefs[answeringProviderKey]
-                val answeringKey = prefs[answeringApiKeyKey]
-                LlmConfig(
-                    transcriptionProvider = provider.name,
-                    transcriptionApiKey = apiKey,
-                    answeringProvider = answeringProv ?: provider.name,
-                    answeringApiKey = answeringKey ?: apiKey
-                )
-            } else null
-        }
+    suspend fun readFullLlmConfig(): LlmConfig? {
+        val prefs = dataStore.data.first()
+        val providerName = prefs[transcriptionProviderKey]
+            ?: prefs[legacyProviderKey]
+            ?: LlmProvider.GEMINI.name
+        val apiKey = prefs[transcriptionApiKeyKey]
+            ?: prefs[legacyApiKeyKey]
+        val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
+        return if (apiKey != null) {
+            val answeringProv = prefs[answeringProviderKey]
+            val answeringKey = prefs[answeringApiKeyKey]
+            LlmConfig(
+                transcriptionProvider = provider.name,
+                transcriptionApiKey = apiKey,
+                answeringProvider = answeringProv ?: provider.name,
+                answeringApiKey = answeringKey ?: apiKey
+            )
+        } else null
     }
 }
