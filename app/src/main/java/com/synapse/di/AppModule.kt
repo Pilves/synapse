@@ -39,6 +39,7 @@ import com.synapse.ui.settings.SettingsViewModel
 import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.NetworkMonitor
 import com.synapse.util.PermissionHelper
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.synapse.api.LlmProvider
 import com.synapse.model.LlmConfig
@@ -131,11 +132,12 @@ val repositoryModule = module {
         val transcriptionApiKeyKey = stringPreferencesKey("transcription_api_key")
         val answeringProviderKey = stringPreferencesKey("answering_provider")
         val answeringApiKeyKey = stringPreferencesKey("answering_api_key")
+        val rateLimitingSafeKey = booleanPreferencesKey("rate_limiting_safe")
         // Legacy fallback keys
         val legacyProviderKey = stringPreferencesKey("llm_provider")
         val legacyApiKeyKey = stringPreferencesKey("api_key")
 
-        fun readLlmSettings(): Pair<LlmProvider, String?> {
+        fun readLlmSettings(): Triple<LlmProvider, String?, Boolean> {
             return runBlocking {
                 val prefs = dataStore.data.first()
                 val providerName = prefs[transcriptionProviderKey]
@@ -144,7 +146,8 @@ val repositoryModule = module {
                 val apiKey = prefs[transcriptionApiKeyKey]
                     ?: prefs[legacyApiKeyKey]
                 val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
-                Pair(provider, apiKey)
+                val rateLimitingSafe = prefs[rateLimitingSafeKey] ?: true
+                Triple(provider, apiKey, rateLimitingSafe)
             }
         }
 
@@ -155,8 +158,8 @@ val repositoryModule = module {
             projectStorage = get(),
             syncStorage = get(),
             transcriptionServiceProvider = {
-                val (provider, apiKey) = readLlmSettings()
-                factory.create(provider, apiKey)
+                val (provider, apiKey, rateLimitingSafe) = readLlmSettings()
+                factory.create(provider, apiKey, rateLimitingSafe)
             },
             questionAnswerService = get<QuestionAnswerService>(),
             llmConfigProvider = {

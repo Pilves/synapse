@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit
  */
 class OpenAiService(
     private var apiKey: String? = null,
-    private var customPrompt: String? = null
+    private var customPrompt: String? = null,
+    private val rateLimitingSafe: Boolean = true
 ) : TranscriptionService {
 
     companion object {
@@ -67,8 +68,8 @@ class OpenAiService(
             return TranscriptionResult.empty()
         }
 
-        // Check rate limits
-        if (!canMakeRequest()) {
+        // Check rate limits (only in safe mode)
+        if (rateLimitingSafe && !canMakeRequest()) {
             val waitTime = getWaitTimeMs()
             Log.d(TAG, "Rate limited, waiting ${waitTime}ms")
             delay(waitTime)
@@ -309,7 +310,7 @@ class OpenAiService(
             throw TranscriptionError.ApiKeyMissing()
         }
 
-        if (!canMakeRequest()) {
+        if (rateLimitingSafe && !canMakeRequest()) {
             val waitTime = getWaitTimeMs()
             Log.d(TAG, "Rate limited, waiting ${waitTime}ms")
             delay(waitTime)

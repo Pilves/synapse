@@ -136,7 +136,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private val chunkTimeoutKey = floatPreferencesKey("chunk_timeout_seconds")
 
     // Cached settings values (read when overlay opens)
-    private var chunkTimeoutMs: Long = 3000L
+    private var chunkTimeoutMs: Long = 1000L
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -229,8 +229,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 val sessionId = currentSessionId ?: return@launch
 
                 // Try text extraction via accessibility service first
-                val regionText = SynapseAccessibilityService.getInstance()
-                    ?.getTextInRegion(region)
+                var regionText: CapturedContext.RegionText? = null
+                try {
+                    regionText = SynapseAccessibilityService.getInstance()
+                        ?.getTextInRegion(region)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Text extraction failed, will try screenshot", e)
+                }
 
                 if (regionText != null && regionText.text.isNotBlank()) {
                     sessionRepository.addContext(sessionId, regionText)
@@ -244,13 +249,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     // Fallback: capture screenshot via MediaProjection
                     Log.d(TAG, "No text found, attempting screenshot fallback")
                     if (screenshotManager.hasPermission()) {
-                        screenshotManager.tryRestoreProjection()
                         val bitmap = screenshotManager.captureRegion(region)
                         if (bitmap != null) {
                             Log.d(TAG, "Screenshot captured: ${bitmap.width}x${bitmap.height}")
                             val imagePath = saveScreenshot(bitmap)
                             if (imagePath != null) {
-                                val imageContext = com.synapse.model.CapturedContext.RegionImage(
+                                val imageContext = CapturedContext.RegionImage(
                                     imagePath = imagePath,
                                     bounds = region,
                                     description = null
@@ -265,8 +269,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                             capturedTextPreview.value = "[Screenshot failed]"
                         }
                     } else {
-                        Log.w(TAG, "No screenshot permission for fallback")
-                        capturedTextPreview.value = "[No text found - grant screen capture for screenshots]"
+                        Log.d(TAG, "No screenshot permission, requesting it now")
+                        kotlinx.coroutines.withContext(Dispatchers.Main) {
+                            hideCaptureOverlay()
+                            requestScreenCapturePermission()
+                        }
                     }
                 }
 
@@ -408,6 +415,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         Log.d(TAG, "onStartCommand: action=${intent?.action}")
         when (intent?.action) {
             ACTION_START -> startOverlay()
+            null -> {
+                // Service restarted by system (START_STICKY) — re-initialize
+                Log.d(TAG, "Service restarted by system, re-initializing overlay")
+                startOverlay()
+            }
             ACTION_STOP -> stopOverlay()
             ACTION_SHOW_CAPTURE -> showCaptureOverlay()
             ACTION_HIDE_CAPTURE -> hideCaptureOverlay()
@@ -470,6 +482,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         )
         Log.d(TAG, "Started foreground service")
         showFloatingBubble()
+
+        // Auto-request screen capture permission so user doesn't get prompted mid-workflow
+        if (!screenshotManager.hasPermission()) {
+            Log.d(TAG, "No screen capture permission, requesting upfront")
+            requestScreenCapturePermission()
+        }
     }
 
     /**
@@ -507,6 +525,36 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to set media projection", e)
         }
+    }
+
+    /**
+     * Upgrades the foreground service type and restores the MediaProjection.
+     * Must be called from the service since only the service can upgrade its type.
+     */
+    private fun ensureProjectionReady(): Boolean {
+        if (screenshotManager.hasPermission() && !MediaProjectionHolder.hasResult()) {
+            // Projection already set directly, no restore needed
+            return true
+        }
+        if (!MediaProjectionHolder.hasResult()) return false
+
+        try {
+            // Upgrade foreground service type to include mediaProjection
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    createNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+                Log.d(TAG, "Upgraded foreground service type for media projection")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to upgrade foreground service type", e)
+            return false
+        }
+
+        return screenshotManager.tryRestoreProjection()
     }
 
     private fun stopOverlay() {
@@ -609,11 +657,17 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         if (captureOverlayView != null || isCaptureActive) return
         isCaptureActive = true
 
+        // Ensure screenshot permission is available
+        if (!screenshotManager.hasPermission()) {
+            Log.d(TAG, "No screenshot permission on capture show, requesting")
+            requestScreenCapturePermission()
+        }
+
         // Read settings
         try {
             runBlocking {
                 val prefs = settingsDataStore.data.first()
-                val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 3f
+                val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 1f
                 chunkTimeoutMs = (chunkTimeoutSeconds * 1000).toLong()
             }
         } catch (e: Exception) {
@@ -711,6 +765,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
         isCaptureActive = false
         isRegionMode = false
+        // Pause screen mirroring to save resources while not capturing
+        screenshotManager.pauseCapture()
         showFloatingBubble()
     }
 

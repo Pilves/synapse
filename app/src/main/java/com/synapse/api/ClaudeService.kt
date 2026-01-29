@@ -21,7 +21,8 @@ import java.util.concurrent.TimeUnit
  */
 class ClaudeService(
     private var apiKey: String? = null,
-    private var customPrompt: String? = null
+    private var customPrompt: String? = null,
+    private val rateLimitingSafe: Boolean = true
 ) : TranscriptionService {
 
     companion object {
@@ -68,8 +69,8 @@ class ClaudeService(
             return TranscriptionResult.empty()
         }
 
-        // Check rate limits
-        if (!canMakeRequest()) {
+        // Check rate limits (only in safe mode)
+        if (rateLimitingSafe && !canMakeRequest()) {
             val waitTime = getWaitTimeMs()
             Log.d(TAG, "Rate limited, waiting ${waitTime}ms")
             delay(waitTime)
@@ -297,7 +298,7 @@ class ClaudeService(
             throw TranscriptionError.ApiKeyMissing()
         }
 
-        if (!canMakeRequest()) {
+        if (rateLimitingSafe && !canMakeRequest()) {
             val waitTime = getWaitTimeMs()
             Log.d(TAG, "Rate limited, waiting ${waitTime}ms")
             delay(waitTime)

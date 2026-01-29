@@ -13,8 +13,8 @@ import com.synapse.model.LlmConfig
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.ProjectStorage
 import com.synapse.data.storage.SessionStorage
-import com.synapse.data.storage.SyncItemStatus
 import com.synapse.data.storage.SyncStorage
+import com.synapse.model.Chunk
 import com.synapse.model.SyncStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -96,6 +96,70 @@ class SyncRepositoryImpl(
 
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
 
+    /**
+     * Represents a time-ordered item in a session: either a chunk or a context.
+     */
+    private sealed class SessionItem(val timestamp: Long) {
+        class ChunkItem(val chunk: Chunk, ts: Long) : SessionItem(ts)
+        class ContextItem(val context: CapturedContext, ts: Long) : SessionItem(ts)
+    }
+
+    /**
+     * A segment is a logical grouping of session items separated by context boundaries.
+     * - Context-only segments: written as markdown quotes (no LLM call)
+     * - Chunk-only segments: transcribed and written
+     * - Context + chunk segments: Q&A flow (context is the reference, chunks are the question)
+     */
+    private data class Segment(
+        val contexts: List<CapturedContext> = emptyList(),
+        val chunks: List<Chunk> = emptyList()
+    )
+
+    /**
+     * Segments a session's flat lists of chunks and contexts into logical groups
+     * based on timestamp ordering. Each new context starts a new segment.
+     */
+    private fun segmentSession(
+        chunks: List<Chunk>,
+        contexts: List<CapturedContext>
+    ): List<Segment> {
+        if (chunks.isEmpty() && contexts.isEmpty()) return emptyList()
+
+        // Merge into a single timeline sorted by timestamp
+        val items = mutableListOf<SessionItem>()
+        chunks.forEach { items.add(SessionItem.ChunkItem(it, it.createdAt)) }
+        contexts.forEach { items.add(SessionItem.ContextItem(it, it.timestamp)) }
+        items.sortBy { it.timestamp }
+
+        val segments = mutableListOf<Segment>()
+        var currentContexts = mutableListOf<CapturedContext>()
+        var currentChunks = mutableListOf<Chunk>()
+
+        for (item in items) {
+            when (item) {
+                is SessionItem.ContextItem -> {
+                    // A new context starts a new segment if we have accumulated content
+                    if (currentContexts.isNotEmpty() || currentChunks.isNotEmpty()) {
+                        segments.add(Segment(currentContexts, currentChunks))
+                        currentContexts = mutableListOf()
+                        currentChunks = mutableListOf()
+                    }
+                    currentContexts.add(item.context)
+                }
+                is SessionItem.ChunkItem -> {
+                    currentChunks.add(item.chunk)
+                }
+            }
+        }
+
+        // Don't forget the last segment
+        if (currentContexts.isNotEmpty() || currentChunks.isNotEmpty()) {
+            segments.add(Segment(currentContexts, currentChunks))
+        }
+
+        return segments
+    }
+
     override suspend fun syncSession(sessionId: String, projectId: String, filename: String): SyncStatus = withContext(Dispatchers.IO) {
         _syncStatus.value = SyncStatus.InProgress(0f)
 
@@ -125,108 +189,145 @@ class SyncRepositoryImpl(
                 return@withContext error
             }
 
-            // Get transcription service
-            val transcriptionService = transcriptionServiceProvider()
-            if (transcriptionService == null || !transcriptionService.isConfigured()) {
-                Log.e(TAG, "Transcription service not configured")
-                val error = SyncStatus.Error("LLM service not configured")
+            // Get transcription service (needed if any segment has chunks)
+            val transcriptionService = if (session.chunks.isNotEmpty()) {
+                val service = transcriptionServiceProvider()
+                if (service == null || !service.isConfigured()) {
+                    Log.e(TAG, "Transcription service not configured")
+                    val error = SyncStatus.Error("LLM service not configured")
+                    _syncStatus.value = error
+                    return@withContext error
+                }
+                service
+            } else null
+
+            // Segment the session by timestamp
+            val segments = segmentSession(session.chunks, session.contexts)
+            Log.d(TAG, "Session segmented into ${segments.size} segment(s)")
+
+            _syncStatus.value = SyncStatus.InProgress(0.1f)
+            var failedCount = 0
+            val segmentResults = mutableListOf<String>() // markdown content per segment
+
+            for ((segIndex, segment) in segments.withIndex()) {
+                val segProgress = 0.1f + 0.8f * segIndex / segments.size
+                _syncStatus.value = SyncStatus.InProgress(segProgress)
+
+                when {
+                    // Context-only segment: write context text as markdown quotes
+                    segment.contexts.isNotEmpty() && segment.chunks.isEmpty() -> {
+                        val content = buildString {
+                            for (ctx in segment.contexts) {
+                                val text = contextToText(ctx)
+                                append("> $text\n\n")
+                            }
+                        }
+                        segmentResults.add(content)
+                        Log.d(TAG, "Segment $segIndex: context-only (${segment.contexts.size} contexts)")
+                    }
+
+                    // Chunk-only segment: transcribe and write
+                    segment.contexts.isEmpty() && segment.chunks.isNotEmpty() -> {
+                        val (notes, failed) = transcribeChunks(
+                            sessionId, segment.chunks, transcriptionService!!
+                        )
+                        failedCount += failed
+                        if (notes.isNotEmpty()) {
+                            segmentResults.add(notes.joinToString("\n\n"))
+                        }
+                        Log.d(TAG, "Segment $segIndex: chunks-only (${segment.chunks.size} chunks, $failed failed)")
+                    }
+
+                    // Context + Chunks segment: Q&A flow
+                    segment.contexts.isNotEmpty() && segment.chunks.isNotEmpty() -> {
+                        val hasImageContext = segment.contexts.any { it is CapturedContext.RegionImage }
+
+                        // Load chunk image bytes for sending directly to the vision LLM
+                        val chunkImageBytes = if (hasImageContext) {
+                            segment.chunks.filter { !it.isCorrupted }.mapNotNull { chunk ->
+                                chunkStorage.loadChunkBytes(sessionId, chunk.id)
+                            }
+                        } else emptyList()
+
+                        // Try transcribing chunks to text (for the question)
+                        val (notes, failed) = transcribeChunks(
+                            sessionId, segment.chunks, transcriptionService!!
+                        )
+                        // Track failed transcriptions, but if we send images directly
+                        // and get an answer, we'll subtract them back
+                        failedCount += failed
+                        val chunkFailedCount = failed
+
+                        var answerText: String? = null
+                        Log.d(TAG, "Segment $segIndex: qaService=${questionAnswerService != null}, configProvider=${llmConfigProvider != null}, notes=${notes.size}, failed=$failed, chunkImages=${chunkImageBytes.size}")
+                        if (questionAnswerService != null && llmConfigProvider != null) {
+                            val llmConfig = llmConfigProvider.invoke()
+                            Log.d(TAG, "Segment $segIndex: llmConfig=${llmConfig != null}")
+                            if (llmConfig != null) {
+                                val question = notes.joinToString(" ")
+                                val sendImages = if (hasImageContext && chunkImageBytes.isNotEmpty()) chunkImageBytes else emptyList()
+                                Log.d(TAG, "Segment $segIndex: question='${question.take(80)}', sendImages=${sendImages.size}, hasImageCtx=$hasImageContext")
+
+                                if (question.isNotBlank() || sendImages.isNotEmpty()) {
+                                    try {
+                                        answerText = questionAnswerService.answerQuestion(
+                                            question = question,
+                                            config = llmConfig,
+                                            contexts = segment.contexts,
+                                            additionalImages = sendImages
+                                        )
+                                        Log.d(TAG, "Segment $segIndex Q&A answer: ${answerText.take(80)}")
+                                        // If transcription failed but vision Q&A succeeded,
+                                        // don't count those chunks as failed
+                                        if (chunkFailedCount > 0 && sendImages.isNotEmpty()) {
+                                            failedCount -= chunkFailedCount
+                                            Log.d(TAG, "Segment $segIndex: recovered $chunkFailedCount failed chunks via vision Q&A")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e(TAG, "Segment $segIndex Q&A failed", e)
+                                    }
+                                }
+                            }
+                        }
+
+                        val content = buildString {
+                            // Context
+                            append("### Context\n\n")
+                            for (ctx in segment.contexts) {
+                                append("> ${contextToText(ctx)}\n\n")
+                            }
+                            // Question
+                            if (notes.isNotEmpty()) {
+                                append("### Question\n\n")
+                                notes.forEach { note ->
+                                    append(note)
+                                    append("\n\n")
+                                }
+                            }
+                            // Answer
+                            if (answerText != null) {
+                                append("### Answer\n\n")
+                                append(answerText)
+                                append("\n\n")
+                            }
+                        }
+                        segmentResults.add(content)
+                        Log.d(TAG, "Segment $segIndex: Q&A (${segment.contexts.size} contexts, ${segment.chunks.size} chunks, ${chunkImageBytes.size} chunk images sent)")
+                    }
+                }
+            }
+
+            if (segmentResults.isEmpty()) {
+                val error = SyncStatus.Error("No content produced from session")
                 _syncStatus.value = error
                 return@withContext error
             }
 
-            // Load and transcribe chunks (if any)
-            _syncStatus.value = SyncStatus.InProgress(0.1f)
-            val transcribedNotes = mutableListOf<String>()
-            var failedCount = 0
-
-            if (session.chunks.isNotEmpty()) {
-                val chunkDataList = mutableListOf<ChunkData>()
-                val validChunks = session.chunks.filter { !it.isCorrupted }
-
-                for ((index, chunk) in validChunks.withIndex()) {
-                    val imageBytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
-                    if (imageBytes != null) {
-                        chunkDataList.add(ChunkData(
-                            image = imageBytes,
-                            timestampSeconds = chunk.timestampSeconds,
-                            index = index
-                        ))
-                    } else {
-                        Log.w(TAG, "Failed to load chunk image: ${chunk.id}")
-                    }
-                }
-
-                if (chunkDataList.isEmpty() && session.contexts.isEmpty()) {
-                    Log.e(TAG, "No valid chunks to transcribe")
-                    val error = SyncStatus.Error("No valid chunks to transcribe")
-                    _syncStatus.value = error
-                    return@withContext error
-                }
-
-                if (chunkDataList.isNotEmpty()) {
-                    // Transcribe in batches
-                    _syncStatus.value = SyncStatus.InProgress(0.2f)
-                    val totalBatches = (chunkDataList.size + MAX_CHUNKS_PER_REQUEST - 1) / MAX_CHUNKS_PER_REQUEST
-
-                    chunkDataList.chunked(MAX_CHUNKS_PER_REQUEST).forEachIndexed { batchIndex, batch ->
-                        try {
-                            val result = transcriptionService.transcribe(
-                                chunks = batch,
-                                cleanupEnabled = true,
-                                advancedFormatting = false
-                            )
-
-                            transcribedNotes.addAll(result.notes.map { it.text })
-                            failedCount += result.failedChunks.size
-
-                            val progress = 0.2f + (0.6f * (batchIndex + 1) / totalBatches)
-                            _syncStatus.value = SyncStatus.InProgress(progress)
-                        } catch (e: TranscriptionError) {
-                            Log.e(TAG, "Transcription error on batch $batchIndex", e)
-                            failedCount += batch.size
-                        }
-                    }
-
-                    if (transcribedNotes.isEmpty() && session.contexts.isEmpty()) {
-                        Log.e(TAG, "All chunks failed to transcribe")
-                        val error = SyncStatus.Error("Transcription failed for all chunks")
-                        _syncStatus.value = error
-                        return@withContext error
-                    }
-                }
-            }
-
-            // Check if session has contexts (Q&A flow)
-            val contexts = session.contexts
-            var answerText: String? = null
-
-            if (contexts.isNotEmpty() && transcribedNotes.isNotEmpty() &&
-                questionAnswerService != null && llmConfigProvider != null
-            ) {
-                _syncStatus.value = SyncStatus.InProgress(0.8f)
-                val llmConfig = llmConfigProvider.invoke()
-                if (llmConfig != null) {
-                    val question = transcribedNotes.joinToString(" ")
-                    try {
-                        answerText = questionAnswerService.answerQuestion(
-                            question = question,
-                            config = llmConfig,
-                            contexts = contexts
-                        )
-                        Log.d(TAG, "Q&A answer received: ${answerText.take(80)}")
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Q&A failed, writing without answer", e)
-                    }
-                }
-            }
-
-            // Write to file
+            // Write all segments to file under one header
             _syncStatus.value = SyncStatus.InProgress(0.9f)
-            val writeSuccess = if (contexts.isNotEmpty()) {
-                writeQAToProjectFile(project.pathUri, filename, contexts, transcribedNotes, answerText)
-            } else {
-                writeToProjectFile(project.pathUri, filename, transcribedNotes)
-            }
+            val writeSuccess = writeSegmentsToProjectFile(
+                project.pathUri, filename, segmentResults
+            )
 
             if (!writeSuccess) {
                 val error = SyncStatus.Error("Failed to write to file")
@@ -258,6 +359,123 @@ class SyncRepositoryImpl(
             val error = SyncStatus.Error(e.message ?: "Unknown error")
             _syncStatus.value = error
             error
+        }
+    }
+
+    /**
+     * Extracts display text from a CapturedContext.
+     */
+    private fun contextToText(ctx: CapturedContext): String = when (ctx) {
+        is CapturedContext.RegionText -> ctx.text
+        is CapturedContext.SelectedText -> ctx.text
+        is CapturedContext.AutoContext -> buildString {
+            append(ctx.sourceApp)
+            if (ctx.sourceUrl != null) append(" (${ctx.sourceUrl})")
+            if (ctx.pageTitle != null) append(" - ${ctx.pageTitle}")
+        }
+        is CapturedContext.RegionImage -> ctx.description ?: "(image)"
+    }
+
+    /**
+     * Transcribes a list of chunks and returns the transcribed notes and failed count.
+     */
+    private suspend fun transcribeChunks(
+        sessionId: String,
+        chunks: List<Chunk>,
+        transcriptionService: TranscriptionService
+    ): Pair<List<String>, Int> {
+        val chunkDataList = mutableListOf<ChunkData>()
+        val validChunks = chunks.filter { !it.isCorrupted }
+
+        for ((index, chunk) in validChunks.withIndex()) {
+            val imageBytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
+            if (imageBytes != null) {
+                chunkDataList.add(ChunkData(
+                    image = imageBytes,
+                    timestampSeconds = chunk.timestampSeconds,
+                    index = index
+                ))
+            } else {
+                Log.w(TAG, "Failed to load chunk image: ${chunk.id}")
+            }
+        }
+
+        if (chunkDataList.isEmpty()) {
+            return Pair(emptyList(), chunks.size)
+        }
+
+        val transcribedNotes = mutableListOf<String>()
+        var failedCount = 0
+
+        val totalBatches = (chunkDataList.size + MAX_CHUNKS_PER_REQUEST - 1) / MAX_CHUNKS_PER_REQUEST
+        chunkDataList.chunked(MAX_CHUNKS_PER_REQUEST).forEachIndexed { batchIndex, batch ->
+            try {
+                val result = transcriptionService.transcribe(
+                    chunks = batch,
+                    cleanupEnabled = true,
+                    advancedFormatting = false
+                )
+                transcribedNotes.addAll(result.notes.map { it.text })
+                failedCount += result.failedChunks.size
+            } catch (e: TranscriptionError) {
+                Log.e(TAG, "Transcription error on batch $batchIndex", e)
+                failedCount += batch.size
+            }
+        }
+
+        return Pair(transcribedNotes, failedCount)
+    }
+
+    /**
+     * Writes all segment results to a project file under a single Notes header.
+     */
+    private suspend fun writeSegmentsToProjectFile(
+        projectPathUri: String,
+        filename: String,
+        segmentResults: List<String>
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
+            val projectUri = Uri.parse(projectPathUri)
+            val projectDir = DocumentFile.fromTreeUri(context, projectUri)
+                ?: return@withContext false
+
+            var targetFile = projectDir.findFile(filename)
+            if (targetFile == null) {
+                val mimeType = when {
+                    filename.endsWith(".md") -> "text/markdown"
+                    filename.endsWith(".txt") -> "text/plain"
+                    else -> "text/plain"
+                }
+                targetFile = projectDir.createFile(mimeType, filename)
+            }
+
+            if (targetFile == null) {
+                Log.e(TAG, "Failed to create/find file: $filename")
+                return@withContext false
+            }
+
+            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                .format(Date())
+
+            val content = buildString {
+                append("\n\n---\n\n## Notes - $timestamp\n\n")
+                segmentResults.forEachIndexed { index, segmentContent ->
+                    if (segmentResults.size > 1 && index > 0) {
+                        append("---\n\n")
+                    }
+                    append(segmentContent)
+                }
+            }
+
+            context.contentResolver.openOutputStream(targetFile.uri, "wa")?.use { output ->
+                output.write(content.toByteArray(Charsets.UTF_8))
+            } ?: return@withContext false
+
+            Log.d(TAG, "Successfully wrote ${segmentResults.size} segment(s) to $filename")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to write to project file", e)
+            false
         }
     }
 
@@ -302,138 +520,4 @@ class SyncRepositoryImpl(
         }
     }
 
-    /**
-     * Writes Q&A-formatted content (context + question + answer) to a project file.
-     */
-    private suspend fun writeQAToProjectFile(
-        projectPathUri: String,
-        filename: String,
-        contexts: List<CapturedContext>,
-        transcribedNotes: List<String>,
-        answer: String?
-    ): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val projectUri = Uri.parse(projectPathUri)
-            val projectDir = DocumentFile.fromTreeUri(context, projectUri)
-                ?: return@withContext false
-
-            var targetFile = projectDir.findFile(filename)
-            if (targetFile == null) {
-                val mimeType = when {
-                    filename.endsWith(".md") -> "text/markdown"
-                    filename.endsWith(".txt") -> "text/plain"
-                    else -> "text/plain"
-                }
-                targetFile = projectDir.createFile(mimeType, filename)
-            }
-
-            if (targetFile == null) {
-                Log.e(TAG, "Failed to create/find file: $filename")
-                return@withContext false
-            }
-
-            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                .format(Date())
-
-            val content = buildString {
-                append("\n\n---\n\n## Notes - $timestamp\n\n")
-
-                // Context section
-                append("### Context\n\n")
-                for (ctx in contexts) {
-                    val text = when (ctx) {
-                        is CapturedContext.RegionText -> ctx.text
-                        is CapturedContext.SelectedText -> ctx.text
-                        is CapturedContext.AutoContext -> buildString {
-                            append(ctx.sourceApp)
-                            if (ctx.sourceUrl != null) append(" (${ctx.sourceUrl})")
-                            if (ctx.pageTitle != null) append(" - ${ctx.pageTitle}")
-                        }
-                        is CapturedContext.RegionImage -> ctx.description ?: "(image)"
-                    }
-                    append("> $text\n\n")
-                }
-
-                // Question section
-                if (transcribedNotes.isNotEmpty()) {
-                    append("### Question\n\n")
-                    transcribedNotes.forEach { note ->
-                        append(note)
-                        append("\n\n")
-                    }
-                }
-
-                // Answer section
-                if (answer != null) {
-                    append("### Answer\n\n")
-                    append(answer)
-                    append("\n\n")
-                }
-            }
-
-            context.contentResolver.openOutputStream(targetFile.uri, "wa")?.use { output ->
-                output.write(content.toByteArray(Charsets.UTF_8))
-            } ?: return@withContext false
-
-            Log.d(TAG, "Successfully wrote Q&A to $filename")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to write Q&A to project file", e)
-            false
-        }
-    }
-
-    /**
-     * Writes transcribed notes to a project file using SAF.
-     */
-    private suspend fun writeToProjectFile(
-        projectPathUri: String,
-        filename: String,
-        notes: List<String>
-    ): Boolean = withContext(Dispatchers.IO) {
-        try {
-            val projectUri = Uri.parse(projectPathUri)
-            val projectDir = DocumentFile.fromTreeUri(context, projectUri)
-                ?: return@withContext false
-
-            // Find or create the target file
-            var targetFile = projectDir.findFile(filename)
-            if (targetFile == null) {
-                val mimeType = when {
-                    filename.endsWith(".md") -> "text/markdown"
-                    filename.endsWith(".txt") -> "text/plain"
-                    else -> "text/plain"
-                }
-                targetFile = projectDir.createFile(mimeType, filename)
-            }
-
-            if (targetFile == null) {
-                Log.e(TAG, "Failed to create/find file: $filename")
-                return@withContext false
-            }
-
-            // Build content to append
-            val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                .format(Date())
-            val header = "\n\n---\n\n## Notes - $timestamp\n\n"
-            val content = buildString {
-                append(header)
-                notes.forEach { note ->
-                    append(note)
-                    append("\n\n")
-                }
-            }
-
-            // Append to file
-            context.contentResolver.openOutputStream(targetFile.uri, "wa")?.use { output ->
-                output.write(content.toByteArray(Charsets.UTF_8))
-            } ?: return@withContext false
-
-            Log.d(TAG, "Successfully wrote ${notes.size} notes to $filename")
-            true
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to write to project file", e)
-            false
-        }
-    }
 }

@@ -7,7 +7,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -98,7 +97,7 @@ fun SynapseNavGraph(
     ) {
         // Onboarding screen
         composable(route = Screen.Onboarding.route) {
-            val onboardingViewModel: OnboardingViewModel = viewModel()
+            val onboardingViewModel: OnboardingViewModel = koinViewModel()
 
             OnboardingScreen(
                 onOnboardingComplete = {

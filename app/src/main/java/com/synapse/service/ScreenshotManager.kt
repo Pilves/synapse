@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
+import android.hardware.display.VirtualDisplay
 import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
@@ -20,9 +21,9 @@ import kotlinx.coroutines.withContext
 /**
  * Manages screen capture via MediaProjection API.
  *
- * Requires a MediaProjection token obtained through user consent in an Activity.
- * The token is passed either directly via [setMediaProjection] or can be
- * recreated from stored result data in [MediaProjectionHolder].
+ * Keeps a persistent VirtualDisplay alive for the lifetime of the MediaProjection
+ * so that multiple screenshots can be taken without re-creating the projection
+ * (required on Android 14+ where createVirtualDisplay is single-use per projection).
  */
 class ScreenshotManager(private val context: Context) {
 
@@ -35,38 +36,34 @@ class ScreenshotManager(private val context: Context) {
     private var callbackRegistered = false
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    // Persistent virtual display + image reader kept alive between captures
+    private var virtualDisplay: VirtualDisplay? = null
+    private var imageReader: ImageReader? = null
+
     private val projectionCallback = object : MediaProjection.Callback() {
         override fun onStop() {
-            Log.d(TAG, "MediaProjection stopped via callback")
+            Log.w(TAG, "MediaProjection stopped via callback")
+            tearDownVirtualDisplay()
             mediaProjection = null
             permissionGranted = false
             callbackRegistered = false
         }
     }
 
-    /**
-     * Whether screen capture permission has been granted.
-     * Also checks [MediaProjectionHolder] for stored results that haven't
-     * been turned into a projection yet.
-     */
     fun hasPermission(): Boolean = permissionGranted || MediaProjectionHolder.hasResult()
 
     fun setMediaProjection(projection: MediaProjection) {
         mediaProjection = projection
         permissionGranted = true
         registerCallback(projection)
+        // Don't create virtual display eagerly — it will be created on first capture
         Log.d(TAG, "MediaProjection set directly")
     }
 
     private fun registerCallback(projection: MediaProjection) {
         if (!callbackRegistered) {
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    projection.registerCallback(projectionCallback, mainHandler)
-                } else {
-                    @Suppress("DEPRECATION")
-                    projection.registerCallback(projectionCallback, mainHandler)
-                }
+                projection.registerCallback(projectionCallback, mainHandler)
                 callbackRegistered = true
                 Log.d(TAG, "MediaProjection callback registered")
             } catch (e: Exception) {
@@ -76,11 +73,44 @@ class ScreenshotManager(private val context: Context) {
     }
 
     /**
-     * Attempts to obtain a MediaProjection from the stored holder result.
-     * Returns true if successful, false if no stored result or creation failed.
+     * Creates the persistent VirtualDisplay and ImageReader for this projection.
      */
+    private fun setupVirtualDisplay(projection: MediaProjection) {
+        tearDownVirtualDisplay()
+
+        val metrics = context.resources.displayMetrics
+        val width = metrics.widthPixels
+        val height = metrics.heightPixels
+        val density = metrics.densityDpi
+
+        val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        imageReader = reader
+
+        try {
+            virtualDisplay = projection.createVirtualDisplay(
+                "SynapseCapture",
+                width, height, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                reader.surface,
+                null, null
+            )
+            Log.d(TAG, "Persistent VirtualDisplay created (${width}x${height})")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create VirtualDisplay", e)
+            reader.close()
+            imageReader = null
+        }
+    }
+
+    private fun tearDownVirtualDisplay() {
+        virtualDisplay?.release()
+        virtualDisplay = null
+        imageReader?.close()
+        imageReader = null
+    }
+
     fun tryRestoreProjection(): Boolean {
-        if (mediaProjection != null) return true
+        if (mediaProjection != null && virtualDisplay != null) return true
         if (!MediaProjectionHolder.hasResult()) return false
 
         val resultCode = MediaProjectionHolder.getResultCode() ?: return false
@@ -94,6 +124,7 @@ class ScreenshotManager(private val context: Context) {
                 mediaProjection = projection
                 permissionGranted = true
                 registerCallback(projection)
+                setupVirtualDisplay(projection)
                 Log.d(TAG, "MediaProjection restored from holder")
                 true
             } else {
@@ -106,6 +137,26 @@ class ScreenshotManager(private val context: Context) {
         }
     }
 
+    /**
+     * Pauses screen mirroring to save resources when not actively capturing.
+     * Sets the virtual display surface to null so no frames are rendered.
+     * The virtual display and projection stay alive for reuse.
+     */
+    fun pauseCapture() {
+        virtualDisplay?.surface = null
+        Log.d(TAG, "Capture paused — surface detached")
+    }
+
+    /**
+     * Resumes screen mirroring by reattaching the ImageReader surface.
+     * Call before captureRegion() if pauseCapture() was called.
+     */
+    fun resumeCapture() {
+        val reader = imageReader ?: return
+        virtualDisplay?.surface = reader.surface
+        Log.d(TAG, "Capture resumed — surface reattached")
+    }
+
     fun releaseProjection() {
         if (callbackRegistered) {
             try {
@@ -113,6 +164,7 @@ class ScreenshotManager(private val context: Context) {
             } catch (_: Exception) {}
             callbackRegistered = false
         }
+        tearDownVirtualDisplay()
         mediaProjection?.stop()
         mediaProjection = null
         permissionGranted = false
@@ -121,41 +173,49 @@ class ScreenshotManager(private val context: Context) {
     }
 
     suspend fun captureRegion(bounds: Rect): Bitmap? = withContext(Dispatchers.IO) {
-        val projection = mediaProjection ?: return@withContext null
+        // Lazily create virtual display on first capture
+        val projection = mediaProjection
+        if (projection == null) {
+            Log.w(TAG, "No MediaProjection for capture")
+            return@withContext null
+        }
+        if (virtualDisplay == null) {
+            setupVirtualDisplay(projection)
+        }
 
-        val metrics = context.resources.displayMetrics
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
+        val reader = imageReader
+        if (reader == null || virtualDisplay == null) {
+            Log.w(TAG, "No active VirtualDisplay for capture")
+            return@withContext null
+        }
 
-        val imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        // Ensure surface is attached (may have been paused)
+        if (virtualDisplay?.surface == null) {
+            virtualDisplay?.surface = reader.surface
+        }
 
-        val virtualDisplay = projection.createVirtualDisplay(
-            "SynapseCapture",
-            width, height, density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader.surface,
-            null, null
-        )
+        // Wait for a fresh frame after reattaching surface
+        delay(200)
 
-        delay(100) // Wait for capture
-
-        val image = imageReader.acquireLatestImage()
+        val image = reader.acquireLatestImage()
         val fullBitmap = image?.let { imageToBitmap(it) }
         image?.close()
 
-        virtualDisplay.release()
-        imageReader.close()
-
-        fullBitmap?.let {
-            // Crop to region bounds (clamp to screen size)
-            val left = bounds.left.coerceIn(0, width - 1)
-            val top = bounds.top.coerceIn(0, height - 1)
-            val right = bounds.right.coerceIn(left + 1, width)
-            val bottom = bounds.bottom.coerceIn(top + 1, height)
-
-            Bitmap.createBitmap(it, left, top, right - left, bottom - top)
+        if (fullBitmap == null) {
+            Log.w(TAG, "acquireLatestImage returned null")
+            return@withContext null
         }
+
+        val width = fullBitmap.width
+        val height = fullBitmap.height
+
+        // Crop to region bounds (clamp to screen size)
+        val left = bounds.left.coerceIn(0, width - 1)
+        val top = bounds.top.coerceIn(0, height - 1)
+        val right = bounds.right.coerceIn(left + 1, width)
+        val bottom = bounds.bottom.coerceIn(top + 1, height)
+
+        Bitmap.createBitmap(fullBitmap, left, top, right - left, bottom - top)
     }
 
     private fun imageToBitmap(image: Image): Bitmap {

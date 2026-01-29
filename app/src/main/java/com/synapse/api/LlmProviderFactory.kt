@@ -17,10 +17,11 @@ class LlmProviderFactory(
      * @param config The LLM configuration specifying provider and API key
      * @return Configured TranscriptionService for transcription
      */
-    fun getTranscriptionService(config: LlmConfig): TranscriptionService {
+    fun getTranscriptionService(config: LlmConfig, rateLimitingSafe: Boolean = true): TranscriptionService {
         return transcriptionServiceFactory.create(
             provider = resolveProvider(config.transcriptionProvider),
-            apiKey = config.transcriptionApiKey
+            apiKey = config.transcriptionApiKey,
+            rateLimitingSafe = rateLimitingSafe
         )
     }
 
@@ -33,12 +34,13 @@ class LlmProviderFactory(
      * @param config The LLM configuration specifying provider and API key
      * @return Configured TranscriptionService for answering
      */
-    fun getAnsweringService(config: LlmConfig): TranscriptionService {
+    fun getAnsweringService(config: LlmConfig, rateLimitingSafe: Boolean = true): TranscriptionService {
         val provider = config.answeringProvider ?: config.transcriptionProvider
         val apiKey = config.answeringApiKey ?: config.transcriptionApiKey
         return transcriptionServiceFactory.create(
             provider = resolveProvider(provider),
-            apiKey = apiKey
+            apiKey = apiKey,
+            rateLimitingSafe = rateLimitingSafe
         )
     }
 

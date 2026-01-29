@@ -296,6 +296,43 @@ class GeminiService(
             return textQuery(prompt, systemPrompt)
         }
 
+        var lastException: Exception? = null
+        var retryDelay = INITIAL_RETRY_DELAY_MS
+
+        repeat(MAX_RETRIES) { attempt ->
+            try {
+                return executeVisionQueryRequest(prompt, images, systemPrompt)
+            } catch (e: TranscriptionError.RateLimitError) {
+                Log.w(TAG, "Vision query rate limited on attempt ${attempt + 1}, waiting...")
+                val waitTime = e.retryAfterSeconds?.times(1000L) ?: retryDelay
+                delay(waitTime)
+                retryDelay *= 2
+                lastException = e
+            } catch (e: TranscriptionError.ServerError) {
+                if (e.statusCode in 500..599) {
+                    Log.w(TAG, "Vision query server error on attempt ${attempt + 1}: ${e.message}")
+                    delay(retryDelay)
+                    retryDelay *= 2
+                    lastException = e
+                } else {
+                    throw e
+                }
+            } catch (e: IOException) {
+                Log.w(TAG, "Vision query network error on attempt ${attempt + 1}: ${e.message}")
+                delay(retryDelay)
+                retryDelay *= 2
+                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
+            }
+        }
+
+        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
+    }
+
+    private fun executeVisionQueryRequest(
+        prompt: String,
+        images: List<ByteArray>,
+        systemPrompt: String?
+    ): String {
         val parts = JSONArray()
 
         val fullPrompt = if (systemPrompt != null) "$systemPrompt\n\n$prompt" else prompt

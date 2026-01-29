@@ -24,6 +24,8 @@ Always answer the user's question fully and completely. Never ask for clarificat
 everything that was asked. If the user asks about multiple topics, cover all of them. \
 When context is provided from the user's screen or notes, use it to inform your answer. \
 When images are provided, describe and analyze them thoroughly. \
+If an image contains code, always transcribe the code into a properly formatted code block in your answer. \
+Since images cannot be embedded in the notes, any code visible in screenshots must be reproduced as text. \
 Format your response in markdown. Use code blocks with language tags for code examples."""
     }
 
@@ -43,13 +45,14 @@ Format your response in markdown. Use code blocks with language tags for code ex
     suspend fun answerQuestion(
         question: String,
         config: LlmConfig,
-        contexts: List<CapturedContext> = emptyList()
+        contexts: List<CapturedContext> = emptyList(),
+        additionalImages: List<ByteArray> = emptyList()
     ): String {
         val service = llmProviderFactory.getAnsweringService(config)
         Log.d(TAG, "Answering question using ${service.provider.displayName} (${service.modelId})")
 
         // Collect image bytes from RegionImage contexts
-        val imageBytes = contexts.filterIsInstance<CapturedContext.RegionImage>().mapNotNull { ctx ->
+        val contextImages = contexts.filterIsInstance<CapturedContext.RegionImage>().mapNotNull { ctx ->
             try {
                 val file = File(ctx.imagePath)
                 if (file.exists()) file.readBytes() else null
@@ -58,6 +61,9 @@ Format your response in markdown. Use code blocks with language tags for code ex
                 null
             }
         }
+
+        // Combine context images + additional images (e.g. handwritten scribble chunks)
+        val allImages = contextImages + additionalImages
 
         val contextText = contexts.mapNotNull { context ->
             when (context) {
@@ -68,8 +74,8 @@ Format your response in markdown. Use code blocks with language tags for code ex
                     if (context.sourceUrl != null) append(" (${context.sourceUrl})")
                     if (context.pageTitle != null) append(" - ${context.pageTitle}")
                 }
-                is CapturedContext.RegionImage -> if (imageBytes.isNotEmpty()) {
-                    "Image attached (see below)"
+                is CapturedContext.RegionImage -> if (contextImages.isNotEmpty()) {
+                    "Screenshot image attached (see below)"
                 } else {
                     "Image: ${context.description ?: "could not load image"}"
                 }
@@ -82,13 +88,17 @@ Format your response in markdown. Use code blocks with language tags for code ex
                 appendLine(contextText)
                 appendLine()
             }
-            appendLine("Question: $question")
+            if (additionalImages.isNotEmpty()) {
+                appendLine("The user's handwritten question is in the attached image(s). Read it and answer based on the context above.")
+            } else if (question.isNotBlank()) {
+                appendLine("Question: $question")
+            }
         }
 
         return try {
-            if (imageBytes.isNotEmpty()) {
-                Log.d(TAG, "Sending vision query with ${imageBytes.size} image(s)")
-                service.visionQuery(prompt, imageBytes, SYSTEM_PROMPT)
+            if (allImages.isNotEmpty()) {
+                Log.d(TAG, "Sending vision query with ${allImages.size} image(s) (${contextImages.size} context + ${additionalImages.size} scribble)")
+                service.visionQuery(prompt, allImages, SYSTEM_PROMPT)
             } else {
                 service.textQuery(prompt, SYSTEM_PROMPT)
             }

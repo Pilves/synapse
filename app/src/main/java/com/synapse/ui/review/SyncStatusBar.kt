@@ -154,7 +154,12 @@ private fun InProgressContent(progress: Float) {
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "Syncing... ${(progress * 100).toInt()}%",
+                text = when {
+                    progress < 0.1f -> "Preparing..."
+                    progress < 0.9f -> "Processing... ${(progress * 100).toInt()}%"
+                    progress < 1.0f -> "Writing to file..."
+                    else -> "Finishing up..."
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant

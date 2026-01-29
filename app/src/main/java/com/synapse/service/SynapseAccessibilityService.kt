@@ -148,7 +148,9 @@ class SynapseAccessibilityService : AccessibilityService() {
             try {
                 val nodeBounds = Rect()
                 node.getBoundsInScreen(nodeBounds)
-                Rect.intersects(nodeBounds, screenBounds)
+                // Require the node's center to be inside the selection region,
+                // not just any overlap — avoids grabbing surrounding text
+                screenBounds.contains(nodeBounds.centerX(), nodeBounds.centerY())
             } catch (e: Exception) {
                 false
             }

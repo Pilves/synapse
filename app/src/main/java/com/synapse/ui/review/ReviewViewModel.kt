@@ -365,6 +365,15 @@ class ReviewViewModel(
 
             _uiState.update { it.copy(syncStatus = SyncStatus.Queued) }
 
+            // Observe granular progress from the repository
+            val progressJob = viewModelScope.launch {
+                syncRepository.observeSyncStatus().collectLatest { repoStatus ->
+                    if (repoStatus is SyncStatus.InProgress) {
+                        _uiState.update { it.copy(syncStatus = repoStatus) }
+                    }
+                }
+            }
+
             try {
                 // Determine which sessions to sync
                 val sessionsToSync = if (state.viewMode == ViewMode.SEPARATE && state.selectedChunkIds.isNotEmpty()) {
@@ -378,6 +387,7 @@ class ReviewViewModel(
                 }
 
                 if (sessionsToSync.isEmpty()) {
+                    progressJob.cancel()
                     _uiState.update {
                         it.copy(
                             syncStatus = SyncStatus.Idle,
@@ -392,10 +402,6 @@ class ReviewViewModel(
                 var failedCount = 0
 
                 for ((index, session) in sessionsToSync.withIndex()) {
-                    _uiState.update {
-                        it.copy(syncStatus = SyncStatus.InProgress((index.toFloat()) / totalSessions))
-                    }
-
                     val result = syncRepository.syncSession(
                         sessionId = session.id,
                         projectId = state.selectedProject.id,
@@ -425,6 +431,7 @@ class ReviewViewModel(
                     else -> SyncStatus.PartialSuccess(syncedCount, failedCount)
                 }
 
+                progressJob.cancel()
                 _uiState.update { it.copy(syncStatus = finalStatus) }
 
                 // If successful, refresh the session list
@@ -432,6 +439,7 @@ class ReviewViewModel(
                     loadPendingSessions()
                 }
             } catch (e: Exception) {
+                progressJob.cancel()
                 _uiState.update {
                     it.copy(syncStatus = SyncStatus.Error(e.message ?: "Unknown error"))
                 }
