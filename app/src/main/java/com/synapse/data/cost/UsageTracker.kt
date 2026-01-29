@@ -9,6 +9,7 @@ import com.synapse.model.UsageStats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import java.util.Calendar
+import java.util.TimeZone
 
 class UsageTracker(
     private val dataStore: DataStore<Preferences>
@@ -21,7 +22,7 @@ class UsageTracker(
     }
 
     val usageStats: Flow<UsageStats> = dataStore.data.map { prefs ->
-        val currentMonth = Calendar.getInstance().get(Calendar.MONTH)
+        val currentMonth = Calendar.getInstance(TimeZone.getTimeZone("UTC")).get(Calendar.MONTH)
         val storedMonth = prefs[MONTH_KEY] ?: currentMonth
 
         if (currentMonth != storedMonth) {
@@ -45,7 +46,7 @@ class UsageTracker(
      */
     suspend fun checkMonthReset() {
         dataStore.edit { prefs ->
-            val currentMonth = Calendar.getInstance().get(Calendar.MONTH)
+            val currentMonth = Calendar.getInstance(TimeZone.getTimeZone("UTC")).get(Calendar.MONTH)
             val storedMonth = prefs[MONTH_KEY] ?: currentMonth
 
             if (currentMonth != storedMonth) {
@@ -58,7 +59,7 @@ class UsageTracker(
 
     suspend fun recordSync(cost: Double) {
         dataStore.edit { prefs ->
-            val currentMonth = Calendar.getInstance().get(Calendar.MONTH)
+            val currentMonth = Calendar.getInstance(TimeZone.getTimeZone("UTC")).get(Calendar.MONTH)
             val storedMonth = prefs[MONTH_KEY] ?: currentMonth
 
             if (currentMonth != storedMonth) {
@@ -78,7 +79,7 @@ class UsageTracker(
         dataStore.edit { prefs ->
             prefs[MONTHLY_COST_KEY] = 0.0
             prefs[MONTHLY_SYNCS_KEY] = 0
-            prefs[MONTH_KEY] = Calendar.getInstance().get(Calendar.MONTH)
+            prefs[MONTH_KEY] = Calendar.getInstance(TimeZone.getTimeZone("UTC")).get(Calendar.MONTH)
         }
     }
 }

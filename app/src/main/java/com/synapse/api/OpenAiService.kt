@@ -32,6 +32,7 @@ class OpenAiService(
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
 
+        // TODO: make rate limits configurable per account tier (see QA audit #18)
         // OpenAI rate limits (varies by tier, using conservative defaults for Tier 1)
         private const val REQUESTS_PER_MINUTE = 500
         private const val REQUESTS_PER_DAY = 10000

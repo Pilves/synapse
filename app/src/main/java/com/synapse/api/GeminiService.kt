@@ -30,6 +30,7 @@ class GeminiService(
         private const val MAX_RETRIES = 3
         private const val INITIAL_RETRY_DELAY_MS = 1000L
 
+        // TODO: make rate limits configurable per account tier (see QA audit #18)
         // Free tier rate limits
         private const val REQUESTS_PER_MINUTE = 15
         private const val REQUESTS_PER_DAY = 1500

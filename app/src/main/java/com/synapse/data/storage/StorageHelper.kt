@@ -152,13 +152,13 @@ class StorageHelper(private val context: Context) {
      * @param directory The directory to calculate size for
      * @return Total size in bytes
      */
-    private fun calculateDirectorySize(directory: File): Long {
-        if (!directory.exists()) return 0L
+    private fun calculateDirectorySize(directory: File, maxDepth: Int = 10): Long {
+        if (!directory.exists() || maxDepth <= 0) return 0L
 
         var size = 0L
         directory.listFiles()?.forEach { file ->
             size += if (file.isDirectory) {
-                calculateDirectorySize(file)
+                calculateDirectorySize(file, maxDepth - 1)
             } else {
                 file.length()
             }

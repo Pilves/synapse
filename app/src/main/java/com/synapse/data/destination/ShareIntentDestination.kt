@@ -12,14 +12,19 @@ class ShareIntentDestination(
     override val iconRes = android.R.drawable.ic_menu_share
     override val requiresAuth = false
 
-    private val markdownFriendlyApps = setOf(
-        "com.discord",
-        "com.slack",
-        "md.obsidian",
-        "notion.id",
-        "it.feio.android.omninotes",
-        "com.logseq.app"
-    )
+    companion object {
+        /** Packages known to render markdown properly */
+        val MARKDOWN_FRIENDLY_PACKAGES = setOf(
+            "com.discord",
+            "com.slack",
+            "md.obsidian",
+            "notion.id",
+            "it.feio.android.omninotes",
+            "com.logseq.app"
+        )
+    }
+
+    private val markdownFriendlyApps = MARKDOWN_FRIENDLY_PACKAGES
 
     override suspend fun configure(): DestinationConfig {
         return DestinationConfig(destinationId = id)

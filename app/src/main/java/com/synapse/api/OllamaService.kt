@@ -32,6 +32,7 @@ class OllamaService(
         private const val MAX_RETRIES = 2
         private const val INITIAL_RETRY_DELAY_MS = 500L
 
+        // TODO: make rate limits configurable per account tier (see QA audit #18)
         // No rate limits for local Ollama
         private const val REQUESTS_PER_MINUTE = Int.MAX_VALUE
         private const val REQUESTS_PER_DAY = Int.MAX_VALUE

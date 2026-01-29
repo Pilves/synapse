@@ -40,6 +40,7 @@ class SettingsViewModel(
     private val projectRepository: ProjectRepository
 ) : ViewModel() {
 
+    // TODO: migrate API key storage to EncryptedSharedPreferences (see QA audit #27)
     // Preference Keys
     private object PreferenceKeys {
         // Capture settings

@@ -62,18 +62,6 @@ class PermissionHelper(private val context: Context) {
         }
     }
 
-    /**
-     * Opens the system settings page for overlay permission.
-     * Should be called from an Activity context for best results.
-     *
-     * @param activity The activity to use for launching the settings
-     */
-    fun requestOverlayPermission(activity: Activity) {
-        getOverlayPermissionIntent()?.let { intent ->
-            activity.startActivityForResult(intent, REQUEST_CODE_OVERLAY_PERMISSION)
-        }
-    }
-
     // ========================
     // Notification Permission (POST_NOTIFICATIONS - Android 13+)
     // ========================

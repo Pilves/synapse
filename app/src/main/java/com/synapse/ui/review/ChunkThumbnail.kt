@@ -100,7 +100,7 @@ fun ChunkThumbnail(
                         .size(thumbnailSize * 2) // Load at 2x for better quality on high DPI
                         .memoryCacheKey("chunk_thumb_${chunk.id}")
                         .build(),
-                    contentDescription = "Chunk ${chunk.index}",
+                    contentDescription = "Chunk ${chunk.index + 1}, ${if (isSelected) "selected" else "not selected"}",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.matchParentSize(),
                     loading = {
