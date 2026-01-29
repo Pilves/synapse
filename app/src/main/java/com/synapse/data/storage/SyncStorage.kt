@@ -351,7 +351,7 @@ private data class SyncQueueItemDto(
         sessionId = sessionId,
         projectId = projectId,
         filename = filename,
-        status = SyncItemStatus.valueOf(status),
+        status = try { SyncItemStatus.valueOf(status) } catch (_: IllegalArgumentException) { SyncItemStatus.FAILED },
         createdAt = createdAt,
         lastAttemptAt = lastAttemptAt,
         attemptCount = attemptCount,
