@@ -511,9 +511,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                             hideCaptureOverlay()
                         },
                         onToggleRegionMode = {
-                            isRegionMode = !isRegionMode
-                            Log.d(TAG, "Region mode toggled: $isRegionMode")
-                            refreshCaptureOverlay()
+                            if (!isRegionMode && !screenshotManager.hasPermission()) {
+                                // Need screen capture permission before enabling region mode
+                                Log.d(TAG, "Requesting screen capture permission for region mode")
+                                requestScreenCapturePermission()
+                            } else {
+                                isRegionMode = !isRegionMode
+                                Log.d(TAG, "Region mode toggled: $isRegionMode")
+                                refreshCaptureOverlay()
+                            }
                         },
                         onRegionSelected = { rect ->
                             handleRegionSelected(rect)
@@ -552,6 +558,18 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         isCaptureActive = false
         isRegionMode = false
         showFloatingBubble()
+    }
+
+    /**
+     * Launches MainActivity to request screen capture (MediaProjection) permission.
+     * The permission can only be requested from an Activity, not from a Service.
+     */
+    private fun requestScreenCapturePermission() {
+        val intent = Intent(this, MainActivity::class.java).apply {
+            action = MainActivity.ACTION_REQUEST_SCREEN_CAPTURE
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        }
+        startActivity(intent)
     }
 
     private fun openReviewScreen() {
