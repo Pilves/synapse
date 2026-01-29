@@ -402,10 +402,7 @@ class CaptureViewModel : ViewModel() {
         sessionTimeoutJob?.cancel()
         sessionTimeoutJob = viewModelScope.launch {
             delay(sessionTimeoutMs)
-            // Session timeout reached
-            viewModelScope.launch {
-                _events.emit(CaptureEvent.SessionTimeout)
-            }
+            _events.emit(CaptureEvent.SessionTimeout)
             endSession()
         }
     }
