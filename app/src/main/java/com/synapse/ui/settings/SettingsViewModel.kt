@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 // Extension property for DataStore
@@ -209,7 +210,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             dataStore.edit { it[PreferenceKeys.LLM_PROVIDER] = provider.name }
             // Clear API key validation state when provider changes
-            _uiState.value = _uiState.value.copy(apiKeyError = null)
+            _uiState.update { it.copy(apiKeyError = null) }
         }
     }
 
@@ -217,7 +218,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             dataStore.edit { it[PreferenceKeys.API_KEY] = key }
             // Clear validation error when key changes
-            _uiState.value = _uiState.value.copy(apiKeyError = null)
+            _uiState.update { it.copy(apiKeyError = null) }
         }
     }
 
@@ -227,14 +228,14 @@ class SettingsViewModel(
 
         // Ollama doesn't require an API key
         if (currentProvider == LlmProvider.OLLAMA) {
-            _uiState.value = _uiState.value.copy(apiKeyError = null)
+            _uiState.update { it.copy(apiKeyError = null) }
             return true
         }
 
         if (currentKey.isBlank()) {
-            _uiState.value = _uiState.value.copy(
+            _uiState.update { it.copy(
                 apiKeyError = "API key is required for ${currentProvider.displayName}"
-            )
+            ) }
             return false
         }
 
@@ -247,13 +248,13 @@ class SettingsViewModel(
         }
 
         if (!isValid) {
-            _uiState.value = _uiState.value.copy(
+            _uiState.update { it.copy(
                 apiKeyError = "Invalid API key format for ${currentProvider.displayName}"
-            )
+            ) }
             return false
         }
 
-        _uiState.value = _uiState.value.copy(apiKeyError = null)
+        _uiState.update { it.copy(apiKeyError = null) }
         return true
     }
 
@@ -362,11 +363,11 @@ class SettingsViewModel(
 
     // UI state management
     fun clearApiKeyError() {
-        _uiState.value = _uiState.value.copy(apiKeyError = null)
+        _uiState.update { it.copy(apiKeyError = null) }
     }
 
     fun setLoading(loading: Boolean) {
-        _uiState.value = _uiState.value.copy(isLoading = loading)
+        _uiState.update { it.copy(isLoading = loading) }
     }
 }
 
