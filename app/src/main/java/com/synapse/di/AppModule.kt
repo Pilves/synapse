@@ -226,8 +226,8 @@ val viewModelModule = module {
     // SettingsViewModel - requires DataStore and ProjectRepository
     viewModel { SettingsViewModel(androidContext().settingsDataStore, get()) }
 
-    // OnboardingViewModel - requires Application for AndroidViewModel
-    viewModel { OnboardingViewModel(androidApplication()) }
+    // OnboardingViewModel - requires Application and ProjectRepository for AndroidViewModel
+    viewModel { OnboardingViewModel(androidApplication(), get()) }
 }
 
 /**

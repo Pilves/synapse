@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import com.synapse.data.repository.ProjectRepository
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -39,7 +40,8 @@ private val Context.onboardingDataStore: DataStore<Preferences> by preferencesDa
  * - Checking what's already configured
  */
 class OnboardingViewModel(
-    application: Application
+    application: Application,
+    private val projectRepository: ProjectRepository
 ) : AndroidViewModel(application) {
 
     companion object {
@@ -183,6 +185,10 @@ class OnboardingViewModel(
                     prefs[vaultLocationKey] = vaultPath
                 }
                 Log.d(TAG, "Saved vault path to settings DataStore: $vaultPath")
+
+                // Sync projects from the vault so they're available for sync
+                projectRepository.syncProjectsFromVault(Uri.parse(vaultPath))
+                Log.d(TAG, "Synced projects from vault")
 
                 _state.update { currentState ->
                     currentState.copy(
