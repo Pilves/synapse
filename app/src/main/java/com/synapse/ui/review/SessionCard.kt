@@ -85,9 +85,15 @@ fun SessionCard(
 ) {
     var isExpanded by remember { mutableStateOf(true) }
 
-    val sessionChunksSelected = session.chunks.count { it.id in selectedChunkIds }
-    val allSelected = sessionChunksSelected == session.chunks.size && session.chunks.isNotEmpty()
-    val someSelected = sessionChunksSelected > 0 && !allSelected
+    val sessionChunksSelected = remember(session.chunks, selectedChunkIds) {
+        session.chunks.count { it.id in selectedChunkIds }
+    }
+    val allSelected = remember(sessionChunksSelected, session.chunks.size) {
+        sessionChunksSelected == session.chunks.size && session.chunks.isNotEmpty()
+    }
+    val someSelected = remember(sessionChunksSelected, allSelected) {
+        sessionChunksSelected > 0 && !allSelected
+    }
 
     Card(
         modifier = modifier.fillMaxWidth(),
