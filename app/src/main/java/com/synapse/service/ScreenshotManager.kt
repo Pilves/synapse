@@ -34,6 +34,9 @@ class ScreenshotManager(private val context: Context) {
         /**
          * Deletes all temporary screenshot files from internal storage.
          * Call after session completion to free disk space.
+         *
+         * Note: This performs blocking I/O. Callers must invoke from a background thread
+         * (e.g., withContext(Dispatchers.IO)).
          */
         fun cleanupScreenshots(context: Context) {
             val dir = File(context.filesDir, "screenshots")
