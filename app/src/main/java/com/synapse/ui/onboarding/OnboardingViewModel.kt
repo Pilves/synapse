@@ -363,6 +363,12 @@ class OnboardingViewModel(
                 prefs[PreferenceKeys.ONBOARDING_COMPLETE] = true
             }
 
+            // Also persist to settingsDataStore so MainActivity can read it
+            val onboardingCompleteKey = booleanPreferencesKey("onboarding_complete")
+            context.settingsDataStore.edit { prefs ->
+                prefs[onboardingCompleteKey] = true
+            }
+
             _state.update { currentState ->
                 currentState.copy(isOnboardingComplete = true)
             }
