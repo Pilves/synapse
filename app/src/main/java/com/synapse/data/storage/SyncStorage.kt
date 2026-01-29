@@ -11,7 +11,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.UUID
 
@@ -27,12 +26,6 @@ class SyncStorage(private val context: Context) {
         private const val TAG = "SyncStorage"
         private const val SYNC_DIR = "sync"
         private const val QUEUE_FILE = "queue.json"
-    }
-
-    private val json = Json {
-        prettyPrint = true
-        ignoreUnknownKeys = true
-        encodeDefaults = true
     }
 
     private val mutex = Mutex()
@@ -258,7 +251,7 @@ class SyncStorage(private val context: Context) {
             }
 
             val content = queueFile.readText()
-            val dto = json.decodeFromString<SyncQueueDto>(content)
+            val dto = StorageJson.instance.decodeFromString<SyncQueueDto>(content)
             dto.items.map { it.toSyncQueueItem() }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load sync queue", e)
@@ -274,7 +267,7 @@ class SyncStorage(private val context: Context) {
             val tempFile = File(queueFile.parent, "${queueFile.name}.tmp")
 
             // Write to temp file first
-            tempFile.writeText(json.encodeToString(dto))
+            tempFile.writeText(StorageJson.instance.encodeToString(dto))
 
             // Atomic rename
             if (queueFile.exists()) {

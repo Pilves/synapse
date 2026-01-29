@@ -15,7 +15,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.io.File
 import java.io.IOException
 
@@ -46,12 +45,6 @@ class SessionStorage(
         private const val SESSIONS_DIR = "sessions"
         private const val JSON_EXTENSION = ".json"
         private const val TEMP_EXTENSION = ".tmp"
-    }
-
-    private val json = Json {
-        prettyPrint = true
-        ignoreUnknownKeys = true
-        encodeDefaults = true
     }
 
     private val mutex = Mutex()
@@ -150,7 +143,7 @@ class SessionStorage(
             val tempFile = File(sessionsDir, "$id$JSON_EXTENSION$TEMP_EXTENSION")
 
             val dto = SessionDto.fromSession(session)
-            tempFile.writeText(json.encodeToString(dto))
+            tempFile.writeText(StorageJson.instance.encodeToString(dto))
 
             // Atomic rename
             if (!tempFile.renameTo(metadataFile)) {
@@ -188,7 +181,7 @@ class SessionStorage(
             val file = File(sessionsDir, "$sessionId$JSON_EXTENSION")
             if (!file.exists()) return@withContext null
 
-            val dto = json.decodeFromString<SessionDto>(file.readText())
+            val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
             dto.toSession()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load session $sessionId", e)
@@ -212,7 +205,7 @@ class SessionStorage(
                 )
             }
 
-            val dto = json.decodeFromString<SessionDto>(file.readText())
+            val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
             SessionResult.Success(dto.toSession())
         } catch (e: Exception) {
             SessionResult.Error(
@@ -580,7 +573,7 @@ class SessionStorage(
         val dto = SessionDto.fromSession(session)
 
         // Write to temp file first
-        tempFile.writeText(json.encodeToString(dto))
+        tempFile.writeText(StorageJson.instance.encodeToString(dto))
 
         // Atomic rename
         if (file.exists()) {
@@ -632,7 +625,7 @@ class SessionStorage(
                 ?.filter { it.isFile && it.name.endsWith(JSON_EXTENSION) && !it.name.endsWith(TEMP_EXTENSION) }
                 ?.mapNotNull { file ->
                     try {
-                        val dto = json.decodeFromString<SessionDto>(file.readText())
+                        val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
                         dto.toSession()
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to parse session file: ${file.name}", e)

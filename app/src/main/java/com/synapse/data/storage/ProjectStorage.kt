@@ -12,7 +12,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.io.File
 import java.util.UUID
 
@@ -30,12 +29,6 @@ class ProjectStorage(private val context: Context) {
         private const val TAG = "ProjectStorage"
         private const val PROJECTS_DIR = "projects"
         private const val PROJECTS_FILE = "projects.json"
-    }
-
-    private val json = Json {
-        prettyPrint = true
-        ignoreUnknownKeys = true
-        encodeDefaults = true
     }
 
     private val mutex = Mutex()
@@ -173,7 +166,7 @@ class ProjectStorage(private val context: Context) {
             }
 
             val content = projectsFile.readText()
-            val dto = json.decodeFromString<ProjectsDto>(content)
+            val dto = StorageJson.instance.decodeFromString<ProjectsDto>(content)
             dto.projects.map { it.toProject() }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load projects", e)
@@ -189,7 +182,7 @@ class ProjectStorage(private val context: Context) {
             val tempFile = File(projectsFile.parent, "${projectsFile.name}.tmp")
 
             // Write to temp file first
-            tempFile.writeText(json.encodeToString(dto))
+            tempFile.writeText(StorageJson.instance.encodeToString(dto))
 
             // Atomic rename
             if (projectsFile.exists()) {
