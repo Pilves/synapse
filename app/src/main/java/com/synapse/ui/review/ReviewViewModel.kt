@@ -6,7 +6,9 @@ import com.synapse.data.destination.DestinationRepository
 import com.synapse.data.repository.ProjectRepository
 import com.synapse.data.repository.SessionRepository
 import com.synapse.data.repository.SyncRepository
+import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.model.CapturedContext
+import com.synapse.model.CostEstimate
 import com.synapse.model.Destination
 import com.synapse.model.Chunk
 import com.synapse.model.Project
@@ -43,7 +45,8 @@ data class ReviewUiState(
     val previewChunk: Chunk? = null,
     val contexts: List<CapturedContext> = emptyList(),
     val availableDestinations: List<Destination> = emptyList(),
-    val selectedDestinations: List<String> = emptyList()
+    val selectedDestinations: List<String> = emptyList(),
+    val costEstimate: CostEstimate? = null
 )
 
 /**
@@ -434,6 +437,28 @@ class ReviewViewModel(
         _uiState.update { state ->
             state.copy(contexts = state.contexts.filter { it.id != contextId })
         }
+    }
+
+    /**
+     * Recalculate cost estimate based on current sessions and model.
+     * Uses a default chunk size estimate of 50KB per chunk.
+     */
+    fun updateCostEstimate(model: String) {
+        val state = _uiState.value
+        val chunks = state.sessions.flatMap { it.chunks }
+        if (chunks.isEmpty()) {
+            _uiState.update { it.copy(costEstimate = null) }
+            return
+        }
+
+        // Estimate ~50KB per chunk image as a reasonable default
+        val chunkSizes = chunks.map { 50 * 1024 }
+        val estimate = LlmCostCalculator.estimateCost(
+            chunkSizes = chunkSizes,
+            contextCount = state.contexts.size,
+            model = model
+        )
+        _uiState.update { it.copy(costEstimate = estimate) }
     }
 
     /**

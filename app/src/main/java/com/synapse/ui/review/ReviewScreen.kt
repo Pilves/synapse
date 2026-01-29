@@ -73,9 +73,11 @@ import coil.request.ImageRequest
 import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.SyncStatus
+import com.synapse.model.CostEstimate
 import com.synapse.model.Destination
 import com.synapse.ui.components.ContextSection
 import com.synapse.ui.components.DestinationSelectionRow
+import com.synapse.ui.components.SyncCostBanner
 import com.synapse.ui.theme.SynapseTheme
 
 /**
@@ -156,6 +158,7 @@ fun ReviewScreen(
                         },
                         availableDestinations = uiState.availableDestinations,
                         selectedDestinations = uiState.selectedDestinations,
+                        costEstimate = uiState.costEstimate,
                         onProjectSelected = viewModel::selectProject,
                         onFilenameChanged = viewModel::updateFilename,
                         onSyncAll = viewModel::syncAll,
@@ -339,6 +342,7 @@ private fun BottomControls(
     selectedCount: Int,
     availableDestinations: List<Destination>,
     selectedDestinations: List<String>,
+    costEstimate: CostEstimate?,
     onProjectSelected: (Project) -> Unit,
     onFilenameChanged: (String) -> Unit,
     onSyncAll: () -> Unit,
@@ -389,7 +393,15 @@ private fun BottomControls(
                 shape = RoundedCornerShape(12.dp)
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Cost estimate banner
+            costEstimate?.let { cost ->
+                SyncCostBanner(
+                    costEstimate = cost,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
 
             // Sync button
             Button(
