@@ -666,7 +666,7 @@ private fun FloatingBubble(
         contentAlignment = Alignment.TopEnd
     ) {
         FloatingActionButton(
-            onClick = { },
+            onClick = onClick,
             modifier = Modifier
                 .size(56.dp)
                 .pointerInput(Unit) {
@@ -689,11 +689,6 @@ private fun FloatingBubble(
                             currentY += dragAmount.y
                             onPositionChanged(dragAmount.x, dragAmount.y)
                         }
-                    )
-                }
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onTap = { if (!isDragging) onClick() }
                     )
                 },
             containerColor = if (isInDismissZone)
