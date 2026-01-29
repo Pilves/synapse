@@ -13,7 +13,7 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun DestinationSetupScreen(
-    onComplete: () -> Unit,
+    onComplete: (String) -> Unit,
     onSkip: () -> Unit
 ) {
     var selectedDestination by remember { mutableStateOf("clipboard") }
@@ -83,7 +83,7 @@ fun DestinationSetupScreen(
         Spacer(modifier = Modifier.height(32.dp))
 
         Button(
-            onClick = onComplete,
+            onClick = { onComplete(selectedDestination) },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Continue")

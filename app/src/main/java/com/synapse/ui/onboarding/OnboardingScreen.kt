@@ -249,7 +249,7 @@ fun OnboardingScreen(
                         onContinue = goToNextPage
                     )
                     5 -> DestinationSetupScreen(
-                        onComplete = goToNextPage,
+                        onComplete = { _ -> goToNextPage() },
                         onSkip = goToNextPage
                     )
                     6 -> ApiKeyPage(
