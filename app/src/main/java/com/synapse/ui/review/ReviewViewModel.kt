@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -142,7 +143,9 @@ class ReviewViewModel(
      */
     private fun loadProjects() {
         viewModelScope.launch {
-            projectRepository.observeProjects().collectLatest { projects ->
+            projectRepository.observeProjects()
+                .distinctUntilChanged()
+                .collectLatest { projects ->
                 _uiState.update { state ->
                     // Keep current selection if still valid, otherwise select first
                     val currentSelection = state.selectedProject
