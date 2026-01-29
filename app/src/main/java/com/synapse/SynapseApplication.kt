@@ -11,6 +11,7 @@ import com.synapse.di.networkModule
 import com.synapse.di.repositoryModule
 import com.synapse.di.serviceHelpersModule
 import com.synapse.di.storageModule
+import com.synapse.di.v2Module
 import com.synapse.di.viewModelModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -71,6 +72,9 @@ class SynapseApplication : Application() {
 
                 // Repository layer - depends on storage and API
                 repositoryModule,
+
+                // V2 features - destinations, cost, capture, intent services
+                v2Module,
 
                 // Service helpers
                 serviceHelpersModule,

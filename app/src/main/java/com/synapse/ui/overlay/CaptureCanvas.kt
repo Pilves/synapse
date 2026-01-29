@@ -138,12 +138,13 @@ fun CaptureCanvas(
             }
             .then(
                 if (regionSelectionEnabled && regionGestureDetector != null) {
+                    // Region mode: only handle region selection, no stroke drawing
                     Modifier.pointerInteropFilter { motionEvent ->
                         val result = regionGestureDetector.onTouchEvent(motionEvent)
                         when (result) {
                             is RegionGestureResult.SelectionInProgress -> {
                                 selectionRect = result.rect
-                                true // consume the event
+                                true
                             }
                             is RegionGestureResult.SelectionComplete -> {
                                 selectionRect = null
@@ -151,88 +152,77 @@ fun CaptureCanvas(
                             }
                             is RegionGestureResult.SelectionCancelled -> {
                                 selectionRect = null
-                                false // let it fall through to stroke handling
+                                true
                             }
                             is RegionGestureResult.Pending -> {
-                                // Still deciding - consume to wait for hold threshold
                                 true
                             }
                             is RegionGestureResult.Stroke -> {
                                 selectionRect = null
-                                false // not a region gesture, let stroke handling take over
+                                true
                             }
                             is RegionGestureResult.Ignored -> false
                         }
                     }
-                } else Modifier
-            )
-            .pointerInput(inputMode) {
-                awaitEachGesture {
-                    // Wait for first touch/pen down
-                    // requireUnconsumed = true allows unconsumed events to pass through
-                    val down = awaitFirstDown(requireUnconsumed = false)
-                    val inputType = getInputType(down)
+                } else {
+                    // Write mode: handle stroke drawing
+                    Modifier.pointerInput(inputMode) {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val inputType = getInputType(down)
 
-                    // Determine if we should handle this input based on mode
-                    val shouldHandle = when (inputMode) {
-                        InputMode.STYLUS_WRITE_FINGER_SCROLL -> {
-                            // Only handle stylus input, let finger pass through
-                            inputType == InputType.STYLUS
+                            val shouldHandle = when (inputMode) {
+                                InputMode.STYLUS_WRITE_FINGER_SCROLL -> {
+                                    inputType == InputType.STYLUS
+                                }
+                                InputMode.STYLUS_ONLY -> {
+                                    inputType == InputType.STYLUS
+                                }
+                                InputMode.BOTH_WRITE -> {
+                                    inputType == InputType.STYLUS || inputType == InputType.FINGER
+                                }
+                            }
+
+                            if (!shouldHandle) {
+                                if (inputMode == InputMode.STYLUS_WRITE_FINGER_SCROLL && inputType == InputType.FINGER) {
+                                    onFingerTouchPassThrough?.invoke()
+                                }
+                                return@awaitEachGesture
+                            }
+
+                            if (inputType != lastInputType) {
+                                lastInputType = inputType
+                                onInputTypeChanged?.invoke(inputType)
+                            }
+
+                            viewModel.onDrawStart(down.position)
+                            down.consume()
+
+                            var lastPosition = down.position
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == down.id }
+
+                                if (change == null || !change.pressed) {
+                                    viewModel.onDrawEnd(strokeConfig.strokeWidth)
+                                    break
+                                }
+
+                                val currentPos = change.position
+                                val distance = (currentPos - lastPosition).getDistance()
+
+                                if (distance > 1f) {
+                                    viewModel.onDrawMove(currentPos)
+                                    lastPosition = currentPos
+                                }
+
+                                change.consume()
+                            }
                         }
-                        InputMode.STYLUS_ONLY -> {
-                            // Only stylus, ignore finger completely
-                            inputType == InputType.STYLUS
-                        }
-                        InputMode.BOTH_WRITE -> {
-                            // Handle both stylus and finger
-                            inputType == InputType.STYLUS || inputType == InputType.FINGER
-                        }
-                    }
-
-                    if (!shouldHandle) {
-                        // DON'T consume the event - let it pass through to the app below
-                        // This enables scrolling in the underlying app with finger
-                        if (inputMode == InputMode.STYLUS_WRITE_FINGER_SCROLL && inputType == InputType.FINGER) {
-                            onFingerTouchPassThrough?.invoke()
-                        }
-                        return@awaitEachGesture
-                    }
-
-                    if (inputType != lastInputType) {
-                        lastInputType = inputType
-                        onInputTypeChanged?.invoke(inputType)
-                    }
-
-                    // Start drawing - consume the stylus input
-                    viewModel.onDrawStart(down.position)
-                    down.consume()
-
-                    // Track pointer movement
-                    var lastPosition = down.position
-
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id }
-
-                        if (change == null || !change.pressed) {
-                            // Pointer lifted
-                            viewModel.onDrawEnd(strokeConfig.strokeWidth)
-                            break
-                        }
-
-                        // Only add point if it moved significantly (reduces jitter)
-                        val currentPos = change.position
-                        val distance = (currentPos - lastPosition).getDistance()
-
-                        if (distance > 1f) {
-                            viewModel.onDrawMove(currentPos)
-                            lastPosition = currentPos
-                        }
-
-                        change.consume()
                     }
                 }
-            }
+            )
     ) {
         Canvas(
             modifier = Modifier

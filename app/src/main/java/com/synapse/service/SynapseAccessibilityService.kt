@@ -80,7 +80,7 @@ class SynapseAccessibilityService : AccessibilityService() {
             currentPageTitle = source.contentDescription?.toString()
         }
 
-        source.recycle()
+        // recycle() is deprecated on API 26+; the system manages AccessibilityNodeInfo lifecycle
     }
 
     private fun findUrlBar(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
@@ -140,10 +140,18 @@ class SynapseAccessibilityService : AccessibilityService() {
     }
 
     fun getTextInRegion(screenBounds: Rect): CapturedContext.RegionText? {
+        // Refresh node cache from all windows (the overlay is the active window,
+        // so rootInActiveWindow would return the overlay tree with no text)
+        refreshNodeCacheFromAllWindows()
+
         val nodesInRegion = nodeCache.filter { node ->
-            val nodeBounds = Rect()
-            node.getBoundsInScreen(nodeBounds)
-            Rect.intersects(nodeBounds, screenBounds)
+            try {
+                val nodeBounds = Rect()
+                node.getBoundsInScreen(nodeBounds)
+                Rect.intersects(nodeBounds, screenBounds)
+            } catch (e: Exception) {
+                false
+            }
         }
 
         if (nodesInRegion.isEmpty()) return null
@@ -162,6 +170,31 @@ class SynapseAccessibilityService : AccessibilityService() {
             text = combinedText,
             bounds = screenBounds
         )
+    }
+
+    /**
+     * Refreshes the node cache by scanning all windows, not just the active one.
+     * This is needed because the overlay window is active during region selection,
+     * but we want text from the app window behind it.
+     */
+    private fun refreshNodeCacheFromAllWindows() {
+        try {
+            val allNodes = mutableListOf<AccessibilityNodeInfo>()
+            for (window in windows) {
+                // Skip our own overlay windows
+                if (window.root?.packageName?.toString() == packageName) continue
+                window.root?.let { root ->
+                    allNodes.addAll(collectAllTextNodes(root))
+                }
+            }
+            if (allNodes.isNotEmpty()) {
+                nodeCache = allNodes
+            }
+        } catch (e: Exception) {
+            // Fallback: try rootInActiveWindow
+            val root = rootInActiveWindow ?: return
+            nodeCache = collectAllTextNodes(root)
+        }
     }
 
     private fun getBounds(node: AccessibilityNodeInfo): Rect {

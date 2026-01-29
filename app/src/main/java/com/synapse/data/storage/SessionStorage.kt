@@ -2,6 +2,7 @@ package com.synapse.data.storage
 
 import android.content.Context
 import android.util.Log
+import com.synapse.model.CapturedContext
 import com.synapse.model.Chunk
 import com.synapse.model.Session
 import kotlinx.coroutines.Dispatchers
@@ -253,7 +254,7 @@ class SessionStorage(
      */
     suspend fun getPendingSessions(): List<Session> = withContext(Dispatchers.IO) {
         loadSessionsFromDisk().filter { session ->
-            session.endedAt != null && session.chunks.isNotEmpty()
+            session.endedAt != null && (session.chunks.isNotEmpty() || session.contexts.isNotEmpty())
         }
     }
 
@@ -349,6 +350,28 @@ class SessionStorage(
             refreshSessions()
 
             Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
+            updatedSession
+        }
+    }
+
+    /**
+     * Adds a captured context to a session.
+     *
+     * @param sessionId The session ID
+     * @param context The captured context to add
+     * @return The updated session, or null if session not found
+     */
+    suspend fun addContext(sessionId: String, context: CapturedContext): Session? = mutex.withLock {
+        withContext(Dispatchers.IO) {
+            val session = getSession(sessionId) ?: return@withContext null
+
+            val updatedSession = session.copy(
+                contexts = session.contexts + context
+            )
+            saveSessionInternal(updatedSession)
+            refreshSessions()
+
+            Log.d(TAG, "Added context ${context.id} to session $sessionId")
             updatedSession
         }
     }
@@ -630,13 +653,15 @@ private data class SessionDto(
     val id: String,
     val startedAt: Long,
     val endedAt: Long? = null,
-    val chunks: List<ChunkDto> = emptyList()
+    val chunks: List<ChunkDto> = emptyList(),
+    val contexts: List<CapturedContextDto> = emptyList()
 ) {
     fun toSession(): Session = Session(
         id = id,
         startedAt = startedAt,
         endedAt = endedAt,
-        chunks = chunks.map { it.toChunk() }
+        chunks = chunks.map { it.toChunk() },
+        contexts = contexts.mapNotNull { it.toCapturedContext() }
     )
 
     companion object {
@@ -644,7 +669,8 @@ private data class SessionDto(
             id = session.id,
             startedAt = session.startedAt,
             endedAt = session.endedAt,
-            chunks = session.chunks.map { ChunkDto.fromChunk(it) }
+            chunks = session.chunks.map { ChunkDto.fromChunk(it) },
+            contexts = session.contexts.map { CapturedContextDto.from(it) }
         )
     }
 }
@@ -682,5 +708,106 @@ private data class ChunkDto(
             createdAt = chunk.createdAt,
             isCorrupted = chunk.isCorrupted
         )
+    }
+}
+
+/**
+ * DTO for captured context serialization.
+ */
+@Serializable
+private data class CapturedContextDto(
+    val type: String,
+    val id: String,
+    val timestamp: Long,
+    val text: String? = null,
+    val boundsLeft: Int? = null,
+    val boundsTop: Int? = null,
+    val boundsRight: Int? = null,
+    val boundsBottom: Int? = null,
+    val sourceApp: String? = null,
+    val sourceUrl: String? = null,
+    val pageTitle: String? = null,
+    val imagePath: String? = null,
+    val description: String? = null
+) {
+    fun toCapturedContext(): CapturedContext? {
+        return when (type) {
+            "selected_text" -> CapturedContext.SelectedText(
+                id = id,
+                timestamp = timestamp,
+                text = text ?: return null,
+                sourceApp = sourceApp,
+                sourceUrl = sourceUrl
+            )
+            "region_text" -> CapturedContext.RegionText(
+                id = id,
+                timestamp = timestamp,
+                text = text ?: return null,
+                bounds = android.graphics.Rect(
+                    boundsLeft ?: 0, boundsTop ?: 0,
+                    boundsRight ?: 0, boundsBottom ?: 0
+                )
+            )
+            "region_image" -> CapturedContext.RegionImage(
+                id = id,
+                timestamp = timestamp,
+                imagePath = imagePath ?: return null,
+                bounds = android.graphics.Rect(
+                    boundsLeft ?: 0, boundsTop ?: 0,
+                    boundsRight ?: 0, boundsBottom ?: 0
+                ),
+                description = description
+            )
+            "auto_context" -> CapturedContext.AutoContext(
+                id = id,
+                timestamp = timestamp,
+                sourceApp = sourceApp ?: return null,
+                sourceUrl = sourceUrl,
+                pageTitle = pageTitle
+            )
+            else -> null
+        }
+    }
+
+    companion object {
+        fun from(context: CapturedContext): CapturedContextDto = when (context) {
+            is CapturedContext.SelectedText -> CapturedContextDto(
+                type = "selected_text",
+                id = context.id,
+                timestamp = context.timestamp,
+                text = context.text,
+                sourceApp = context.sourceApp,
+                sourceUrl = context.sourceUrl
+            )
+            is CapturedContext.RegionText -> CapturedContextDto(
+                type = "region_text",
+                id = context.id,
+                timestamp = context.timestamp,
+                text = context.text,
+                boundsLeft = context.bounds.left,
+                boundsTop = context.bounds.top,
+                boundsRight = context.bounds.right,
+                boundsBottom = context.bounds.bottom
+            )
+            is CapturedContext.RegionImage -> CapturedContextDto(
+                type = "region_image",
+                id = context.id,
+                timestamp = context.timestamp,
+                imagePath = context.imagePath,
+                boundsLeft = context.bounds.left,
+                boundsTop = context.bounds.top,
+                boundsRight = context.bounds.right,
+                boundsBottom = context.bounds.bottom,
+                description = context.description
+            )
+            is CapturedContext.AutoContext -> CapturedContextDto(
+                type = "auto_context",
+                id = context.id,
+                timestamp = context.timestamp,
+                sourceApp = context.sourceApp,
+                sourceUrl = context.sourceUrl,
+                pageTitle = context.pageTitle
+            )
+        }
     }
 }

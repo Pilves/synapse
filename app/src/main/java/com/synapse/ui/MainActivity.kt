@@ -34,7 +34,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
 import com.synapse.service.MediaProjectionHolder
 import com.synapse.service.OverlayService
-import com.synapse.service.ScreenshotManager
 import com.synapse.ui.navigation.Screen
 import com.synapse.ui.navigation.SynapseNavGraph
 import com.synapse.ui.settings.settingsDataStore
@@ -61,8 +60,6 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var permissionHelper: PermissionHelper
 
-    private val screenshotManager: ScreenshotManager by inject()
-
     // DataStore key for onboarding completion
     private val onboardingCompleteKey = booleanPreferencesKey("onboarding_complete")
 
@@ -84,14 +81,14 @@ class MainActivity : ComponentActivity() {
             val data = result.data!!
             // Store the result intent for creating MediaProjection later
             MediaProjectionHolder.setResult(resultCode, data)
-            // Create the projection and pass to ScreenshotManager
-            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
-                as MediaProjectionManager
-            val projection = projectionManager.getMediaProjection(resultCode, data)
-            if (projection != null) {
-                screenshotManager.setMediaProjection(projection)
-                Log.d(TAG, "MediaProjection permission granted and set")
+            // Send to OverlayService which has the mediaProjection foreground type
+            val serviceIntent = Intent(this, OverlayService::class.java).apply {
+                action = OverlayService.ACTION_SET_MEDIA_PROJECTION
+                putExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, resultCode)
+                putExtra(OverlayService.EXTRA_PROJECTION_DATA, data)
             }
+            startService(serviceIntent)
+            Log.d(TAG, "MediaProjection result forwarded to OverlayService")
         } else {
             Log.w(TAG, "MediaProjection permission denied")
             Toast.makeText(

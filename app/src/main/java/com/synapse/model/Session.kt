@@ -4,5 +4,6 @@ data class Session(
     val id: String,
     val startedAt: Long,
     val endedAt: Long? = null,
-    val chunks: List<Chunk> = emptyList()
+    val chunks: List<Chunk> = emptyList(),
+    val contexts: List<CapturedContext> = emptyList()
 )

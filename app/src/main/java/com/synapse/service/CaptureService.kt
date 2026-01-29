@@ -141,7 +141,7 @@ class CaptureService : Service() {
         return NotificationCompat.Builder(this, SynapseApplication.CAPTURE_CHANNEL_ID)
             .setContentTitle(getString(R.string.capture_notification_title))
             .setContentText(getString(R.string.capture_notification_text))
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setProgress(100, progress, progress == 0)
             .setOngoing(true)
@@ -158,7 +158,7 @@ class CaptureService : Service() {
         val notification = NotificationCompat.Builder(this, SynapseApplication.CAPTURE_CHANNEL_ID)
             .setContentTitle("Capture Ready")
             .setContentText("Image ready for sync")
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setAutoCancel(true)
             .build()
 
@@ -170,7 +170,7 @@ class CaptureService : Service() {
         val notification = NotificationCompat.Builder(this, SynapseApplication.CAPTURE_CHANNEL_ID)
             .setContentTitle("Capture Error")
             .setContentText(message)
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notification)
             .setAutoCancel(true)
             .build()
 

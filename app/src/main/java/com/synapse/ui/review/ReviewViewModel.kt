@@ -114,9 +114,12 @@ class ReviewViewModel(
             sessionRepository.observeSessions().collectLatest { allSessions ->
                 // Filter to only pending sessions (ended but not synced)
                 val pendingSessions = allSessions.filter { it.endedAt != null }
+                // Aggregate contexts from all pending sessions
+                val allContexts = pendingSessions.flatMap { it.contexts }
                 _uiState.update {
                     it.copy(
                         sessions = pendingSessions,
+                        contexts = allContexts,
                         isLoading = false
                     )
                 }
@@ -132,9 +135,11 @@ class ReviewViewModel(
             _uiState.update { it.copy(isLoading = true, error = null) }
             try {
                 val sessions = sessionRepository.getPendingSessions()
+                val allContexts = sessions.flatMap { it.contexts }
                 _uiState.update {
                     it.copy(
                         sessions = sessions,
+                        contexts = allContexts,
                         isLoading = false
                     )
                 }

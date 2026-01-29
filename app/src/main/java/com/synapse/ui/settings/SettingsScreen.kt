@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Code
@@ -263,7 +264,7 @@ fun SettingsScreen(
 
             LinkRow(
                 label = "How to use",
-                icon = Icons.Default.Help,
+                icon = Icons.AutoMirrored.Filled.Help,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
                         data = Uri.parse("https://github.com/synapse-app/synapse/wiki")

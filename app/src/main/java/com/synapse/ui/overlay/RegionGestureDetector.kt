@@ -2,12 +2,9 @@ package com.synapse.ui.overlay
 
 import android.graphics.PointF
 import android.graphics.Rect
-import android.os.Handler
-import android.os.Looper
 import android.view.MotionEvent
-import kotlin.math.hypot
-import kotlin.math.maxOf
-import kotlin.math.minOf
+import kotlin.math.max
+import kotlin.math.min
 
 class RegionGestureDetector(
     private val onRegionSelected: (Rect) -> Unit,
@@ -17,20 +14,11 @@ class RegionGestureDetector(
     private var holdStartPoint: PointF? = null
     private var currentRect: Rect? = null
 
-    private val holdThresholdMs = 500L
-    private val movementThreshold = 10f
-
-    private val handler = Handler(Looper.getMainLooper())
-    private val holdRunnable = Runnable {
-        isHolding = true
-        onVibrate()
-    }
-
     fun onTouchEvent(event: MotionEvent): RegionGestureResult {
         return when (event.action) {
             MotionEvent.ACTION_DOWN -> {
                 holdStartPoint = PointF(event.x, event.y)
-                handler.postDelayed(holdRunnable, holdThresholdMs)
+                isHolding = true
                 RegionGestureResult.Pending
             }
 
@@ -38,29 +26,18 @@ class RegionGestureDetector(
                 if (isHolding) {
                     val start = holdStartPoint!!
                     currentRect = Rect(
-                        minOf(start.x, event.x).toInt(),
-                        minOf(start.y, event.y).toInt(),
-                        maxOf(start.x, event.x).toInt(),
-                        maxOf(start.y, event.y).toInt()
+                        min(start.x, event.x).toInt(),
+                        min(start.y, event.y).toInt(),
+                        max(start.x, event.x).toInt(),
+                        max(start.y, event.y).toInt()
                     )
                     RegionGestureResult.SelectionInProgress(currentRect!!)
                 } else {
-                    val distance = hypot(
-                        event.x - (holdStartPoint?.x ?: event.x),
-                        event.y - (holdStartPoint?.y ?: event.y)
-                    )
-                    if (distance > movementThreshold) {
-                        handler.removeCallbacks(holdRunnable)
-                        RegionGestureResult.Stroke
-                    } else {
-                        RegionGestureResult.Pending
-                    }
+                    RegionGestureResult.Ignored
                 }
             }
 
             MotionEvent.ACTION_UP -> {
-                handler.removeCallbacks(holdRunnable)
-
                 if (isHolding && currentRect != null) {
                     val rect = currentRect!!
                     isHolding = false
@@ -68,6 +45,7 @@ class RegionGestureDetector(
                     holdStartPoint = null
 
                     if (rect.width() > 50 && rect.height() > 50) {
+                        onVibrate()
                         onRegionSelected(rect)
                         RegionGestureResult.SelectionComplete(rect)
                     } else {
@@ -76,7 +54,7 @@ class RegionGestureDetector(
                 } else {
                     isHolding = false
                     holdStartPoint = null
-                    RegionGestureResult.Stroke
+                    RegionGestureResult.SelectionCancelled
                 }
             }
 
@@ -85,7 +63,6 @@ class RegionGestureDetector(
     }
 
     fun reset() {
-        handler.removeCallbacks(holdRunnable)
         isHolding = false
         holdStartPoint = null
         currentRect = null

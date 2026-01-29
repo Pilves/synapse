@@ -41,6 +41,7 @@ import com.synapse.util.NetworkMonitor
 import com.synapse.util.PermissionHelper
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.synapse.api.LlmProvider
+import com.synapse.model.LlmConfig
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
@@ -126,8 +127,26 @@ val repositoryModule = module {
     single<SyncRepository> {
         val factory: TranscriptionServiceFactory = get()
         val dataStore = androidContext().settingsDataStore
-        val llmProviderKey = stringPreferencesKey("llm_provider")
-        val apiKeyKey = stringPreferencesKey("api_key")
+        val transcriptionProviderKey = stringPreferencesKey("transcription_provider")
+        val transcriptionApiKeyKey = stringPreferencesKey("transcription_api_key")
+        val answeringProviderKey = stringPreferencesKey("answering_provider")
+        val answeringApiKeyKey = stringPreferencesKey("answering_api_key")
+        // Legacy fallback keys
+        val legacyProviderKey = stringPreferencesKey("llm_provider")
+        val legacyApiKeyKey = stringPreferencesKey("api_key")
+
+        fun readLlmSettings(): Pair<LlmProvider, String?> {
+            return runBlocking {
+                val prefs = dataStore.data.first()
+                val providerName = prefs[transcriptionProviderKey]
+                    ?: prefs[legacyProviderKey]
+                    ?: LlmProvider.GEMINI.name
+                val apiKey = prefs[transcriptionApiKeyKey]
+                    ?: prefs[legacyApiKeyKey]
+                val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
+                Pair(provider, apiKey)
+            }
+        }
 
         SyncRepositoryImpl(
             context = androidContext(),
@@ -136,15 +155,23 @@ val repositoryModule = module {
             projectStorage = get(),
             syncStorage = get(),
             transcriptionServiceProvider = {
-                // Read current LLM provider and API key from settings
-                // runBlocking is acceptable here since sync runs on IO dispatcher
-                runBlocking {
-                    val prefs = dataStore.data.first()
-                    val providerName = prefs[llmProviderKey] ?: LlmProvider.GEMINI.name
-                    val apiKey = prefs[apiKeyKey]
-                    val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
-                    factory.create(provider, apiKey)
-                }
+                val (provider, apiKey) = readLlmSettings()
+                factory.create(provider, apiKey)
+            },
+            questionAnswerService = get<QuestionAnswerService>(),
+            llmConfigProvider = {
+                val (provider, apiKey) = readLlmSettings()
+                if (apiKey != null) {
+                    val prefs = runBlocking { dataStore.data.first() }
+                    val answeringProv = prefs[answeringProviderKey]
+                    val answeringKey = prefs[answeringApiKeyKey]
+                    LlmConfig(
+                        transcriptionProvider = provider.name,
+                        transcriptionApiKey = apiKey,
+                        answeringProvider = answeringProv ?: provider.name,
+                        answeringApiKey = answeringKey ?: apiKey
+                    )
+                } else null
             }
         )
     }

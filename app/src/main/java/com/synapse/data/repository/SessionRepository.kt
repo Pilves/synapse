@@ -2,6 +2,7 @@ package com.synapse.data.repository
 
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.SessionStorage
+import com.synapse.model.CapturedContext
 import com.synapse.model.Session
 import kotlinx.coroutines.flow.Flow
 
@@ -80,6 +81,14 @@ interface SessionRepository {
      * @return The active session, or null if none
      */
     suspend fun getActiveSession(): Session?
+
+    /**
+     * Adds a captured context to a session.
+     *
+     * @param sessionId The session ID
+     * @param context The captured context to add
+     */
+    suspend fun addContext(sessionId: String, context: CapturedContext)
 }
 
 /**
@@ -144,5 +153,9 @@ class SessionRepositoryImpl(
 
     override suspend fun getActiveSession(): Session? {
         return sessionStorage.getActiveSession()
+    }
+
+    override suspend fun addContext(sessionId: String, context: CapturedContext) {
+        sessionStorage.addContext(sessionId, context)
     }
 }

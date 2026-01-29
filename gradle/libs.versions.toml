@@ -5,13 +5,12 @@ targetSdk = "34"
 compileSdk = "34"
 
 # Core
-agp = "8.13.2"
-kotlin = "1.9.22"
+agp = "9.0.0"
+kotlin = "2.2.10"
 ksp = "1.9.22-1.0.17"
 
 # Compose
 composeBom = "2024.02.00"
-composeCompiler = "1.5.10"
 activityCompose = "1.8.2"
 lifecycleRuntimeCompose = "2.7.0"
 navigationCompose = "2.7.7"
@@ -115,3 +114,4 @@ android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

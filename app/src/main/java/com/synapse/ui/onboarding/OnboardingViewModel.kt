@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.PermissionHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -207,9 +208,30 @@ class OnboardingViewModel(
                     return@launch
                 }
 
-                // Save to DataStore
+                // Save to onboarding DataStore
                 dataStore.edit { prefs ->
                     prefs[PreferenceKeys.API_KEY] = apiKey.trim()
+                }
+
+                // Also save to settings DataStore so it's available for sync/transcription
+                val transcriptionProviderKey = stringPreferencesKey("transcription_provider")
+                val transcriptionApiKeyKey = stringPreferencesKey("transcription_api_key")
+                val legacyProviderKey = stringPreferencesKey("llm_provider")
+                val legacyApiKeyKey = stringPreferencesKey("api_key")
+                context.settingsDataStore.edit { prefs ->
+                    // Detect provider from key format
+                    val trimmedKey = apiKey.trim()
+                    val provider = when {
+                        trimmedKey.startsWith("AIza") -> "gemini"
+                        trimmedKey.startsWith("sk-ant-") -> "claude"
+                        trimmedKey.startsWith("sk-") -> "openai"
+                        else -> "gemini"
+                    }
+                    prefs[transcriptionProviderKey] = provider
+                    prefs[transcriptionApiKeyKey] = trimmedKey
+                    // Also write legacy keys for backward compat
+                    prefs[legacyProviderKey] = provider
+                    prefs[legacyApiKeyKey] = trimmedKey
                 }
 
                 _state.update { currentState ->

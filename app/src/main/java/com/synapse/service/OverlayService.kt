@@ -8,6 +8,8 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import android.os.Vibrator
@@ -18,14 +20,19 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
@@ -41,6 +48,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -68,6 +76,7 @@ import com.synapse.R
 import com.synapse.SynapseApplication
 import com.synapse.data.repository.ChunkRepository
 import com.synapse.data.repository.SessionRepository
+import com.synapse.model.CapturedContext
 import com.synapse.model.Chunk
 import com.synapse.ui.MainActivity
 import com.synapse.ui.overlay.CaptureCanvas
@@ -108,13 +117,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private var pendingChunkCount = 0
     private var isCaptureActive = false
     private var isRegionMode = false
+    private var capturedTextPreview = mutableStateOf<String?>(null)
 
     // Repositories for saving sessions and chunks
     private val sessionRepository: SessionRepository by inject()
     private val chunkRepository: ChunkRepository by inject()
 
-    // Region capture dependencies
-    private val regionCaptureManager: RegionCaptureManager by inject()
+    // Screenshot manager for media projection handling
     private val screenshotManager: ScreenshotManager by inject()
 
     // Coroutine scope for the service
@@ -204,34 +213,50 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     /**
      * Handles a region selection from the capture canvas.
-     * Attempts text extraction via accessibility first, then falls back to screenshot.
+     * Extracts text via AccessibilityService and saves it as a context on the session.
+     * Auto-returns to write mode after selection.
      */
     private fun handleRegionSelected(region: Rect) {
         Log.d(TAG, "Region selected: $region")
         serviceScope.launch(Dispatchers.IO) {
             try {
-                // Try accessibility-based text extraction first
-                val capturedContext = regionCaptureManager.captureRegion(region)
-                if (capturedContext != null) {
-                    Log.d(TAG, "Region text captured: $capturedContext")
-                    // TODO: Route captured context to session or Q&A flow
-                    return@launch
+                // Create session if needed
+                if (currentSessionId == null) {
+                    val session = sessionRepository.createSession()
+                    currentSessionId = session.id
+                    Log.d(TAG, "Created new session for region select: ${session.id}")
+                }
+                val sessionId = currentSessionId ?: return@launch
+
+                // Extract text via accessibility service
+                val regionText = SynapseAccessibilityService.getInstance()
+                    ?.getTextInRegion(region)
+
+                if (regionText != null && regionText.text.isNotBlank()) {
+                    sessionRepository.addContext(sessionId, regionText)
+                    Log.d(TAG, "Saved region text context: ${regionText.text.take(80)}")
+
+                    val preview = regionText.text.take(60).let {
+                        if (regionText.text.length > 60) "$it..." else it
+                    }
+                    capturedTextPreview.value = preview
+                } else {
+                    Log.w(TAG, "No text found in selected region")
+                    capturedTextPreview.value = "[No text found]"
                 }
 
-                // Fallback: capture screenshot of the region if MediaProjection available
-                if (screenshotManager.hasPermission()) {
-                    val bitmap = screenshotManager.captureRegion(region)
-                    if (bitmap != null) {
-                        Log.d(TAG, "Region screenshot captured: ${bitmap.width}x${bitmap.height}")
-                        // TODO: Route screenshot bitmap to OCR or session
-                    } else {
-                        Log.w(TAG, "Screenshot capture returned null")
-                    }
-                } else {
-                    Log.w(TAG, "No MediaProjection permission for screenshot fallback")
+                // Auto-switch back to write mode
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    isRegionMode = false
+                    refreshCaptureOverlay()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to capture region", e)
+                Log.e(TAG, "Failed to capture region text", e)
+                capturedTextPreview.value = "[Selection failed]"
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    isRegionMode = false
+                    refreshCaptureOverlay()
+                }
             }
         }
     }
@@ -326,6 +351,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     refreshCaptureOverlay()
                 }
             }
+            ACTION_SET_MEDIA_PROJECTION -> {
+                handleMediaProjectionResult(intent)
+            }
         }
         return START_STICKY
     }
@@ -357,6 +385,43 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         startForeground(NOTIFICATION_ID, notification)
         Log.d(TAG, "Started foreground service")
         showFloatingBubble()
+    }
+
+    /**
+     * Handles media projection result from MainActivity.
+     * Upgrades the foreground service type to include mediaProjection,
+     * then creates the MediaProjection (required on Android 14+).
+     */
+    private fun handleMediaProjectionResult(intent: Intent?) {
+        val resultCode = intent?.getIntExtra(EXTRA_PROJECTION_RESULT_CODE, 0) ?: return
+        val data = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_PROJECTION_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(EXTRA_PROJECTION_DATA)
+        } ?: return
+
+        try {
+            // Upgrade foreground service type to include mediaProjection
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    createNotification(),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION or
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            }
+
+            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                as MediaProjectionManager
+            val projection = projectionManager.getMediaProjection(resultCode, data)
+            if (projection != null) {
+                screenshotManager.setMediaProjection(projection)
+                Log.d(TAG, "MediaProjection set from service")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to set media projection", e)
+        }
     }
 
     private fun stopOverlay() {
@@ -427,7 +492,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private fun hideFloatingBubble() {
         floatingBubbleView?.let {
-            windowManager.removeView(it)
+            try {
+                windowManager.removeViewImmediate(it)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to remove floating bubble view", e)
+            }
             floatingBubbleView = null
         }
     }
@@ -497,6 +566,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                         viewModel = captureViewModel!!,
                         chunkTimeoutMs = chunkTimeoutMs,
                         isRegionMode = isRegionMode,
+                        capturedTextPreview = capturedTextPreview.value,
+                        onClearPreview = { capturedTextPreview.value = null },
                         onMinimize = {
                             // Hide overlay but keep session active
                             hideCaptureOverlay()
@@ -511,15 +582,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                             hideCaptureOverlay()
                         },
                         onToggleRegionMode = {
-                            if (!isRegionMode && !screenshotManager.hasPermission()) {
-                                // Need screen capture permission before enabling region mode
-                                Log.d(TAG, "Requesting screen capture permission for region mode")
-                                requestScreenCapturePermission()
-                            } else {
-                                isRegionMode = !isRegionMode
-                                Log.d(TAG, "Region mode toggled: $isRegionMode")
-                                refreshCaptureOverlay()
-                            }
+                            isRegionMode = !isRegionMode
+                            Log.d(TAG, "Region mode toggled: $isRegionMode")
+                            refreshCaptureOverlay()
                         },
                         onRegionSelected = { rect ->
                             handleRegionSelected(rect)
@@ -552,7 +617,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private fun hideCaptureOverlay() {
         captureOverlayView?.let {
-            windowManager.removeView(it)
+            try {
+                windowManager.removeViewImmediate(it)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to remove capture overlay view", e)
+            }
             captureOverlayView = null
         }
         isCaptureActive = false
@@ -591,7 +660,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         return NotificationCompat.Builder(this, SynapseApplication.OVERLAY_CHANNEL_ID)
             .setContentTitle(getString(R.string.overlay_notification_title))
             .setContentText(getString(R.string.overlay_notification_text))
-            .setSmallIcon(android.R.drawable.ic_menu_edit)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .build()
@@ -605,7 +674,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         const val ACTION_HIDE_CAPTURE = "com.synapse.action.HIDE_CAPTURE"
         const val ACTION_UPDATE_BADGE = "com.synapse.action.UPDATE_BADGE"
         const val ACTION_TOGGLE_REGION_MODE = "com.synapse.action.TOGGLE_REGION_MODE"
+        const val ACTION_SET_MEDIA_PROJECTION = "com.synapse.action.SET_MEDIA_PROJECTION"
         const val EXTRA_CHUNK_COUNT = "chunk_count"
+        const val EXTRA_PROJECTION_RESULT_CODE = "projection_result_code"
+        const val EXTRA_PROJECTION_DATA = "projection_data"
         private const val NOTIFICATION_ID = 1001
 
         fun start(context: Context) {
@@ -868,6 +940,8 @@ private fun CaptureOverlayContent(
     viewModel: CaptureViewModel,
     chunkTimeoutMs: Long,
     isRegionMode: Boolean = false,
+    capturedTextPreview: String? = null,
+    onClearPreview: (() -> Unit)? = null,
     onMinimize: () -> Unit,
     onDone: () -> Unit,
     onDiscard: () -> Unit,
@@ -988,6 +1062,45 @@ private fun CaptureOverlayContent(
                         tint = MaterialTheme.colorScheme.onError
                     )
                 }
+            }
+        }
+
+        // Captured text preview chip
+        var showPreview by remember(capturedTextPreview) {
+            mutableStateOf(capturedTextPreview != null)
+        }
+
+        if (capturedTextPreview != null) {
+            LaunchedEffect(capturedTextPreview) {
+                kotlinx.coroutines.delay(2500)
+                showPreview = false
+                onClearPreview?.invoke()
+            }
+        }
+
+        AnimatedVisibility(
+            visible = showPreview && capturedTextPreview != null,
+            enter = fadeIn(),
+            exit = fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 80.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.8f)
+                    .background(
+                        color = Color.Black.copy(alpha = 0.75f),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = "\u2713 Selected: ${capturedTextPreview ?: ""}",
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2
+                )
             }
         }
     }
