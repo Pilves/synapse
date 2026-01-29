@@ -90,6 +90,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koin.android.ext.android.inject
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
@@ -132,6 +134,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     // Current active session ID
     private val currentSessionId = AtomicReference<String?>(null)
+    private val sessionMutex = Mutex()
 
     // Settings keys
     private val chunkTimeoutKey = floatPreferencesKey("chunk_timeout_seconds")
@@ -181,11 +184,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private fun saveChunk(capturedChunk: com.synapse.ui.overlay.CapturedChunk) {
         serviceScope.launch(Dispatchers.IO) {
             try {
-                // Create session if not exists
-                if (currentSessionId.get() == null) {
-                    val session = sessionRepository.createSession()
-                    currentSessionId.set(session.id)
-                    Log.d(TAG, "Created new session: ${session.id}")
+                // Create session if not exists (synchronized)
+                sessionMutex.withLock {
+                    if (currentSessionId.get() == null) {
+                        val session = sessionRepository.createSession()
+                        currentSessionId.set(session.id)
+                        Log.d(TAG, "Created new session: ${session.id}")
+                    }
                 }
 
                 val sessionId = currentSessionId.get() ?: return@launch
@@ -194,13 +199,16 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 val timestampSeconds = capturedChunk.timestamp / 1000f
 
                 // Save chunk image and metadata
-                val chunk = chunkRepository.saveChunk(
-                    sessionId = sessionId,
-                    bitmap = capturedChunk.bitmap,
-                    timestampSeconds = timestampSeconds
-                )
-                Log.d(TAG, "Saved chunk: ${chunk.id} to session $sessionId")
-                capturedChunk.bitmap.recycle()
+                try {
+                    val chunk = chunkRepository.saveChunk(
+                        sessionId = sessionId,
+                        bitmap = capturedChunk.bitmap,
+                        timestampSeconds = timestampSeconds
+                    )
+                    Log.d(TAG, "Saved chunk: ${chunk.id} to session $sessionId")
+                } finally {
+                    capturedChunk.bitmap.recycle()
+                }
 
                 // Update badge count
                 pendingChunkCount.incrementAndGet()
@@ -222,11 +230,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         Log.d(TAG, "Region selected: $region")
         serviceScope.launch(Dispatchers.IO) {
             try {
-                // Create session if needed
-                if (currentSessionId.get() == null) {
-                    val session = sessionRepository.createSession()
-                    currentSessionId.set(session.id)
-                    Log.d(TAG, "Created new session for region select: ${session.id}")
+                // Create session if needed (synchronized)
+                sessionMutex.withLock {
+                    if (currentSessionId.get() == null) {
+                        val session = sessionRepository.createSession()
+                        currentSessionId.set(session.id)
+                        Log.d(TAG, "Created new session for region select: ${session.id}")
+                    }
                 }
                 val sessionId = currentSessionId.get() ?: return@launch
 
