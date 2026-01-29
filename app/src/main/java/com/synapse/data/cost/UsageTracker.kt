@@ -25,6 +25,7 @@ class UsageTracker(
         val storedMonth = prefs[MONTH_KEY] ?: currentMonth
 
         if (currentMonth != storedMonth) {
+            checkMonthReset()
             UsageStats(
                 totalCost = prefs[TOTAL_COST_KEY] ?: 0.0,
                 monthlyCost = 0.0,
@@ -36,6 +37,22 @@ class UsageTracker(
                 monthlyCost = prefs[MONTHLY_COST_KEY] ?: 0.0,
                 monthlySyncs = prefs[MONTHLY_SYNCS_KEY] ?: 0
             )
+        }
+    }
+
+    /**
+     * Checks if the month has changed and persists the reset of monthly counters.
+     */
+    suspend fun checkMonthReset() {
+        dataStore.edit { prefs ->
+            val currentMonth = Calendar.getInstance().get(Calendar.MONTH)
+            val storedMonth = prefs[MONTH_KEY] ?: currentMonth
+
+            if (currentMonth != storedMonth) {
+                prefs[MONTHLY_COST_KEY] = 0.0
+                prefs[MONTHLY_SYNCS_KEY] = 0
+                prefs[MONTH_KEY] = currentMonth
+            }
         }
     }
 
