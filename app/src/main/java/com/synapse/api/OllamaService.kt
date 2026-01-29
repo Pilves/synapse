@@ -12,6 +12,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.ConnectException
+import java.net.URL
 import java.util.concurrent.TimeUnit
 
 /**
@@ -61,6 +62,9 @@ class OllamaService(
      * Default is http://localhost:11434
      */
     fun setBaseUrl(url: String) {
+        val parsed = URL(url.trimEnd('/'))
+        require(parsed.protocol in listOf("http", "https")) { "Invalid URL scheme: ${parsed.protocol}" }
+        require(!parsed.host.isNullOrEmpty()) { "Invalid URL host" }
         this.baseUrl = url.trimEnd('/')
     }
 
