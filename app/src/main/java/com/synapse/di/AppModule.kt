@@ -257,7 +257,9 @@ val v2Module = module {
     single { ScreenshotManager(androidContext()) }
     single {
         RegionCaptureManager(
-            accessibilityServiceProvider = { SynapseAccessibilityService.getInstance() }
+            context = androidContext(),
+            accessibilityServiceProvider = { SynapseAccessibilityService.getInstance() },
+            screenshotManager = get()
         )
     }
 

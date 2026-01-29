@@ -7,8 +7,11 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.os.Build
 import android.os.IBinder
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
@@ -108,6 +111,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private val sessionRepository: SessionRepository by inject()
     private val chunkRepository: ChunkRepository by inject()
 
+    // Region capture dependencies
+    private val regionCaptureManager: RegionCaptureManager by inject()
+    private val screenshotManager: ScreenshotManager by inject()
+
     // Coroutine scope for the service
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -190,6 +197,67 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save chunk", e)
             }
+        }
+    }
+
+    /**
+     * Handles a region selection from the capture canvas.
+     * Attempts text extraction via accessibility first, then falls back to screenshot.
+     */
+    private fun handleRegionSelected(region: Rect) {
+        Log.d(TAG, "Region selected: $region")
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                // Try accessibility-based text extraction first
+                val capturedContext = regionCaptureManager.captureRegion(region)
+                if (capturedContext != null) {
+                    Log.d(TAG, "Region text captured: $capturedContext")
+                    // TODO: Route captured context to session or Q&A flow
+                    return@launch
+                }
+
+                // Fallback: capture screenshot of the region if MediaProjection available
+                if (screenshotManager.hasPermission()) {
+                    val bitmap = screenshotManager.captureRegion(region)
+                    if (bitmap != null) {
+                        Log.d(TAG, "Region screenshot captured: ${bitmap.width}x${bitmap.height}")
+                        // TODO: Route screenshot bitmap to OCR or session
+                    } else {
+                        Log.w(TAG, "Screenshot capture returned null")
+                    }
+                } else {
+                    Log.w(TAG, "No MediaProjection permission for screenshot fallback")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to capture region", e)
+            }
+        }
+    }
+
+    /**
+     * Triggers a short haptic vibration for region selection feedback.
+     */
+    private fun vibrateForRegionSelection() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator.vibrate(
+                    android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(
+                        android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(50)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to vibrate", e)
         }
     }
 
@@ -430,6 +498,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                             // Discard current session without ending
                             currentSessionId = null
                             hideCaptureOverlay()
+                        },
+                        onRegionSelected = { rect ->
+                            handleRegionSelected(rect)
+                        },
+                        onVibrate = {
+                            vibrateForRegionSelection()
                         }
                     )
                 }
@@ -738,7 +812,9 @@ private fun CaptureOverlayContent(
     chunkTimeoutMs: Long,
     onMinimize: () -> Unit,
     onDone: () -> Unit,
-    onDiscard: () -> Unit
+    onDiscard: () -> Unit,
+    onRegionSelected: ((android.graphics.Rect) -> Unit)? = null,
+    onVibrate: (() -> Unit)? = null
 ) {
     var toolbarOffsetX by remember { mutableFloatStateOf(0f) }
     var toolbarOffsetY by remember { mutableFloatStateOf(100f) }
@@ -761,7 +837,10 @@ private fun CaptureOverlayContent(
             },
             onFingerTouchPassThrough = {
                 // Finger touch is passing through to app below
-            }
+            },
+            regionSelectionEnabled = onRegionSelected != null,
+            onRegionSelected = onRegionSelected,
+            onVibrate = onVibrate
         )
 
         // Floating toolbar (draggable)
