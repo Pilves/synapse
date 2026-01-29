@@ -3,16 +3,14 @@ package com.synapse.api
 import com.synapse.model.*
 
 class QuestionAnswerService(
-    private val transcriptionServiceFactory: TranscriptionServiceFactory
+    private val llmProviderFactory: LlmProviderFactory
 ) {
 
     suspend fun answerQuestion(
         question: String,
+        config: com.synapse.model.LlmConfig,
         contexts: List<CapturedContext> = emptyList()
     ): String {
-        val service = transcriptionServiceFactory.getCurrentService()
-            ?: return "Unable to get answer - no LLM configured"
-
         val contextText = contexts.mapNotNull { context ->
             when (context) {
                 is CapturedContext.SelectedText -> "Selected text: ${context.text}"
@@ -37,6 +35,7 @@ class QuestionAnswerService(
 
         // For now, return a placeholder - actual implementation would call the LLM
         // The transcription service uses image-based APIs, so we'd need a text-only endpoint
+        // Future: use llmProviderFactory.getAnsweringService(config) with a text-only API
         return "Answer pending - text-only LLM query not yet implemented"
     }
 }
