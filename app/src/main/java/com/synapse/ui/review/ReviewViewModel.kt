@@ -95,7 +95,9 @@ class ReviewViewModel(
     private fun observeSessions() {
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
-            sessionRepository.observeSessions().collectLatest { allSessions ->
+            sessionRepository.observeSessions()
+                .distinctUntilChanged()
+                .collectLatest { allSessions ->
                 // Filter to only pending sessions (ended but not synced)
                 val pendingSessions = allSessions.filter { it.endedAt != null }
                 // Aggregate contexts from all pending sessions
