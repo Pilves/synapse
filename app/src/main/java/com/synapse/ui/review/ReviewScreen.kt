@@ -39,7 +39,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -113,11 +112,6 @@ fun ReviewScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Reload sessions when screen appears
-    LaunchedEffect(Unit) {
-        viewModel.loadPendingSessions()
-    }
-
     // Show error in snackbar
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
@@ -127,54 +121,14 @@ fun ReviewScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        Scaffold(
-            topBar = {
-                ReviewTopBar(
-                    viewMode = uiState.viewMode,
-                    onViewModeChange = viewModel::setViewMode,
-                    queueStatus = uiState.queueStatus,
-                    onRetrySync = viewModel::retrySyncQueue
-                )
-            },
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            bottomBar = {
-                Column {
-                    // Sync queue summary showing pending/queued/failed counts
-                    SyncQueueSummary(
-                        pendingCount = uiState.pendingSyncCount,
-                        queuedCount = uiState.queuedSyncCount,
-                        failedCount = uiState.failedSyncCount,
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
+        Column(modifier = Modifier.fillMaxSize()) {
+            ReviewTopBar(
+                viewMode = uiState.viewMode,
+                onViewModeChange = viewModel::setViewMode,
+                queueStatus = uiState.queueStatus,
+                onRetrySync = viewModel::retrySyncQueue
+            )
 
-                    // Sync status bar
-                    SyncStatusBar(
-                        syncStatus = uiState.syncStatus,
-                        onDismiss = viewModel::resetSyncStatus
-                    )
-
-                    // Bottom controls (project, filename, sync button)
-                    BottomControls(
-                        projects = uiState.projects,
-                        selectedProject = uiState.selectedProject,
-                        filename = uiState.filename,
-                        syncStatus = uiState.syncStatus,
-                        selectedCount = if (uiState.viewMode == ViewMode.SEPARATE) {
-                            uiState.selectedChunkIds.size
-                        } else {
-                            uiState.sessions.sumOf { it.chunks.size }
-                        },
-                        availableDestinations = uiState.availableDestinations,
-                        selectedDestinations = uiState.selectedDestinations,
-                        costEstimate = uiState.costEstimate,
-                        onProjectSelected = viewModel::selectProject,
-                        onFilenameChanged = viewModel::updateFilename,
-                        onSyncAll = viewModel::syncAll,
-                        onDestinationsChanged = viewModel::updateSelectedDestinations
-                    )
-                }
-            }
-        ) { paddingValues ->
             ReviewContent(
                 sessions = uiState.sessions,
                 viewMode = uiState.viewMode,
@@ -187,9 +141,49 @@ fun ReviewScreen(
                 onDeleteSession = viewModel::deleteSession,
                 onPreviewChunk = viewModel::setPreviewChunk,
                 onDeleteContext = viewModel::removeContext,
-                modifier = Modifier.padding(paddingValues)
+                modifier = Modifier.weight(1f)
+            )
+
+            // Sync queue summary showing pending/queued/failed counts
+            SyncQueueSummary(
+                pendingCount = uiState.pendingSyncCount,
+                queuedCount = uiState.queuedSyncCount,
+                failedCount = uiState.failedSyncCount,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            // Sync status bar
+            SyncStatusBar(
+                syncStatus = uiState.syncStatus,
+                onDismiss = viewModel::resetSyncStatus
+            )
+
+            // Bottom controls (project, filename, sync button)
+            BottomControls(
+                projects = uiState.projects,
+                selectedProject = uiState.selectedProject,
+                filename = uiState.filename,
+                syncStatus = uiState.syncStatus,
+                selectedCount = if (uiState.viewMode == ViewMode.SEPARATE) {
+                    uiState.selectedChunkIds.size
+                } else {
+                    uiState.sessions.sumOf { it.chunks.size }
+                },
+                availableDestinations = uiState.availableDestinations,
+                selectedDestinations = uiState.selectedDestinations,
+                costEstimate = uiState.costEstimate,
+                onProjectSelected = viewModel::selectProject,
+                onFilenameChanged = viewModel::updateFilename,
+                onSyncAll = viewModel::syncAll,
+                onDestinationsChanged = viewModel::updateSelectedDestinations
             )
         }
+
+        // Snackbar host
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
 
         // Full-size preview dialog
         uiState.previewChunk?.let { chunk ->
