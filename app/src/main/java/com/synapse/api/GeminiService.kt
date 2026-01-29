@@ -276,6 +276,141 @@ class GeminiService(
         }
     }
 
+    override suspend fun textQuery(prompt: String, systemPrompt: String?): String {
+        if (!isConfigured()) {
+            throw TranscriptionError.ApiKeyMissing()
+        }
+
+        return executeTextQueryWithRetry(prompt, systemPrompt)
+    }
+
+    private suspend fun executeTextQueryWithRetry(
+        prompt: String,
+        systemPrompt: String?
+    ): String {
+        var lastException: Exception? = null
+        var retryDelay = INITIAL_RETRY_DELAY_MS
+
+        repeat(MAX_RETRIES) { attempt ->
+            try {
+                return executeTextQueryRequest(prompt, systemPrompt)
+            } catch (e: TranscriptionError.RateLimitError) {
+                Log.w(TAG, "Rate limited on attempt ${attempt + 1}, waiting...")
+                val waitTime = e.retryAfterSeconds?.times(1000L) ?: retryDelay
+                delay(waitTime)
+                retryDelay *= 2
+                lastException = e
+            } catch (e: TranscriptionError.ServerError) {
+                if (e.statusCode in 500..599) {
+                    Log.w(TAG, "Server error on attempt ${attempt + 1}: ${e.message}")
+                    delay(retryDelay)
+                    retryDelay *= 2
+                    lastException = e
+                } else {
+                    throw e
+                }
+            } catch (e: IOException) {
+                Log.w(TAG, "Network error on attempt ${attempt + 1}: ${e.message}")
+                delay(retryDelay)
+                retryDelay *= 2
+                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
+            }
+        }
+
+        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
+    }
+
+    private fun executeTextQueryRequest(prompt: String, systemPrompt: String?): String {
+        val parts = JSONArray()
+
+        // Add system prompt as initial text if provided
+        val fullPrompt = if (systemPrompt != null) {
+            "$systemPrompt\n\n$prompt"
+        } else {
+            prompt
+        }
+        parts.put(JSONObject().put("text", fullPrompt))
+
+        val contents = JSONArray().put(
+            JSONObject().apply {
+                put("role", "user")
+                put("parts", parts)
+            }
+        )
+
+        val generationConfig = JSONObject().apply {
+            put("temperature", 0.3)
+            put("topP", 0.9)
+            put("maxOutputTokens", 4096)
+        }
+
+        val requestBody = JSONObject().apply {
+            put("contents", contents)
+            put("generationConfig", generationConfig)
+        }
+
+        val url = "$BASE_URL/$modelId:generateContent?key=$apiKey"
+
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        rateLimitState.recordRequest()
+
+        httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string() ?: ""
+            Log.d(TAG, "Gemini text query response code: ${response.code}")
+
+            when {
+                response.isSuccessful -> {
+                    return parseTextQueryResponse(responseBody)
+                }
+                response.code == 401 || response.code == 403 -> {
+                    throw TranscriptionError.ApiKeyInvalid("Invalid or unauthorized API key: $responseBody")
+                }
+                response.code == 429 -> {
+                    val retryAfter = response.header("Retry-After")?.toIntOrNull()
+                    throw TranscriptionError.RateLimitError(retryAfter)
+                }
+                response.code in 500..599 -> {
+                    throw TranscriptionError.ServerError(response.code, responseBody)
+                }
+                else -> {
+                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+                }
+            }
+        }
+    }
+
+    private fun parseTextQueryResponse(responseBody: String): String {
+        val jsonResponse = JSONObject(responseBody)
+
+        if (jsonResponse.has("error")) {
+            val error = jsonResponse.getJSONObject("error")
+            val message = error.optString("message", "Unknown error")
+            throw TranscriptionError.InvalidResponse("API error: $message")
+        }
+
+        val candidates = jsonResponse.optJSONArray("candidates")
+        if (candidates == null || candidates.length() == 0) {
+            throw TranscriptionError.InvalidResponse("No candidates in response")
+        }
+
+        val content = candidates.getJSONObject(0)
+            .optJSONObject("content")
+            ?.optJSONArray("parts")
+            ?.getJSONObject(0)
+            ?.optString("text", "")
+            ?: ""
+
+        if (content.isBlank()) {
+            throw TranscriptionError.InvalidResponse("Empty content in response")
+        }
+
+        return content.trim()
+    }
+
     override fun isConfigured(): Boolean {
         return !apiKey.isNullOrBlank()
     }
