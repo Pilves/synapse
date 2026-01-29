@@ -1,7 +1,7 @@
 package com.synapse.util
 
 import com.synapse.model.CapturedContext
-import com.synapse.model.TranscribedNote
+import com.synapse.api.TranscribedNote
 
 object OutputFormatter {
 

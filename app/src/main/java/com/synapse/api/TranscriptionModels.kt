@@ -1,5 +1,7 @@
 package com.synapse.api
 
+import com.synapse.model.DetectedIntent
+import com.synapse.model.IntentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -87,6 +89,33 @@ data class NoteResponse(
     val text: String,
     @SerialName("chunks_used")
     val chunksUsed: List<Int>
+)
+
+/**
+ * A transcribed note with intent detection and context references.
+ */
+data class TranscribedNote(
+    val text: String,
+    val chunksUsed: List<Int>,
+    val intent: DetectedIntent = DetectedIntent(type = IntentType.NOTE, confidence = 1.0f),
+    val contextsUsed: List<String> = emptyList()
+)
+
+/**
+ * A question extracted from a note paired with its generated answer.
+ */
+data class QuestionWithAnswer(
+    val originalNote: TranscribedNote,
+    val question: String,
+    val answer: String
+)
+
+/**
+ * Aggregated result of transcription processing including intent-detected questions.
+ */
+data class ProcessedResult(
+    val notes: List<TranscribedNote>,
+    val questions: List<QuestionWithAnswer> = emptyList()
 )
 
 /**

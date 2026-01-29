@@ -472,6 +472,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         serviceScope.cancel()
         hideCaptureOverlay()
         hideFloatingBubble()
+        screenshotManager.releaseProjection()
         super.onDestroy()
     }
 

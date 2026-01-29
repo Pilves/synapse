@@ -164,8 +164,8 @@ class ChunkStorage(private val context: Context) {
             } else {
                 ChunkResult.Error(
                     ChunkResult.ErrorType.INSUFFICIENT_STORAGE,
-                    "Insufficient storage: ${formatBytes(availableBytes)} free, " +
-                            "${formatBytes(MIN_FREE_STORAGE_BYTES)} required"
+                    "Insufficient storage: ${StorageHelper.formatBytes(availableBytes)} free, " +
+                            "${StorageHelper.formatBytes(MIN_FREE_STORAGE_BYTES)} required"
                 )
             }
         } catch (e: Exception) {
@@ -778,12 +778,4 @@ class ChunkStorage(private val context: Context) {
         return Bitmap.createScaledBitmap(bitmap, width, height, true)
     }
 
-    private fun formatBytes(bytes: Long): String {
-        return when {
-            bytes < 1024 -> "$bytes B"
-            bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
-            bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
-            else -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-        }
-    }
 }

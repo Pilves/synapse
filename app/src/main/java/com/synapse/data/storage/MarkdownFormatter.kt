@@ -1,6 +1,6 @@
 package com.synapse.data.storage
 
-import com.synapse.model.Note
+import com.synapse.api.Note
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

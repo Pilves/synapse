@@ -34,6 +34,21 @@ class StorageHelper(private val context: Context) {
 
         /** Max age for temp files before cleanup (1 hour in milliseconds) */
         private const val TEMP_FILE_MAX_AGE_MS = 60 * 60 * 1000L
+
+        /**
+         * Format bytes as human-readable string.
+         *
+         * @param bytes Number of bytes
+         * @return Formatted string (e.g., "1.5 MB")
+         */
+        fun formatBytes(bytes: Long): String {
+            return when {
+                bytes < 1024 -> "$bytes B"
+                bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
+                bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+                else -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+            }
+        }
     }
 
     /**
@@ -270,21 +285,6 @@ class StorageHelper(private val context: Context) {
 
         val cachePath = context.cacheDir.canonicalPath
         return canonicalPath.startsWith(cachePath)
-    }
-
-    /**
-     * Format bytes as human-readable string.
-     *
-     * @param bytes Number of bytes
-     * @return Formatted string (e.g., "1.5 MB")
-     */
-    fun formatBytes(bytes: Long): String {
-        return when {
-            bytes < 1024 -> "$bytes B"
-            bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
-            bytes < 1024 * 1024 * 1024 -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
-            else -> String.format("%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
-        }
     }
 
     /**

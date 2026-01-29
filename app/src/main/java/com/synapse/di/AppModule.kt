@@ -1,6 +1,5 @@
 package com.synapse.di
 
-import android.content.Context
 import com.synapse.api.DefaultTranscriptionServiceFactory
 import com.synapse.api.LlmProviderFactory
 import com.synapse.api.QuestionAnswerService
@@ -39,12 +38,6 @@ import com.synapse.ui.settings.SettingsViewModel
 import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.NetworkMonitor
 import com.synapse.util.PermissionHelper
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
-import com.synapse.api.LlmProvider
-import com.synapse.model.LlmConfig
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
@@ -121,57 +114,13 @@ val repositoryModule = module {
         )
     }
 
+    // LlmSettingsProvider - reads LLM settings from DataStore
+    single { com.synapse.data.LlmSettingsProvider(androidContext().settingsDataStore) }
+
     // SyncRepository - requires Context, storage classes, and TranscriptionServiceFactory
-    // Note: The transcriptionServiceProvider lambda is called at sync time to get
-    // the current transcription service based on user settings. This allows the
-    // service configuration (LLM provider, API key) to be read fresh each time.
     single<SyncRepository> {
         val factory: TranscriptionServiceFactory = get()
-        val dataStore = androidContext().settingsDataStore
-        val transcriptionProviderKey = stringPreferencesKey("transcription_provider")
-        val transcriptionApiKeyKey = stringPreferencesKey("transcription_api_key")
-        val answeringProviderKey = stringPreferencesKey("answering_provider")
-        val answeringApiKeyKey = stringPreferencesKey("answering_api_key")
-        val rateLimitingSafeKey = booleanPreferencesKey("rate_limiting_safe")
-        // Legacy fallback keys
-        val legacyProviderKey = stringPreferencesKey("llm_provider")
-        val legacyApiKeyKey = stringPreferencesKey("api_key")
-
-        fun readLlmSettings(): Triple<LlmProvider, String?, Boolean> {
-            return runBlocking {
-                val prefs = dataStore.data.first()
-                val providerName = prefs[transcriptionProviderKey]
-                    ?: prefs[legacyProviderKey]
-                    ?: LlmProvider.GEMINI.name
-                val apiKey = prefs[transcriptionApiKeyKey]
-                    ?: prefs[legacyApiKeyKey]
-                val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
-                val rateLimitingSafe = prefs[rateLimitingSafeKey] ?: true
-                Triple(provider, apiKey, rateLimitingSafe)
-            }
-        }
-
-        fun readFullLlmConfig(): LlmConfig? {
-            return runBlocking {
-                val prefs = dataStore.data.first()
-                val providerName = prefs[transcriptionProviderKey]
-                    ?: prefs[legacyProviderKey]
-                    ?: LlmProvider.GEMINI.name
-                val apiKey = prefs[transcriptionApiKeyKey]
-                    ?: prefs[legacyApiKeyKey]
-                val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
-                if (apiKey != null) {
-                    val answeringProv = prefs[answeringProviderKey]
-                    val answeringKey = prefs[answeringApiKeyKey]
-                    LlmConfig(
-                        transcriptionProvider = provider.name,
-                        transcriptionApiKey = apiKey,
-                        answeringProvider = answeringProv ?: provider.name,
-                        answeringApiKey = answeringKey ?: apiKey
-                    )
-                } else null
-            }
-        }
+        val settings: com.synapse.data.LlmSettingsProvider = get()
 
         SyncRepositoryImpl(
             context = androidContext(),
@@ -180,11 +129,11 @@ val repositoryModule = module {
             projectStorage = get(),
             syncStorage = get(),
             transcriptionServiceProvider = {
-                val (provider, apiKey, rateLimitingSafe) = readLlmSettings()
+                val (provider, apiKey, rateLimitingSafe) = settings.readLlmSettings()
                 factory.create(provider, apiKey, rateLimitingSafe)
             },
             questionAnswerService = get<QuestionAnswerService>(),
-            llmConfigProvider = { readFullLlmConfig() }
+            llmConfigProvider = { settings.readFullLlmConfig() }
         )
     }
 }
@@ -321,30 +270,6 @@ val appModule = module {
     single { androidContext().settingsDataStore }
 }
 
-/**
- * Data module - Legacy compatibility
- *
- * This module is kept for backward compatibility but delegates to
- * the more specific modules (storageModule, repositoryModule).
- *
- * @deprecated Use storageModule and repositoryModule directly
- */
-val dataModule = module {
-    // DataStore preferences
-    single { get<Context>().settingsDataStore }
-}
-
-/**
- * Network module - Legacy compatibility
- *
- * This module is kept for backward compatibility but delegates to apiModule.
- *
- * @deprecated Use apiModule directly
- */
-val networkModule = module {
-    // OkHttpClient is now provided by apiModule
-}
-
 // Timeout configuration constants
 private const val CONNECT_TIMEOUT_SECONDS = 30L
 private const val READ_TIMEOUT_SECONDS = 60L
@@ -368,8 +293,5 @@ fun getAllModules() = listOf(
     repositoryModule,
     v2Module,
     serviceHelpersModule,
-    viewModelModule,
-    // Legacy modules for backward compatibility
-    dataModule,
-    networkModule
+    viewModelModule
 )

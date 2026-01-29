@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -121,7 +122,7 @@ class SessionStorage(
             )
 
             saveSessionInternal(session)
-            refreshSessions()
+            refreshSessionInMemory(session)
 
             Log.d(TAG, "Created session ${session.id}")
             session
@@ -160,7 +161,7 @@ class SessionStorage(
                     tempFile.delete()
                 }
 
-                refreshSessions()
+                refreshSessionInMemory(session)
 
                 Log.d(TAG, "Created session $id")
                 SessionResult.Success(session)
@@ -277,7 +278,7 @@ class SessionStorage(
     suspend fun saveSession(session: Session) = mutex.withLock {
         withContext(Dispatchers.IO) {
             saveSessionInternal(session)
-            refreshSessions()
+            refreshSessionInMemory(session)
             Log.d(TAG, "Saved session ${session.id}")
         }
     }
@@ -294,7 +295,7 @@ class SessionStorage(
 
             val updatedSession = session.copy(endedAt = System.currentTimeMillis())
             saveSessionInternal(updatedSession)
-            refreshSessions()
+            refreshSessionInMemory(updatedSession)
 
             Log.d(TAG, "Ended session $sessionId")
             updatedSession
@@ -318,7 +319,7 @@ class SessionStorage(
             try {
                 val updatedSession = session.copy(endedAt = System.currentTimeMillis())
                 saveSessionInternal(updatedSession)
-                refreshSessions()
+                refreshSessionInMemory(updatedSession)
 
                 Log.d(TAG, "Ended session $sessionId")
                 SessionResult.Success(updatedSession)
@@ -347,7 +348,7 @@ class SessionStorage(
                 chunks = session.chunks + chunk
             )
             saveSessionInternal(updatedSession)
-            refreshSessions()
+            refreshSessionInMemory(updatedSession)
 
             Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
             updatedSession
@@ -369,7 +370,7 @@ class SessionStorage(
                 contexts = session.contexts + context
             )
             saveSessionInternal(updatedSession)
-            refreshSessions()
+            refreshSessionInMemory(updatedSession)
 
             Log.d(TAG, "Added context ${context.id} to session $sessionId")
             updatedSession
@@ -396,7 +397,7 @@ class SessionStorage(
                     chunks = session.chunks + chunk
                 )
                 saveSessionInternal(updatedSession)
-                refreshSessions()
+                refreshSessionInMemory(updatedSession)
 
                 Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
                 SessionResult.Success(updatedSession)
@@ -426,7 +427,7 @@ class SessionStorage(
             }
             val updatedSession = session.copy(chunks = updatedChunks)
             saveSessionInternal(updatedSession)
-            refreshSessions()
+            refreshSessionInMemory(updatedSession)
 
             Log.d(TAG, "Updated chunk ${chunk.id} in session $sessionId")
             updatedSession
@@ -448,7 +449,7 @@ class SessionStorage(
                 chunks = session.chunks.filter { it.id != chunkId }
             )
             saveSessionInternal(updatedSession)
-            refreshSessions()
+            refreshSessionInMemory(updatedSession)
 
             Log.d(TAG, "Removed chunk $chunkId from session $sessionId")
             updatedSession
@@ -481,7 +482,7 @@ class SessionStorage(
                     tempFile.delete()
                 }
 
-                refreshSessions()
+                if (deleted) removeSessionInMemory(sessionId)
 
                 Log.d(TAG, "Deleted session $sessionId: $deleted")
                 deleted
@@ -621,6 +622,30 @@ class SessionStorage(
     private suspend fun refreshSessions() {
         val sessions = loadSessionsFromDisk()
         _sessionsFlow.value = sessions
+    }
+
+    /**
+     * Updates the in-memory sessions flow after a single session is saved/updated.
+     * Avoids a full disk reload — the session is either replaced or appended.
+     */
+    private fun refreshSessionInMemory(updatedSession: Session) {
+        _sessionsFlow.update { sessions ->
+            val index = sessions.indexOfFirst { it.id == updatedSession.id }
+            if (index >= 0) {
+                sessions.toMutableList().apply { set(index, updatedSession) }
+            } else {
+                (sessions + updatedSession).sortedByDescending { it.startedAt }
+            }
+        }
+    }
+
+    /**
+     * Removes a session from the in-memory flow without reloading from disk.
+     */
+    private fun removeSessionInMemory(sessionId: String) {
+        _sessionsFlow.update { sessions ->
+            sessions.filter { it.id != sessionId }
+        }
     }
 
     private fun loadSessionsFromDisk(): List<Session> {

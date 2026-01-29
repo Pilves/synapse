@@ -11,7 +11,7 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import com.synapse.model.IntentData
 import com.synapse.model.IntentType
-import com.synapse.model.TranscribedNote
+import com.synapse.api.TranscribedNote
 import kotlinx.coroutines.delay
 
 @Composable

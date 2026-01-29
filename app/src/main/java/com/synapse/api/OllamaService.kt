@@ -2,16 +2,12 @@ package com.synapse.api
 
 import android.util.Base64
 import android.util.Log
-import kotlinx.coroutines.delay
-import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
-import java.net.ConnectException
 import java.net.URL
 import java.util.concurrent.TimeUnit
 
@@ -51,11 +47,6 @@ class OllamaService(
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
 
     /**
      * Sets the base URL for the Ollama server.
@@ -100,38 +91,18 @@ class OllamaService(
         prompt: String,
         chunkContext: String
     ): TranscriptionResult {
-        var lastException: Exception? = null
-        var retryDelay = INITIAL_RETRY_DELAY_MS
-
-        repeat(MAX_RETRIES) { attempt ->
-            try {
-                return executeRequest(chunks, prompt, chunkContext)
-            } catch (e: TranscriptionError.ServiceUnavailable) {
-                Log.w(TAG, "Service unavailable on attempt ${attempt + 1}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = e
-            } catch (e: TranscriptionError.ServerError) {
-                Log.w(TAG, "Server error on attempt ${attempt + 1}: ${e.message}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = e
-            } catch (e: ConnectException) {
-                Log.w(TAG, "Connection refused on attempt ${attempt + 1}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = TranscriptionError.ServiceUnavailable(
+        return RetryHelper.executeWithRetry(
+            maxRetries = MAX_RETRIES,
+            initialDelayMs = INITIAL_RETRY_DELAY_MS,
+            tag = TAG,
+            onConnectException = { e ->
+                TranscriptionError.ServiceUnavailable(
                     "Cannot connect to Ollama at $baseUrl. Is Ollama running?"
                 )
-            } catch (e: IOException) {
-                Log.w(TAG, "Network error on attempt ${attempt + 1}: ${e.message}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
             }
+        ) {
+            executeRequest(chunks, prompt, chunkContext)
         }
-
-        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
     }
 
     private fun executeRequest(
@@ -157,17 +128,11 @@ class OllamaService(
                     return parseResponse(responseBody, chunks.size)
                 }
                 response.code == 404 -> {
-                    // Model not found
                     throw TranscriptionError.InvalidResponse(
                         "Model '$model' not found. Install it with: ollama pull $model"
                     )
                 }
-                response.code in 500..599 -> {
-                    throw TranscriptionError.ServerError(response.code, responseBody)
-                }
-                else -> {
-                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
-                }
+                else -> HttpErrorHandler.handleHttpError(response, responseBody)
             }
         }
     }
@@ -242,43 +207,7 @@ class OllamaService(
     }
 
     private fun parseTranscriptionJson(content: String, chunkCount: Int): TranscriptionResult {
-        try {
-            // Clean up the content - remove markdown code fencing if present
-            val cleanedContent = content
-                .replace(Regex("^```json\\s*", RegexOption.MULTILINE), "")
-                .replace(Regex("^```\\s*", RegexOption.MULTILINE), "")
-                .replace(Regex("```$", RegexOption.MULTILINE), "")
-                .trim()
-
-            // Try to find JSON in the response (LLM might include extra text)
-            val jsonStart = cleanedContent.indexOf('{')
-            val jsonEnd = cleanedContent.lastIndexOf('}')
-
-            if (jsonStart == -1 || jsonEnd == -1 || jsonEnd < jsonStart) {
-                throw TranscriptionError.InvalidResponse("No valid JSON found in response")
-            }
-
-            val jsonContent = cleanedContent.substring(jsonStart, jsonEnd + 1)
-            val transcriptionResponse = json.decodeFromString<TranscriptionResponse>(jsonContent)
-
-            val notes = transcriptionResponse.notes.map { noteResponse ->
-                Note(
-                    text = noteResponse.text,
-                    chunksUsed = noteResponse.chunksUsed
-                )
-            }
-
-            // Determine which chunks weren't used (failed/skipped)
-            val usedChunks = notes.flatMap { it.chunksUsed }.toSet()
-            val failedChunks = (0 until chunkCount).filter { it !in usedChunks }
-
-            return TranscriptionResult(notes, failedChunks)
-        } catch (e: TranscriptionError) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse transcription JSON (${content.length} chars)", e)
-            throw TranscriptionError.InvalidResponse("Invalid JSON from LLM: ${e.message}", e)
-        }
+        return TranscriptionJsonParser.parse(content, chunkCount, extractJsonBounds = true)
     }
 
     override suspend fun textQuery(prompt: String, systemPrompt: String?): String {
@@ -338,10 +267,7 @@ class OllamaService(
                     throw TranscriptionError.InvalidResponse(
                         "Model '$model' not found. Install it with: ollama pull $model"
                     )
-                response.code in 500..599 ->
-                    throw TranscriptionError.ServerError(response.code, responseBody)
-                else ->
-                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+                else -> HttpErrorHandler.handleHttpError(response, responseBody)
             }
         }
     }
@@ -350,38 +276,18 @@ class OllamaService(
         prompt: String,
         systemPrompt: String?
     ): String {
-        var lastException: Exception? = null
-        var retryDelay = INITIAL_RETRY_DELAY_MS
-
-        repeat(MAX_RETRIES) { attempt ->
-            try {
-                return executeTextQueryRequest(prompt, systemPrompt)
-            } catch (e: TranscriptionError.ServiceUnavailable) {
-                Log.w(TAG, "Service unavailable on attempt ${attempt + 1}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = e
-            } catch (e: TranscriptionError.ServerError) {
-                Log.w(TAG, "Server error on attempt ${attempt + 1}: ${e.message}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = e
-            } catch (e: ConnectException) {
-                Log.w(TAG, "Connection refused on attempt ${attempt + 1}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = TranscriptionError.ServiceUnavailable(
+        return RetryHelper.executeWithRetry(
+            maxRetries = MAX_RETRIES,
+            initialDelayMs = INITIAL_RETRY_DELAY_MS,
+            tag = TAG,
+            onConnectException = { e ->
+                TranscriptionError.ServiceUnavailable(
                     "Cannot connect to Ollama at $baseUrl. Is Ollama running?"
                 )
-            } catch (e: IOException) {
-                Log.w(TAG, "Network error on attempt ${attempt + 1}: ${e.message}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
             }
+        ) {
+            executeTextQueryRequest(prompt, systemPrompt)
         }
-
-        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
     }
 
     private fun executeTextQueryRequest(prompt: String, systemPrompt: String?): String {
@@ -423,12 +329,7 @@ class OllamaService(
                         "Model '$model' not found. Install it with: ollama pull $model"
                     )
                 }
-                response.code in 500..599 -> {
-                    throw TranscriptionError.ServerError(response.code, responseBody)
-                }
-                else -> {
-                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
-                }
+                else -> HttpErrorHandler.handleHttpError(response, responseBody)
             }
         }
     }

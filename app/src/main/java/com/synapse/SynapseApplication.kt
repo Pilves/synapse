@@ -6,8 +6,6 @@ import android.app.NotificationManager
 import android.os.Build
 import com.synapse.di.apiModule
 import com.synapse.di.appModule
-import com.synapse.di.dataModule
-import com.synapse.di.networkModule
 import com.synapse.di.repositoryModule
 import com.synapse.di.serviceHelpersModule
 import com.synapse.di.storageModule
@@ -80,11 +78,7 @@ class SynapseApplication : Application() {
                 serviceHelpersModule,
 
                 // ViewModel layer - depends on all other modules
-                viewModelModule,
-
-                // Legacy modules for backward compatibility
-                dataModule,
-                networkModule
+                viewModelModule
             )
         }
     }
