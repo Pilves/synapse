@@ -101,12 +101,19 @@ app/src/main/java/com/synapse/
 
 ## Known Issues / Incomplete Items
 
-### Must Fix Before Release
-1. **QuestionAnswerService is a placeholder** - Returns static string. Needs text-only LLM endpoint (current services are image-based). Location: `api/QuestionAnswerService.kt:40`
-2. **ScreenshotManager needs MediaProjection permission flow** - The manager exists but there's no UI to request screen capture permission from the user. Needs an Activity result launcher integration.
-3. **Onboarding screens not wired into NavGraph** - `AccessibilityPermissionScreen` and `DestinationSetupScreen` are created but not added to `NavGraph.kt` or `OnboardingScreen.kt` flow.
-4. **v2 UI components not integrated into existing screens** - Components like `CostDisplay`, `SyncStatusIndicator`, `ContextCard`, `DestinationSelector`, `LlmSettingsSection`, and `IntentDialogs` are built but need to be placed into `ReviewScreen.kt`, `SettingsScreen.kt`, etc.
-5. **RegionGestureDetector not integrated into overlay** - The gesture detector exists but isn't hooked into `CaptureCanvas.kt` or `OverlayService.kt`.
+### Resolved (post-handoff)
+All five "Must Fix" items from the original handoff have been addressed:
+
+1. ~~**QuestionAnswerService is a placeholder**~~ -- Replaced with real LLM integration; text query support added to all four providers (Gemini, Claude, OpenAI, Ollama).
+2. ~~**ScreenshotManager needs MediaProjection permission flow**~~ -- MediaProjection result launcher added to `MainActivity.kt`; permission request dialog wired to region mode toggle.
+3. ~~**Onboarding screens not wired into NavGraph**~~ -- `AccessibilityPermissionScreen` and `DestinationSetupScreen` wired as standalone routes in `NavGraph.kt`.
+4. ~~**v2 UI components not integrated into existing screens**~~ -- `CostDisplay`, `SyncStatusIndicator`, `ContextCard`, `DestinationSelector`, `LlmSettingsSection`, and `IntentDialogs` integrated into `ReviewScreen.kt` and `SettingsScreen.kt`.
+5. ~~**RegionGestureDetector not integrated into overlay**~~ -- Region gesture detection added to `CaptureCanvas.kt`; region selection connected to capture manager in `OverlayService.kt`. Later replaced with text select + Q&A flow.
+
+### Remaining Items
+- Region capture was replaced with a text select + Q&A flow (`fbcfef7`); the `RegionGestureDetector` and `RegionCaptureManager` classes still exist but the primary interaction model is now text selection
+- `LlmCostCalculator` is a singleton object registered as `single { LlmCostCalculator }` in DI -- works but is redundant
+- Legacy `dataModule` and `networkModule` in `AppModule.kt` could be cleaned up
 
 ### Model Reconciliation Notes
 - `CapturedContext.kt` (canonical): Has `id`, `timestamp` abstract fields, `Rect bounds` on region types, `imagePath: String` for RegionImage, `pageTitle` on AutoContext

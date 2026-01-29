@@ -18,12 +18,12 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 - **Floating Overlay** -- capture notes without switching apps
 - **Automatic Chunking** -- 3-second timeout creates natural breaks between strokes
 - **Smart Transcription** -- messy handwriting to clean markdown via LLM
-- **Mermaid Diagrams** -- hand-drawn flowcharts converted to Mermaid code (advanced formatting mode)
+- **Mermaid Diagrams** -- hand-drawn flowcharts converted to Mermaid code via LLM (advanced formatting mode)
 - **Undo Support** -- undo last stroke while capturing
 
 ### Multi-Provider LLM
-- **Gemini** -- Google's Gemini 1.5 Flash (free tier available)
-- **Claude** -- Anthropic's Claude 3 Haiku
+- **Gemini** -- Google's Gemini 2.0 Flash (free tier available)
+- **Claude** -- Anthropic's Claude 3.5 Haiku
 - **OpenAI** -- GPT-4o Mini
 - **Ollama** -- local LLaVA for fully offline transcription
 - **Separate providers** -- configure different LLMs for transcription (image-based) vs. question answering (text-based)
@@ -49,7 +49,7 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 
 ### Cost Tracking
 - **Token Pricing** -- tracks estimated cost per LLM call based on model pricing
-- **Usage Statistics** -- cumulative stats stored in DataStore (total tokens, total cost, call count)
+- **Usage Statistics** -- cumulative stats stored in DataStore (total cost, monthly cost, sync count)
 - **Cost Display** -- banner in review screen shows estimated sync cost before you commit
 
 ### Offline Support
@@ -74,7 +74,6 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 | `INTERNET` | LLM API calls and sync |
 | `ACCESS_NETWORK_STATE` | Offline detection for sync queue |
 | `VIBRATE` | Haptic feedback on region selection |
-| `RECEIVE_BOOT_COMPLETED` | Restore state after reboot |
 | Accessibility Service | Text extraction from screen regions, auto-context capture |
 | MediaProjection | Screenshot-based region capture (requested on demand) |
 | SAF (document access) | Read/write Obsidian vault and local folders |
@@ -98,11 +97,13 @@ Or open in Android Studio and run directly on a connected device.
 
 The onboarding flow walks through these steps:
 
-1. **Overlay Permission** -- draw over other apps
-2. **Accessibility Permission** -- enable Synapse accessibility service for context capture
-3. **Vault Selection** -- pick your Obsidian vault folder
-4. **Destination Setup** -- choose default sync destinations
-5. **API Key** -- enter key for your preferred LLM provider
+1. **Welcome** -- introduction to Synapse
+2. **Overlay Permission** -- draw over other apps
+3. **Accessibility Permission** -- enable Synapse accessibility service for context capture
+4. **Screen Capture Permission** -- allow MediaProjection for region capture
+5. **Vault Selection** -- pick your Obsidian vault folder
+6. **Destination Setup** -- choose default sync destinations
+7. **API Key** -- enter key for your preferred LLM provider
 
 After onboarding, configure additional options in Settings:
 - Switch between LLM providers for transcription and answering separately
@@ -194,12 +195,20 @@ app/src/main/java/com/synapse/
 
 ## Contributing
 
-Contributions welcome:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. In short:
 
 1. Check existing issues first
 2. Open an issue to discuss major changes
 3. Fork, branch, PR
 4. Test on a real device (overlay and accessibility features need physical hardware)
+
+## Privacy
+
+Synapse is local-first. Your data stays on your device unless you explicitly sync it to an LLM provider. See [PRIVACY.md](PRIVACY.md) for details on what is accessed and why.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
 
 ## License
 

@@ -39,7 +39,7 @@ Single module architecture:
 ```
 app/
 ├── src/main/
-│   ├── java/com/pencapture/
+│   ├── java/com/synapse/
 │   │   ├── ui/
 │   │   │   ├── overlay/        # Overlay composables, canvas
 │   │   │   ├── review/         # Review screen
@@ -405,7 +405,7 @@ Dynamic based on total image size:
 - Required for overlay persistence
 - Notification channel: `IMPORTANCE_MIN` (minimal visibility)
 - User can manually hide via long-press
-- Notification text: "PenCapture active" with tap-to-open
+- Notification text: "Synapse active" with tap-to-open
 
 ### Battery Optimization
 
@@ -430,7 +430,7 @@ Dynamic based on total image size:
 ```
 ┌─────────────────────────────┐
 │                             │
-│    ✏️ Welcome to PenCapture  │
+│    Welcome to Synapse        │
 │                             │
 │  Capture handwritten notes  │
 │  without leaving your app   │
@@ -441,9 +441,9 @@ Dynamic based on total image size:
            ↓
 ┌─────────────────────────────┐
 │                             │
-│  📱 Overlay Permission       │
+│  Overlay Permission          │
 │                             │
-│  PenCapture needs to draw   │
+│  Synapse needs to draw      │
 │  over other apps to capture │
 │  your notes.                │
 │                             │
@@ -454,7 +454,7 @@ Dynamic based on total image size:
            ↓
 ┌─────────────────────────────┐
 │                             │
-│  📁 Select Your Vault        │
+│  Select Your Vault           │
 │                             │
 │  Choose your Obsidian       │
 │  vault folder.              │
@@ -466,7 +466,7 @@ Dynamic based on total image size:
            ↓
 ┌─────────────────────────────┐
 │                             │
-│  🔑 API Key                  │
+│  API Key                     │
 │                             │
 │  Enter your Gemini API key  │
 │  for transcription.         │
@@ -538,7 +538,7 @@ flowchart LR
 ### Repository Structure
 
 ```
-pencapture/
+synapse/
 ├── .github/
 │   ├── workflows/
 │   │   └── release.yml       # Build + publish APK
@@ -563,7 +563,7 @@ pencapture/
 ### README.md
 
 ```markdown
-# PenCapture
+# Synapse
 
 Zero-friction handwriting capture for Obsidian.
 
@@ -655,7 +655,7 @@ jobs:
 ### CONTRIBUTING.md
 
 ```markdown
-# Contributing to PenCapture
+# Contributing to Synapse
 
 ## Bug Reports
 - Use issue template
@@ -744,7 +744,7 @@ jobs:
 
 ## Summary
 
-PenCapture is a focused Android app that solves one problem well: capturing handwritten notes without context-switching. Key design decisions prioritize user control (11 configurable settings), reliability (atomic writes, partial sync, offline queue), and open source sustainability (clean architecture, contribution guidelines).
+Synapse is a focused Android app that solves one problem well: capturing handwritten notes without context-switching. Key design decisions prioritize user control (11 configurable settings), reliability (atomic writes, partial sync, offline queue), and open source sustainability (clean architecture, contribution guidelines).
 
 **Next Steps:**
 1. Set up Android project with Koin
