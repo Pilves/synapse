@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.synapse.BuildConfig
 import com.synapse.api.LlmProvider
 import com.synapse.ui.components.LlmSettingsSection
 import com.synapse.ui.overlay.InputMode
@@ -250,7 +251,7 @@ fun SettingsScreen(
 
             AboutRow(
                 label = "Version",
-                value = "1.0.0"
+                value = BuildConfig.VERSION_NAME
             )
 
             LinkRow(
