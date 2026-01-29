@@ -64,6 +64,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.runtime.snapshotFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -89,16 +90,20 @@ fun OnboardingScreen(
         pageCount = { state.totalPages }
     )
 
-    // Sync pager state with ViewModel
-    LaunchedEffect(state.currentPage) {
-        if (pagerState.currentPage != state.currentPage) {
-            pagerState.animateScrollToPage(state.currentPage)
+    // Helper to advance to the next page via the pager (single source of truth)
+    val goToNextPage: () -> Unit = {
+        scope.launch {
+            val next = (pagerState.currentPage + 1).coerceAtMost(state.totalPages - 1)
+            pagerState.animateScrollToPage(next)
         }
     }
 
-    LaunchedEffect(pagerState.currentPage) {
-        if (state.currentPage != pagerState.currentPage) {
-            viewModel.goToPage(pagerState.currentPage)
+    // Pager is the single source of truth — sync pager → ViewModel only
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage }.collect { page ->
+            if (state.currentPage != page) {
+                viewModel.goToPage(page)
+            }
         }
     }
 
@@ -144,7 +149,7 @@ fun OnboardingScreen(
             } catch (e: Exception) {
                 // Service might not be running yet during onboarding, that's ok
             }
-            viewModel.nextPage()
+            goToNextPage()
         }
     }
 
@@ -163,7 +168,7 @@ fun OnboardingScreen(
                         IconButton(
                             onClick = {
                                 scope.launch {
-                                    viewModel.previousPage()
+                                    pagerState.animateScrollToPage(pagerState.currentPage - 1)
                                 }
                             }
                         ) {
@@ -205,7 +210,7 @@ fun OnboardingScreen(
             ) { page ->
                 when (page) {
                     0 -> WelcomePage(
-                        onGetStarted = { viewModel.nextPage() }
+                        onGetStarted = goToNextPage
                     )
                     1 -> OverlayPermissionPage(
                         hasPermission = state.hasOverlayPermission,
@@ -215,12 +220,12 @@ fun OnboardingScreen(
                             }
                         },
                         onRefreshPermissions = { viewModel.refreshPermissions() },
-                        onSkip = { viewModel.nextPage() },
-                        onContinue = { viewModel.nextPage() }
+                        onSkip = goToNextPage,
+                        onContinue = goToNextPage
                     )
                     2 -> AccessibilityPermissionScreen(
-                        onEnabled = { viewModel.nextPage() },
-                        onSkip = { viewModel.nextPage() }
+                        onEnabled = goToNextPage,
+                        onSkip = goToNextPage
                     )
                     3 -> ScreenCapturePermissionPage(
                         onGrant = {
@@ -231,8 +236,8 @@ fun OnboardingScreen(
                                 projectionManager.createScreenCaptureIntent()
                             )
                         },
-                        onSkip = { viewModel.nextPage() },
-                        onContinue = { viewModel.nextPage() }
+                        onSkip = goToNextPage,
+                        onContinue = goToNextPage
                     )
                     4 -> SelectVaultPage(
                         hasVaultConfigured = state.hasVaultConfigured,
@@ -240,12 +245,12 @@ fun OnboardingScreen(
                         onPickFolder = {
                             folderPickerLauncher.launch(null)
                         },
-                        onSkip = { viewModel.nextPage() },
-                        onContinue = { viewModel.nextPage() }
+                        onSkip = goToNextPage,
+                        onContinue = goToNextPage
                     )
                     5 -> DestinationSetupScreen(
-                        onComplete = { viewModel.nextPage() },
-                        onSkip = { viewModel.nextPage() }
+                        onComplete = goToNextPage,
+                        onSkip = goToNextPage
                     )
                     6 -> ApiKeyPage(
                         hasApiKey = state.hasApiKey,
