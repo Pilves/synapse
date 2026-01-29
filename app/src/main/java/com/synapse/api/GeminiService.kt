@@ -17,8 +17,8 @@ import java.util.concurrent.TimeUnit
  * Supports the free tier rate limits: 15 RPM, 1500 requests/day.
  */
 class GeminiService(
-    private var apiKey: String? = null,
-    private var customPrompt: String? = null
+    @Volatile private var apiKey: String? = null,
+    @Volatile private var customPrompt: String? = null
 ) : TranscriptionService {
 
     companion object {

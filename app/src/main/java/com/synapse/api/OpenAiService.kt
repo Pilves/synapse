@@ -18,8 +18,8 @@ import java.util.concurrent.TimeUnit
  * Requires a valid API key from OpenAI.
  */
 class OpenAiService(
-    private var apiKey: String? = null,
-    private var customPrompt: String? = null,
+    @Volatile private var apiKey: String? = null,
+    @Volatile private var customPrompt: String? = null,
     private val rateLimitingSafe: Boolean = true
 ) : TranscriptionService {
 

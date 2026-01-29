@@ -18,9 +18,9 @@ import java.util.concurrent.TimeUnit
  * Runs locally, no API key required. Requires Ollama to be running on localhost.
  */
 class OllamaService(
-    private var baseUrl: String = DEFAULT_BASE_URL,
+    @Volatile private var baseUrl: String = DEFAULT_BASE_URL,
     private var model: String = DEFAULT_MODEL,
-    private var customPrompt: String? = null
+    @Volatile private var customPrompt: String? = null
 ) : TranscriptionService {
 
     companion object {

@@ -8,7 +8,7 @@ package com.synapse.api
  */
 class DefaultTranscriptionServiceFactory : TranscriptionServiceFactory {
 
-    private val serviceCache = mutableMapOf<LlmProvider, TranscriptionService>()
+    private val serviceCache = java.util.concurrent.ConcurrentHashMap<LlmProvider, TranscriptionService>()
     private var lastRateLimitingSafe: Boolean = true
 
     /**
@@ -19,21 +19,23 @@ class DefaultTranscriptionServiceFactory : TranscriptionServiceFactory {
      * @return Configured TranscriptionService instance
      */
     override fun create(provider: LlmProvider, apiKey: String?, rateLimitingSafe: Boolean): TranscriptionService {
-        // Invalidate cache when rateLimitingSafe changes since it's a constructor param
-        if (rateLimitingSafe != lastRateLimitingSafe) {
-            serviceCache.clear()
-            lastRateLimitingSafe = rateLimitingSafe
-        }
-
-        return serviceCache.getOrPut(provider) {
-            when (provider) {
-                LlmProvider.GEMINI -> GeminiService(apiKey)
-                LlmProvider.CLAUDE -> ClaudeService(apiKey, rateLimitingSafe = rateLimitingSafe)
-                LlmProvider.OPENAI -> OpenAiService(apiKey, rateLimitingSafe = rateLimitingSafe)
-                LlmProvider.OLLAMA -> OllamaService()
+        synchronized(serviceCache) {
+            // Invalidate cache when rateLimitingSafe changes since it's a constructor param
+            if (rateLimitingSafe != lastRateLimitingSafe) {
+                serviceCache.clear()
+                lastRateLimitingSafe = rateLimitingSafe
             }
-        }.also { service ->
-            service.setApiKey(apiKey)
+
+            return serviceCache.getOrPut(provider) {
+                when (provider) {
+                    LlmProvider.GEMINI -> GeminiService(apiKey)
+                    LlmProvider.CLAUDE -> ClaudeService(apiKey, rateLimitingSafe = rateLimitingSafe)
+                    LlmProvider.OPENAI -> OpenAiService(apiKey, rateLimitingSafe = rateLimitingSafe)
+                    LlmProvider.OLLAMA -> OllamaService()
+                }
+            }.also { service ->
+                service.setApiKey(apiKey)
+            }
         }
     }
 
