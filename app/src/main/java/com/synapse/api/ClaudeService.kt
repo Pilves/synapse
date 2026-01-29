@@ -124,12 +124,13 @@ class ClaudeService(
         prompt: String,
         chunkContext: String
     ): TranscriptionResult {
+        val key = apiKey ?: throw TranscriptionError.ApiKeyMissing()
         val requestBody = buildRequestBody(chunks, prompt, chunkContext)
 
         val request = Request.Builder()
             .url(BASE_URL)
             .addHeader("Content-Type", "application/json")
-            .addHeader("x-api-key", apiKey!!)
+            .addHeader("x-api-key", key)
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
@@ -354,10 +355,12 @@ class ClaudeService(
             put("messages", messages)
         }
 
+        val key = apiKey ?: throw TranscriptionError.ApiKeyMissing()
+
         val request = Request.Builder()
             .url(BASE_URL)
             .addHeader("Content-Type", "application/json")
-            .addHeader("x-api-key", apiKey!!)
+            .addHeader("x-api-key", key)
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
@@ -420,6 +423,8 @@ class ClaudeService(
     }
 
     private fun executeTextQueryRequest(prompt: String, systemPrompt: String?): String {
+        val key = apiKey ?: throw TranscriptionError.ApiKeyMissing()
+
         val contentArray = JSONArray()
         contentArray.put(JSONObject().apply {
             put("type", "text")
@@ -445,7 +450,7 @@ class ClaudeService(
         val request = Request.Builder()
             .url(BASE_URL)
             .addHeader("Content-Type", "application/json")
-            .addHeader("x-api-key", apiKey!!)
+            .addHeader("x-api-key", key)
             .addHeader("anthropic-version", ANTHROPIC_VERSION)
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()

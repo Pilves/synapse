@@ -123,12 +123,13 @@ class OpenAiService(
         prompt: String,
         chunkContext: String
     ): TranscriptionResult {
+        val key = apiKey ?: throw TranscriptionError.ApiKeyMissing()
         val requestBody = buildRequestBody(chunks, prompt, chunkContext)
 
         val request = Request.Builder()
             .url(BASE_URL)
             .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Authorization", "Bearer $key")
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -369,10 +370,12 @@ class OpenAiService(
             put("temperature", 0.3)
         }
 
+        val key = apiKey ?: throw TranscriptionError.ApiKeyMissing()
+
         val request = Request.Builder()
             .url(BASE_URL)
             .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Authorization", "Bearer $key")
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
@@ -434,6 +437,8 @@ class OpenAiService(
     }
 
     private fun executeTextQueryRequest(prompt: String, systemPrompt: String?): String {
+        val key = apiKey ?: throw TranscriptionError.ApiKeyMissing()
+
         val messages = JSONArray()
 
         if (systemPrompt != null) {
@@ -459,7 +464,7 @@ class OpenAiService(
         val request = Request.Builder()
             .url(BASE_URL)
             .addHeader("Content-Type", "application/json")
-            .addHeader("Authorization", "Bearer $apiKey")
+            .addHeader("Authorization", "Bearer $key")
             .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
             .build()
 
