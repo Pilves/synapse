@@ -23,8 +23,8 @@ class RegionGestureDetector(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (isHolding) {
-                    val start = holdStartPoint!!
+                val start = holdStartPoint
+                if (isHolding && start != null) {
                     currentRect = Rect(
                         min(start.x, event.x).toInt(),
                         min(start.y, event.y).toInt(),
