@@ -44,7 +44,8 @@ fun SettingsSlider(
     steps: Int = 0,
     valueFormatter: (Float) -> String = { it.toString() },
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    onValueChangeFinished: (() -> Unit)? = null
 ) {
     Column(
         modifier = modifier
@@ -79,6 +80,7 @@ fun SettingsSlider(
         Slider(
             value = value,
             onValueChange = onValueChange,
+            onValueChangeFinished = onValueChangeFinished,
             valueRange = valueRange,
             steps = steps,
             enabled = enabled,

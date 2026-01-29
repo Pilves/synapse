@@ -32,6 +32,10 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -124,28 +128,34 @@ fun SettingsScreen(
             // CAPTURE Section
             SettingsSection(title = "CAPTURE")
 
+            var localChunkTimeout by remember(chunkTimeout) { mutableFloatStateOf(chunkTimeout) }
             SettingsSlider(
                 label = "Chunk timeout",
-                value = chunkTimeout,
-                onValueChange = { viewModel.setChunkTimeout(it) },
+                value = localChunkTimeout,
+                onValueChange = { localChunkTimeout = it },
+                onValueChangeFinished = { viewModel.setChunkTimeout(localChunkTimeout) },
                 valueRange = 1f..10f,
                 steps = 8,
                 valueFormatter = ::formatSeconds
             )
 
+            var localFadeAnimation by remember(fadeAnimation) { mutableFloatStateOf(fadeAnimation) }
             SettingsSlider(
                 label = "Fade animation",
-                value = fadeAnimation,
-                onValueChange = { viewModel.setFadeAnimation(it) },
+                value = localFadeAnimation,
+                onValueChange = { localFadeAnimation = it },
+                onValueChangeFinished = { viewModel.setFadeAnimation(localFadeAnimation) },
                 valueRange = 0f..1f,
                 steps = 9,
                 valueFormatter = ::formatDecimalSeconds
             )
 
+            var localSessionAutoEnd by remember(sessionAutoEnd) { mutableFloatStateOf(sessionAutoEnd.toFloat()) }
             SettingsSlider(
                 label = "Session auto-end",
-                value = sessionAutoEnd.toFloat(),
-                onValueChange = { viewModel.setSessionAutoEnd(it.roundToInt()) },
+                value = localSessionAutoEnd,
+                onValueChange = { localSessionAutoEnd = it },
+                onValueChangeFinished = { viewModel.setSessionAutoEnd(localSessionAutoEnd.roundToInt()) },
                 valueRange = 5f..60f,
                 steps = 10,
                 valueFormatter = ::formatMinutes
