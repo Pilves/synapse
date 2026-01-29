@@ -1,8 +1,11 @@
 package com.synapse.ui
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -29,7 +32,9 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.rememberNavController
+import com.synapse.service.MediaProjectionHolder
 import com.synapse.service.OverlayService
+import com.synapse.service.ScreenshotManager
 import com.synapse.ui.navigation.Screen
 import com.synapse.ui.navigation.SynapseNavGraph
 import com.synapse.ui.settings.settingsDataStore
@@ -38,6 +43,7 @@ import com.synapse.util.PermissionHelper
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
 
 /**
  * Main entry point Activity for Synapse
@@ -55,6 +61,8 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var permissionHelper: PermissionHelper
 
+    private val screenshotManager: ScreenshotManager by inject()
+
     // DataStore key for onboarding completion
     private val onboardingCompleteKey = booleanPreferencesKey("onboarding_complete")
 
@@ -63,6 +71,33 @@ class MainActivity : ComponentActivity() {
 
     // Flag to request navigation to review on next composition
     private var pendingNavigateToReview = false
+
+    // MediaProjection permission request launcher
+    private val mediaProjectionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val resultCode = result.resultCode
+            val data = result.data!!
+            // Store the result intent for creating MediaProjection later
+            MediaProjectionHolder.setResult(resultCode, data)
+            // Create the projection and pass to ScreenshotManager
+            val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                as MediaProjectionManager
+            val projection = projectionManager.getMediaProjection(resultCode, data)
+            if (projection != null) {
+                screenshotManager.setMediaProjection(projection)
+                Log.d(TAG, "MediaProjection permission granted and set")
+            }
+        } else {
+            Log.w(TAG, "MediaProjection permission denied")
+            Toast.makeText(
+                this,
+                "Screen capture permission is required for region capture",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
 
     // Overlay permission request launcher
     private val overlayPermissionLauncher = registerForActivityResult(
@@ -232,6 +267,16 @@ class MainActivity : ComponentActivity() {
                 stopOverlayService()
             }
         }
+    }
+
+    /**
+     * Requests MediaProjection permission for screen capture.
+     * Launches the system screen capture consent dialog.
+     */
+    fun requestMediaProjectionPermission() {
+        val projectionManager = getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+            as MediaProjectionManager
+        mediaProjectionLauncher.launch(projectionManager.createScreenCaptureIntent())
     }
 
     /**
