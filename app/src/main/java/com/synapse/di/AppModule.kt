@@ -151,6 +151,28 @@ val repositoryModule = module {
             }
         }
 
+        fun readFullLlmConfig(): LlmConfig? {
+            return runBlocking {
+                val prefs = dataStore.data.first()
+                val providerName = prefs[transcriptionProviderKey]
+                    ?: prefs[legacyProviderKey]
+                    ?: LlmProvider.GEMINI.name
+                val apiKey = prefs[transcriptionApiKeyKey]
+                    ?: prefs[legacyApiKeyKey]
+                val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
+                if (apiKey != null) {
+                    val answeringProv = prefs[answeringProviderKey]
+                    val answeringKey = prefs[answeringApiKeyKey]
+                    LlmConfig(
+                        transcriptionProvider = provider.name,
+                        transcriptionApiKey = apiKey,
+                        answeringProvider = answeringProv ?: provider.name,
+                        answeringApiKey = answeringKey ?: apiKey
+                    )
+                } else null
+            }
+        }
+
         SyncRepositoryImpl(
             context = androidContext(),
             sessionStorage = get(),
@@ -162,20 +184,7 @@ val repositoryModule = module {
                 factory.create(provider, apiKey, rateLimitingSafe)
             },
             questionAnswerService = get<QuestionAnswerService>(),
-            llmConfigProvider = {
-                val (provider, apiKey) = readLlmSettings()
-                if (apiKey != null) {
-                    val prefs = runBlocking { dataStore.data.first() }
-                    val answeringProv = prefs[answeringProviderKey]
-                    val answeringKey = prefs[answeringApiKeyKey]
-                    LlmConfig(
-                        transcriptionProvider = provider.name,
-                        transcriptionApiKey = apiKey,
-                        answeringProvider = answeringProv ?: provider.name,
-                        answeringApiKey = answeringKey ?: apiKey
-                    )
-                } else null
-            }
+            llmConfigProvider = { readFullLlmConfig() }
         )
     }
 }
