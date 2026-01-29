@@ -102,6 +102,25 @@ interface TranscriptionService {
         prompt: String,
         systemPrompt: String? = null
     ): String
+
+    /**
+     * Sends a query with both text and images to the LLM and returns the response.
+     *
+     * Used for vision tasks such as explaining diagrams, charts, or screenshots.
+     *
+     * @param prompt The text prompt to send to the LLM
+     * @param images List of image byte arrays (PNG or WebP) to include
+     * @param systemPrompt Optional system prompt to set the assistant's behavior
+     * @return The LLM's text response
+     */
+    suspend fun visionQuery(
+        prompt: String,
+        images: List<ByteArray>,
+        systemPrompt: String? = null
+    ): String {
+        // Default implementation falls back to text-only query
+        return textQuery(prompt, systemPrompt)
+    }
 }
 
 /**

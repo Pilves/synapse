@@ -132,6 +132,8 @@ class VaultManager(private val context: Context) {
             .filter { it.isDirectory }
             .forEach { folder ->
                 folder.name?.let { name ->
+                    // Skip hidden folders (e.g. .obsidian, .git, .trash)
+                    if (name.startsWith(".")) return@forEach
                     result.add(FolderInfo(name = name, uri = folder.uri))
                     // Recurse into subfolders
                     result.addAll(listFoldersRecursive(folder, maxDepth, currentDepth + 1))

@@ -9,6 +9,9 @@ import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -29,6 +32,17 @@ class ScreenshotManager(private val context: Context) {
 
     private var mediaProjection: MediaProjection? = null
     private var permissionGranted = false
+    private var callbackRegistered = false
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private val projectionCallback = object : MediaProjection.Callback() {
+        override fun onStop() {
+            Log.d(TAG, "MediaProjection stopped via callback")
+            mediaProjection = null
+            permissionGranted = false
+            callbackRegistered = false
+        }
+    }
 
     /**
      * Whether screen capture permission has been granted.
@@ -40,7 +54,25 @@ class ScreenshotManager(private val context: Context) {
     fun setMediaProjection(projection: MediaProjection) {
         mediaProjection = projection
         permissionGranted = true
+        registerCallback(projection)
         Log.d(TAG, "MediaProjection set directly")
+    }
+
+    private fun registerCallback(projection: MediaProjection) {
+        if (!callbackRegistered) {
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                    projection.registerCallback(projectionCallback, mainHandler)
+                } else {
+                    @Suppress("DEPRECATION")
+                    projection.registerCallback(projectionCallback, mainHandler)
+                }
+                callbackRegistered = true
+                Log.d(TAG, "MediaProjection callback registered")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to register MediaProjection callback", e)
+            }
+        }
     }
 
     /**
@@ -61,6 +93,7 @@ class ScreenshotManager(private val context: Context) {
             if (projection != null) {
                 mediaProjection = projection
                 permissionGranted = true
+                registerCallback(projection)
                 Log.d(TAG, "MediaProjection restored from holder")
                 true
             } else {
@@ -74,6 +107,12 @@ class ScreenshotManager(private val context: Context) {
     }
 
     fun releaseProjection() {
+        if (callbackRegistered) {
+            try {
+                mediaProjection?.unregisterCallback(projectionCallback)
+            } catch (_: Exception) {}
+            callbackRegistered = false
+        }
         mediaProjection?.stop()
         mediaProjection = null
         permissionGranted = false

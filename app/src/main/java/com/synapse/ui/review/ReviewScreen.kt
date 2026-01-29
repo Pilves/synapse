@@ -75,7 +75,6 @@ import com.synapse.model.Project
 import com.synapse.model.SyncStatus
 import com.synapse.model.CostEstimate
 import com.synapse.model.Destination
-import com.synapse.ui.components.ContextSection
 import com.synapse.ui.components.DestinationSelectionRow
 import com.synapse.ui.components.IntentConfirmationDialog
 import com.synapse.ui.components.QuestionAnswerDialog
@@ -148,12 +147,6 @@ fun ReviewScreen(
                         modifier = Modifier.padding(horizontal = 16.dp)
                     )
 
-                    // Context section showing captured contexts
-                    ContextSection(
-                        contexts = uiState.contexts,
-                        onDeleteContext = viewModel::removeContext
-                    )
-
                     // Sync status bar
                     SyncStatusBar(
                         syncStatus = uiState.syncStatus,
@@ -193,6 +186,7 @@ fun ReviewScreen(
                 onDeleteChunk = viewModel::deleteChunk,
                 onDeleteSession = viewModel::deleteSession,
                 onPreviewChunk = viewModel::setPreviewChunk,
+                onDeleteContext = viewModel::removeContext,
                 modifier = Modifier.padding(paddingValues)
             )
         }
@@ -314,6 +308,7 @@ private fun ReviewContent(
     onDeleteChunk: (Chunk) -> Unit,
     onDeleteSession: (com.synapse.model.Session) -> Unit,
     onPreviewChunk: (Chunk) -> Unit,
+    onDeleteContext: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -347,7 +342,8 @@ private fun ReviewContent(
                             onDeselectAllChunks = { onDeselectAllChunksInSession(session) },
                             onDeleteChunk = onDeleteChunk,
                             onDeleteSession = { onDeleteSession(session) },
-                            onPreviewChunk = onPreviewChunk
+                            onPreviewChunk = onPreviewChunk,
+                            onDeleteContext = onDeleteContext
                         )
                     }
                 }

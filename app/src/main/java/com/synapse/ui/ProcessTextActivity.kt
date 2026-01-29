@@ -20,7 +20,7 @@ class ProcessTextActivity : ComponentActivity() {
             )
 
             val overlayIntent = Intent(this, OverlayService::class.java).apply {
-                action = "ACTION_SHOW_WITH_CONTEXT"
+                action = OverlayService.ACTION_SHOW_WITH_CONTEXT
             }
             startService(overlayIntent)
         }

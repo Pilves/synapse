@@ -196,7 +196,7 @@ class OllamaService(
             put("options", JSONObject().apply {
                 put("temperature", 0.2)
                 put("top_p", 0.8)
-                put("num_predict", 4096)
+                put("num_predict", 8192)
             })
         }
     }
@@ -285,6 +285,63 @@ class OllamaService(
         return executeTextQueryWithRetry(prompt, systemPrompt)
     }
 
+    override suspend fun visionQuery(
+        prompt: String,
+        images: List<ByteArray>,
+        systemPrompt: String?
+    ): String {
+        if (!isConfigured()) {
+            throw TranscriptionError.ServiceUnavailable("Ollama server not available at $baseUrl")
+        }
+        if (images.isEmpty()) {
+            return textQuery(prompt, systemPrompt)
+        }
+
+        val fullPrompt = if (systemPrompt != null) "$systemPrompt\n\n$prompt" else prompt
+
+        val imagesArray = JSONArray()
+        images.forEach { imageBytes ->
+            imagesArray.put(Base64.encodeToString(imageBytes, Base64.NO_WRAP))
+        }
+
+        val requestBody = JSONObject().apply {
+            put("model", model)
+            put("prompt", fullPrompt)
+            put("images", imagesArray)
+            put("stream", false)
+            put("options", JSONObject().apply {
+                put("temperature", 0.3)
+                put("top_p", 0.9)
+                put("num_predict", 8192)
+            })
+        }
+
+        val url = "$baseUrl/api/generate"
+
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        rateLimitState.recordRequest()
+
+        httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string() ?: ""
+
+            when {
+                response.isSuccessful -> return parseTextQueryResponse(responseBody)
+                response.code == 404 ->
+                    throw TranscriptionError.InvalidResponse(
+                        "Model '$model' not found. Install it with: ollama pull $model"
+                    )
+                response.code in 500..599 ->
+                    throw TranscriptionError.ServerError(response.code, responseBody)
+                else ->
+                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+            }
+        }
+    }
+
     private suspend fun executeTextQueryWithRetry(
         prompt: String,
         systemPrompt: String?
@@ -337,7 +394,7 @@ class OllamaService(
             put("options", JSONObject().apply {
                 put("temperature", 0.3)
                 put("top_p", 0.9)
-                put("num_predict", 4096)
+                put("num_predict", 8192)
             })
         }
 

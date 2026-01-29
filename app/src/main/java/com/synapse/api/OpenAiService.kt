@@ -214,7 +214,7 @@ class OpenAiService(
         return JSONObject().apply {
             put("model", modelId)
             put("messages", messages)
-            put("max_tokens", 4096)
+            put("max_tokens", 8192)
             put("temperature", 0.2)
             put("top_p", 0.8)
             // Request JSON output mode
@@ -318,6 +318,84 @@ class OpenAiService(
         return executeTextQueryWithRetry(prompt, systemPrompt)
     }
 
+    override suspend fun visionQuery(
+        prompt: String,
+        images: List<ByteArray>,
+        systemPrompt: String?
+    ): String {
+        if (!isConfigured()) {
+            throw TranscriptionError.ApiKeyMissing()
+        }
+        if (images.isEmpty()) {
+            return textQuery(prompt, systemPrompt)
+        }
+
+        val messages = JSONArray()
+
+        if (systemPrompt != null) {
+            messages.put(JSONObject().apply {
+                put("role", "system")
+                put("content", systemPrompt)
+            })
+        }
+
+        val contentArray = JSONArray()
+        contentArray.put(JSONObject().apply {
+            put("type", "text")
+            put("text", prompt)
+        })
+
+        images.forEach { imageBytes ->
+            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+            contentArray.put(JSONObject().apply {
+                put("type", "image_url")
+                put("image_url", JSONObject().apply {
+                    put("url", "data:image/png;base64,$base64Image")
+                    put("detail", "high")
+                })
+            })
+        }
+
+        messages.put(JSONObject().apply {
+            put("role", "user")
+            put("content", contentArray)
+        })
+
+        val requestBody = JSONObject().apply {
+            put("model", modelId)
+            put("messages", messages)
+            put("max_tokens", 8192)
+            put("temperature", 0.3)
+        }
+
+        val request = Request.Builder()
+            .url(BASE_URL)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("Authorization", "Bearer $apiKey")
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        rateLimitState.recordRequest()
+
+        httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string() ?: ""
+
+            when {
+                response.isSuccessful -> return parseTextQueryResponse(responseBody)
+                response.code == 401 ->
+                    throw TranscriptionError.ApiKeyInvalid("Invalid API key")
+                response.code == 429 -> {
+                    val retryAfter = response.header("retry-after")?.toIntOrNull()
+                    throw TranscriptionError.RateLimitError(retryAfter)
+                }
+                response.code in 500..599 ->
+                    throw TranscriptionError.ServerError(response.code, responseBody)
+                else ->
+                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+            }
+        }
+    }
+
     private suspend fun executeTextQueryWithRetry(
         prompt: String,
         systemPrompt: String?
@@ -372,7 +450,7 @@ class OpenAiService(
         val requestBody = JSONObject().apply {
             put("model", modelId)
             put("messages", messages)
-            put("max_tokens", 4096)
+            put("max_tokens", 8192)
             put("temperature", 0.3)
             put("top_p", 0.9)
         }

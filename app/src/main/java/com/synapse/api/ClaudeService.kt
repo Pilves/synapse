@@ -201,7 +201,7 @@ class ClaudeService(
 
         return JSONObject().apply {
             put("model", modelId)
-            put("max_tokens", 4096)
+            put("max_tokens", 8192)
             put("system", PromptTemplate.SYSTEM_PROMPT)
             put("messages", messages)
         }
@@ -306,6 +306,82 @@ class ClaudeService(
         return executeTextQueryWithRetry(prompt, systemPrompt)
     }
 
+    override suspend fun visionQuery(
+        prompt: String,
+        images: List<ByteArray>,
+        systemPrompt: String?
+    ): String {
+        if (!isConfigured()) {
+            throw TranscriptionError.ApiKeyMissing()
+        }
+        if (images.isEmpty()) {
+            return textQuery(prompt, systemPrompt)
+        }
+
+        val contentArray = JSONArray()
+
+        images.forEach { imageBytes ->
+            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+            contentArray.put(JSONObject().apply {
+                put("type", "image")
+                put("source", JSONObject().apply {
+                    put("type", "base64")
+                    put("media_type", "image/png")
+                    put("data", base64Image)
+                })
+            })
+        }
+
+        contentArray.put(JSONObject().apply {
+            put("type", "text")
+            put("text", prompt)
+        })
+
+        val messages = JSONArray().put(
+            JSONObject().apply {
+                put("role", "user")
+                put("content", contentArray)
+            }
+        )
+
+        val requestBody = JSONObject().apply {
+            put("model", modelId)
+            put("max_tokens", 8192)
+            if (systemPrompt != null) {
+                put("system", systemPrompt)
+            }
+            put("messages", messages)
+        }
+
+        val request = Request.Builder()
+            .url(BASE_URL)
+            .addHeader("Content-Type", "application/json")
+            .addHeader("x-api-key", apiKey!!)
+            .addHeader("anthropic-version", ANTHROPIC_VERSION)
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        rateLimitState.recordRequest()
+
+        httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string() ?: ""
+
+            when {
+                response.isSuccessful -> return parseTextQueryResponse(responseBody)
+                response.code == 401 ->
+                    throw TranscriptionError.ApiKeyInvalid("Invalid API key")
+                response.code == 429 -> {
+                    val retryAfter = response.header("retry-after")?.toIntOrNull()
+                    throw TranscriptionError.RateLimitError(retryAfter)
+                }
+                response.code in 500..599 ->
+                    throw TranscriptionError.ServerError(response.code, responseBody)
+                else ->
+                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+            }
+        }
+    }
+
     private suspend fun executeTextQueryWithRetry(
         prompt: String,
         systemPrompt: String?
@@ -358,7 +434,7 @@ class ClaudeService(
 
         val requestBody = JSONObject().apply {
             put("model", modelId)
-            put("max_tokens", 4096)
+            put("max_tokens", 8192)
             if (systemPrompt != null) {
                 put("system", systemPrompt)
             }

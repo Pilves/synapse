@@ -186,7 +186,7 @@ class GeminiService(
         val generationConfig = JSONObject().apply {
             put("temperature", 0.2)
             put("topP", 0.8)
-            put("maxOutputTokens", 4096)
+            put("maxOutputTokens", 8192)
         }
 
         val safetySettings = JSONArray().apply {
@@ -284,6 +284,79 @@ class GeminiService(
         return executeTextQueryWithRetry(prompt, systemPrompt)
     }
 
+    override suspend fun visionQuery(
+        prompt: String,
+        images: List<ByteArray>,
+        systemPrompt: String?
+    ): String {
+        if (!isConfigured()) {
+            throw TranscriptionError.ApiKeyMissing()
+        }
+        if (images.isEmpty()) {
+            return textQuery(prompt, systemPrompt)
+        }
+
+        val parts = JSONArray()
+
+        val fullPrompt = if (systemPrompt != null) "$systemPrompt\n\n$prompt" else prompt
+        parts.put(JSONObject().put("text", fullPrompt))
+
+        images.forEach { imageBytes ->
+            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+            val inlineData = JSONObject().apply {
+                put("mime_type", "image/png")
+                put("data", base64Image)
+            }
+            parts.put(JSONObject().put("inline_data", inlineData))
+        }
+
+        val contents = JSONArray().put(
+            JSONObject().apply {
+                put("role", "user")
+                put("parts", parts)
+            }
+        )
+
+        val generationConfig = JSONObject().apply {
+            put("temperature", 0.3)
+            put("topP", 0.9)
+            put("maxOutputTokens", 8192)
+        }
+
+        val requestBody = JSONObject().apply {
+            put("contents", contents)
+            put("generationConfig", generationConfig)
+        }
+
+        val url = "$BASE_URL/$modelId:generateContent?key=$apiKey"
+
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        rateLimitState.recordRequest()
+
+        httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string() ?: ""
+            Log.d(TAG, "Gemini vision query response code: ${response.code}")
+
+            when {
+                response.isSuccessful -> return parseTextQueryResponse(responseBody)
+                response.code == 401 || response.code == 403 ->
+                    throw TranscriptionError.ApiKeyInvalid("Invalid or unauthorized API key: $responseBody")
+                response.code == 429 -> {
+                    val retryAfter = response.header("Retry-After")?.toIntOrNull()
+                    throw TranscriptionError.RateLimitError(retryAfter)
+                }
+                response.code in 500..599 ->
+                    throw TranscriptionError.ServerError(response.code, responseBody)
+                else ->
+                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+            }
+        }
+    }
+
     private suspend fun executeTextQueryWithRetry(
         prompt: String,
         systemPrompt: String?
@@ -341,7 +414,7 @@ class GeminiService(
         val generationConfig = JSONObject().apply {
             put("temperature", 0.3)
             put("topP", 0.9)
-            put("maxOutputTokens", 4096)
+            put("maxOutputTokens", 8192)
         }
 
         val requestBody = JSONObject().apply {

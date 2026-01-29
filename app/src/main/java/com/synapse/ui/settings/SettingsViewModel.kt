@@ -70,8 +70,8 @@ class SettingsViewModel(
 
     // Default values
     object Defaults {
-        const val CHUNK_TIMEOUT = 3f
-        const val FADE_ANIMATION = 0.3f
+        const val CHUNK_TIMEOUT = 1f
+        const val FADE_ANIMATION = 0.2f
         const val SESSION_AUTO_END = 15
         val INPUT_MODE = InputMode.STYLUS_WRITE_FINGER_SCROLL
         const val DEFAULT_VIEW_STITCHED = true

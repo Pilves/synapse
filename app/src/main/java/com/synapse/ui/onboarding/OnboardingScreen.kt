@@ -42,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -59,7 +60,10 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import kotlinx.coroutines.launch
 
 /**
@@ -118,6 +122,26 @@ fun OnboardingScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
         viewModel.refreshPermissions()
+    }
+
+    val screenCaptureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
+            com.synapse.service.MediaProjectionHolder.setResult(result.resultCode, result.data!!)
+            // Forward to OverlayService if it's running
+            try {
+                val serviceIntent = android.content.Intent(context, com.synapse.service.OverlayService::class.java).apply {
+                    action = com.synapse.service.OverlayService.ACTION_SET_MEDIA_PROJECTION
+                    putExtra(com.synapse.service.OverlayService.EXTRA_PROJECTION_RESULT_CODE, result.resultCode)
+                    putExtra(com.synapse.service.OverlayService.EXTRA_PROJECTION_DATA, result.data)
+                }
+                context.startService(serviceIntent)
+            } catch (e: Exception) {
+                // Service might not be running yet during onboarding, that's ok
+            }
+            viewModel.nextPage()
+        }
     }
 
     val folderPickerLauncher = rememberLauncherForActivityResult(
@@ -186,6 +210,7 @@ fun OnboardingScreen(
                                 overlayPermissionLauncher.launch(intent)
                             }
                         },
+                        onRefreshPermissions = { viewModel.refreshPermissions() },
                         onSkip = { viewModel.nextPage() },
                         onContinue = { viewModel.nextPage() }
                     )
@@ -193,7 +218,19 @@ fun OnboardingScreen(
                         onEnabled = { viewModel.nextPage() },
                         onSkip = { viewModel.nextPage() }
                     )
-                    3 -> SelectVaultPage(
+                    3 -> ScreenCapturePermissionPage(
+                        onGrant = {
+                            val projectionManager = context.getSystemService(
+                                android.content.Context.MEDIA_PROJECTION_SERVICE
+                            ) as android.media.projection.MediaProjectionManager
+                            screenCaptureLauncher.launch(
+                                projectionManager.createScreenCaptureIntent()
+                            )
+                        },
+                        onSkip = { viewModel.nextPage() },
+                        onContinue = { viewModel.nextPage() }
+                    )
+                    4 -> SelectVaultPage(
                         hasVaultConfigured = state.hasVaultConfigured,
                         vaultPath = state.vaultPath,
                         onPickFolder = {
@@ -202,11 +239,11 @@ fun OnboardingScreen(
                         onSkip = { viewModel.nextPage() },
                         onContinue = { viewModel.nextPage() }
                     )
-                    4 -> DestinationSetupScreen(
+                    5 -> DestinationSetupScreen(
                         onComplete = { viewModel.nextPage() },
                         onSkip = { viewModel.nextPage() }
                     )
-                    5 -> ApiKeyPage(
+                    6 -> ApiKeyPage(
                         hasApiKey = state.hasApiKey,
                         isValidating = state.isValidatingApiKey,
                         onSaveApiKey = { key ->
@@ -285,9 +322,22 @@ private fun WelcomePage(
 private fun OverlayPermissionPage(
     hasPermission: Boolean,
     onGrantPermission: () -> Unit,
+    onRefreshPermissions: () -> Unit,
     onSkip: () -> Unit,
     onContinue: () -> Unit
 ) {
+    // Check permission when returning from settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                onRefreshPermissions()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     OnboardingPage(
         icon = "\uD83D\uDCF1",
         title = "Overlay Permission",
@@ -300,7 +350,43 @@ private fun OverlayPermissionPage(
 }
 
 /**
- * Page 3: Select vault page
+ * Page 3: Screen capture permission page
+ */
+@Composable
+private fun ScreenCapturePermissionPage(
+    onGrant: () -> Unit,
+    onSkip: () -> Unit,
+    onContinue: () -> Unit
+) {
+    // After returning from the system dialog, auto-advance if permission was granted
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                if (com.synapse.service.MediaProjectionHolder.hasResult()) {
+                    onContinue()
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val hasPermission = com.synapse.service.MediaProjectionHolder.hasResult()
+
+    OnboardingPage(
+        icon = "\uD83D\uDDBC\uFE0F",
+        title = "Screen Capture",
+        description = "Synapse can capture screenshots\nwhen no text is found in a selection.\nGreat for diagrams and images.",
+        primaryButtonText = if (hasPermission) "Continue" else "Grant Permission",
+        onPrimaryClick = if (hasPermission) onContinue else onGrant,
+        tertiaryButtonText = if (!hasPermission) "Skip for now" else null,
+        onTertiaryClick = if (!hasPermission) onSkip else null
+    )
+}
+
+/**
+ * Page 4: Select vault page
  */
 @Composable
 private fun SelectVaultPage(
@@ -519,4 +605,16 @@ private fun getDisplayPath(uriString: String): String {
     } catch (e: Exception) {
         uriString
     }
+}
+
+/**
+ * Finds an Activity of the given type from a Context, unwrapping ContextWrappers.
+ */
+private inline fun <reified T : android.app.Activity> android.content.Context.findActivity(): T? {
+    var ctx = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is T) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }

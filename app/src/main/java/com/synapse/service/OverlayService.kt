@@ -228,7 +228,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 }
                 val sessionId = currentSessionId ?: return@launch
 
-                // Extract text via accessibility service
+                // Try text extraction via accessibility service first
                 val regionText = SynapseAccessibilityService.getInstance()
                     ?.getTextInRegion(region)
 
@@ -241,8 +241,33 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     }
                     capturedTextPreview.value = preview
                 } else {
-                    Log.w(TAG, "No text found in selected region")
-                    capturedTextPreview.value = "[No text found]"
+                    // Fallback: capture screenshot via MediaProjection
+                    Log.d(TAG, "No text found, attempting screenshot fallback")
+                    if (screenshotManager.hasPermission()) {
+                        screenshotManager.tryRestoreProjection()
+                        val bitmap = screenshotManager.captureRegion(region)
+                        if (bitmap != null) {
+                            Log.d(TAG, "Screenshot captured: ${bitmap.width}x${bitmap.height}")
+                            val imagePath = saveScreenshot(bitmap)
+                            if (imagePath != null) {
+                                val imageContext = com.synapse.model.CapturedContext.RegionImage(
+                                    imagePath = imagePath,
+                                    bounds = region,
+                                    description = null
+                                )
+                                sessionRepository.addContext(sessionId, imageContext)
+                                capturedTextPreview.value = "[Screenshot captured]"
+                            } else {
+                                capturedTextPreview.value = "[Failed to save screenshot]"
+                            }
+                        } else {
+                            Log.w(TAG, "Screenshot capture returned null")
+                            capturedTextPreview.value = "[Screenshot failed]"
+                        }
+                    } else {
+                        Log.w(TAG, "No screenshot permission for fallback")
+                        capturedTextPreview.value = "[No text found - grant screen capture for screenshots]"
+                    }
                 }
 
                 // Auto-switch back to write mode
@@ -251,12 +276,59 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     refreshCaptureOverlay()
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to capture region text", e)
+                Log.e(TAG, "Failed to capture region", e)
                 capturedTextPreview.value = "[Selection failed]"
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                     isRegionMode = false
                     refreshCaptureOverlay()
                 }
+            }
+        }
+    }
+
+    private fun saveScreenshot(bitmap: android.graphics.Bitmap): String? {
+        return try {
+            val dir = java.io.File(filesDir, "screenshots")
+            if (!dir.exists()) dir.mkdirs()
+            val file = java.io.File(dir, "region_${java.util.UUID.randomUUID()}.png")
+            java.io.FileOutputStream(file).use { out ->
+                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, out)
+            }
+            Log.d(TAG, "Screenshot saved to ${file.absolutePath}")
+            file.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save screenshot", e)
+            null
+        }
+    }
+
+    /**
+     * Consumes pending context from ProcessTextActivity (text selection from other apps)
+     * and attaches it to the current or a new session.
+     */
+    private fun handlePendingContext() {
+        val context = com.synapse.ui.ContextHolder.consumeContext() ?: return
+        Log.d(TAG, "Consuming pending context: ${context::class.simpleName}")
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                if (currentSessionId == null) {
+                    val session = sessionRepository.createSession()
+                    currentSessionId = session.id
+                    Log.d(TAG, "Created new session for pending context: ${session.id}")
+                }
+                val sessionId = currentSessionId ?: return@launch
+                sessionRepository.addContext(sessionId, context)
+                Log.d(TAG, "Added pending context to session $sessionId")
+
+                if (context is com.synapse.model.CapturedContext.SelectedText) {
+                    val preview = context.text.take(60).let {
+                        if (context.text.length > 60) "$it..." else it
+                    }
+                    capturedTextPreview.value = preview
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to add pending context to session", e)
             }
         }
     }
@@ -346,6 +418,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             ACTION_TOGGLE_REGION_MODE -> {
                 isRegionMode = !isRegionMode
                 Log.d(TAG, "Region capture mode: $isRegionMode")
+                // Request screen capture permission if entering region mode without it
+                if (isRegionMode && !screenshotManager.hasPermission()) {
+                    Log.d(TAG, "Requesting screen capture permission for region mode")
+                    requestScreenCapturePermission()
+                }
                 // Re-show overlay to apply the mode change
                 if (isCaptureActive) {
                     refreshCaptureOverlay()
@@ -353,6 +430,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             }
             ACTION_SET_MEDIA_PROJECTION -> {
                 handleMediaProjectionResult(intent)
+            }
+            ACTION_SHOW_WITH_CONTEXT -> {
+                handlePendingContext()
+                showCaptureOverlay()
             }
         }
         return START_STICKY
@@ -382,7 +463,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         val notification = createNotification()
-        startForeground(NOTIFICATION_ID, notification)
+        startForeground(
+            NOTIFICATION_ID,
+            notification,
+            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+        )
         Log.d(TAG, "Started foreground service")
         showFloatingBubble()
     }
@@ -675,6 +760,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         const val ACTION_UPDATE_BADGE = "com.synapse.action.UPDATE_BADGE"
         const val ACTION_TOGGLE_REGION_MODE = "com.synapse.action.TOGGLE_REGION_MODE"
         const val ACTION_SET_MEDIA_PROJECTION = "com.synapse.action.SET_MEDIA_PROJECTION"
+        const val ACTION_SHOW_WITH_CONTEXT = "com.synapse.action.SHOW_WITH_CONTEXT"
         const val EXTRA_CHUNK_COUNT = "chunk_count"
         const val EXTRA_PROJECTION_RESULT_CODE = "projection_result_code"
         const val EXTRA_PROJECTION_DATA = "projection_data"

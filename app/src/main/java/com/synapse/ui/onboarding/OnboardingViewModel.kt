@@ -3,6 +3,7 @@ package com.synapse.ui.onboarding
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -40,6 +41,10 @@ private val Context.onboardingDataStore: DataStore<Preferences> by preferencesDa
 class OnboardingViewModel(
     application: Application
 ) : AndroidViewModel(application) {
+
+    companion object {
+        private const val TAG = "OnboardingViewModel"
+    }
 
     private val context: Context
         get() = getApplication<Application>().applicationContext
@@ -157,6 +162,8 @@ class OnboardingViewModel(
 
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Vault folder selected: $uri")
+
                 // Persist permission for the folder
                 val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
                         android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
@@ -164,10 +171,18 @@ class OnboardingViewModel(
 
                 val vaultPath = uri.toString()
 
-                // Save to DataStore
+                // Save to onboarding DataStore
                 dataStore.edit { prefs ->
                     prefs[PreferenceKeys.VAULT_PATH] = vaultPath
                 }
+                Log.d(TAG, "Saved vault path to onboarding DataStore: $vaultPath")
+
+                // Also save to settings DataStore so it's available app-wide
+                val vaultLocationKey = stringPreferencesKey("vault_location")
+                context.settingsDataStore.edit { prefs ->
+                    prefs[vaultLocationKey] = vaultPath
+                }
+                Log.d(TAG, "Saved vault path to settings DataStore: $vaultPath")
 
                 _state.update { currentState ->
                     currentState.copy(

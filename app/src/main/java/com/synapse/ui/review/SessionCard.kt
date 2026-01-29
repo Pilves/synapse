@@ -50,8 +50,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.synapse.model.CapturedContext
 import com.synapse.model.Chunk
 import com.synapse.model.Session
+import com.synapse.ui.components.ContextSection
 import com.synapse.ui.theme.SynapseTheme
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -77,6 +79,7 @@ fun SessionCard(
     onDeleteChunk: (Chunk) -> Unit,
     onDeleteSession: () -> Unit,
     onPreviewChunk: (Chunk) -> Unit,
+    onDeleteContext: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(true) }
@@ -114,22 +117,33 @@ fun SessionCard(
                 enter = expandVertically(),
                 exit = shrinkVertically()
             ) {
-                when (viewMode) {
-                    ViewMode.STITCHED -> StitchedChunksView(
-                        chunks = session.chunks,
-                        session = session,
-                        onPreviewChunk = onPreviewChunk,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-                    ViewMode.SEPARATE -> SeparateChunksView(
-                        chunks = session.chunks,
-                        session = session,
-                        selectedChunkIds = selectedChunkIds,
-                        onChunkSelected = onChunkSelected,
-                        onDeleteChunk = onDeleteChunk,
-                        onPreviewChunk = onPreviewChunk,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                Column {
+                    when (viewMode) {
+                        ViewMode.STITCHED -> StitchedChunksView(
+                            chunks = session.chunks,
+                            session = session,
+                            onPreviewChunk = onPreviewChunk,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        ViewMode.SEPARATE -> SeparateChunksView(
+                            chunks = session.chunks,
+                            session = session,
+                            selectedChunkIds = selectedChunkIds,
+                            onChunkSelected = onChunkSelected,
+                            onDeleteChunk = onDeleteChunk,
+                            onPreviewChunk = onPreviewChunk,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                    }
+
+                    // Show contexts that belong to this session
+                    if (session.contexts.isNotEmpty()) {
+                        ContextSection(
+                            contexts = session.contexts,
+                            onDeleteContext = onDeleteContext,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
                 }
             }
         }

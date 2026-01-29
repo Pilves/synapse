@@ -2,13 +2,15 @@ package com.synapse.api
 
 import android.util.Log
 import com.synapse.model.*
+import java.io.File
 
 /**
  * Service that answers user questions using the configured LLM provider.
  *
  * Uses [LlmProviderFactory] to route requests to the appropriate LLM backend
  * (Gemini, Claude, OpenAI, or Ollama) based on the user's configuration.
- * Supports optional context from captured screen content, selected text, etc.
+ * Supports optional context from captured screen content, selected text,
+ * and region images (diagrams, screenshots, etc.).
  */
 class QuestionAnswerService(
     private val llmProviderFactory: LlmProviderFactory
@@ -18,12 +20,19 @@ class QuestionAnswerService(
         private const val TAG = "QuestionAnswerService"
 
         private const val SYSTEM_PROMPT = """You are a helpful assistant integrated into a note-taking app. \
-Answer questions concisely and accurately. When context is provided from the user's screen or notes, \
-use it to inform your answer. If you're unsure about something, say so rather than guessing."""
+Always answer the user's question fully and completely. Never ask for clarification - just answer \
+everything that was asked. If the user asks about multiple topics, cover all of them. \
+When context is provided from the user's screen or notes, use it to inform your answer. \
+When images are provided, describe and analyze them thoroughly. \
+Format your response in markdown. Use code blocks with language tags for code examples."""
     }
 
     /**
      * Answers a user question using the configured LLM provider.
+     *
+     * When region images are present in the contexts, the images are loaded from
+     * disk and sent to the LLM via [TranscriptionService.visionQuery] so the model
+     * can see and analyze diagrams, charts, screenshots, etc.
      *
      * @param question The user's question text
      * @param config LLM configuration specifying which provider and API key to use
@@ -39,6 +48,17 @@ use it to inform your answer. If you're unsure about something, say so rather th
         val service = llmProviderFactory.getAnsweringService(config)
         Log.d(TAG, "Answering question using ${service.provider.displayName} (${service.modelId})")
 
+        // Collect image bytes from RegionImage contexts
+        val imageBytes = contexts.filterIsInstance<CapturedContext.RegionImage>().mapNotNull { ctx ->
+            try {
+                val file = File(ctx.imagePath)
+                if (file.exists()) file.readBytes() else null
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to read image at ${ctx.imagePath}", e)
+                null
+            }
+        }
+
         val contextText = contexts.mapNotNull { context ->
             when (context) {
                 is CapturedContext.SelectedText -> "Selected text: ${context.text}"
@@ -48,7 +68,11 @@ use it to inform your answer. If you're unsure about something, say so rather th
                     if (context.sourceUrl != null) append(" (${context.sourceUrl})")
                     if (context.pageTitle != null) append(" - ${context.pageTitle}")
                 }
-                is CapturedContext.RegionImage -> "Image: ${context.description ?: "no description"}"
+                is CapturedContext.RegionImage -> if (imageBytes.isNotEmpty()) {
+                    "Image attached (see below)"
+                } else {
+                    "Image: ${context.description ?: "could not load image"}"
+                }
             }
         }.joinToString("\n")
 
@@ -62,7 +86,12 @@ use it to inform your answer. If you're unsure about something, say so rather th
         }
 
         return try {
-            service.textQuery(prompt, SYSTEM_PROMPT)
+            if (imageBytes.isNotEmpty()) {
+                Log.d(TAG, "Sending vision query with ${imageBytes.size} image(s)")
+                service.visionQuery(prompt, imageBytes, SYSTEM_PROMPT)
+            } else {
+                service.textQuery(prompt, SYSTEM_PROMPT)
+            }
         } catch (e: TranscriptionError) {
             Log.e(TAG, "LLM query failed: ${e.message}", e)
             throw e

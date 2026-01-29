@@ -181,31 +181,6 @@ fun SettingsScreen(
             // TRANSCRIPTION Section
             SettingsSection(title = "TRANSCRIPTION")
 
-            SettingsDropdown(
-                label = "LLM Provider",
-                options = LlmProvider.entries,
-                selectedOption = llmProvider,
-                onOptionSelected = { viewModel.setLlmProvider(it) },
-                optionLabel = { it.displayName }
-            )
-
-            SettingsTextField(
-                label = "API Key",
-                value = apiKey,
-                onValueChange = { viewModel.setApiKey(it) },
-                placeholder = if (llmProvider == LlmProvider.OLLAMA) {
-                    "Not required for Ollama"
-                } else {
-                    "Enter your ${llmProvider.displayName} API key"
-                },
-                isMasked = true,
-                enabled = llmProvider.requiresApiKey,
-                isError = uiState.apiKeyError != null,
-                errorMessage = uiState.apiKeyError
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             // Multi-provider LLM configuration section
             LlmSettingsSection(
                 config = llmConfig,
