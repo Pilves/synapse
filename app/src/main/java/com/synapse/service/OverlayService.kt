@@ -200,6 +200,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     timestampSeconds = timestampSeconds
                 )
                 Log.d(TAG, "Saved chunk: ${chunk.id} to session $sessionId")
+                capturedChunk.bitmap.recycle()
 
                 // Update badge count
                 pendingChunkCount.incrementAndGet()
