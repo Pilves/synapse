@@ -6,6 +6,8 @@ import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -27,6 +29,8 @@ class VaultManager(private val context: Context) {
         private const val PREFS_NAME = "vault_prefs"
         private const val KEY_VAULT_ROOT_URI = "vault_root_uri"
     }
+
+    private val appendMutex = Mutex()
 
     private val prefs by lazy {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -174,7 +178,8 @@ class VaultManager(private val context: Context) {
         projectUri: Uri,
         filename: String,
         content: String
-    ): WriteResult = withContext(Dispatchers.IO) {
+    ): WriteResult = appendMutex.withLock {
+        withContext(Dispatchers.IO) {
         try {
             val projectDoc = DocumentFile.fromTreeUri(context, projectUri)
             if (projectDoc == null || !projectDoc.exists()) {
@@ -218,6 +223,7 @@ class VaultManager(private val context: Context) {
             Log.e(TAG, "Failed to append to file", e)
             WriteResult.Error("Write failed: ${e.message}")
         }
+    }
     }
 
     /**
