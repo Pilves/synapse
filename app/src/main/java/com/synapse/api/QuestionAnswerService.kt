@@ -13,11 +13,13 @@ import java.io.File
  * and region images (diagrams, screenshots, etc.).
  */
 class QuestionAnswerService(
-    private val llmProviderFactory: LlmProviderFactory
+    private val llmProviderFactory: LlmProviderFactory,
+    private val appFilesDir: File? = null
 ) {
 
     companion object {
         private const val TAG = "QuestionAnswerService"
+        private const val MAX_IMAGE_FILE_SIZE = 10L * 1024 * 1024 // 10MB
 
         private const val SYSTEM_PROMPT = """You are a helpful assistant integrated into a note-taking app. \
 Always answer the user's question fully and completely. Never ask for clarification - just answer \
@@ -55,13 +57,20 @@ Format your response in markdown. Use code blocks with language tags for code ex
         val contextImages = contexts.filterIsInstance<CapturedContext.RegionImage>().mapNotNull { ctx ->
             try {
                 val file = File(ctx.imagePath)
-                // Validate canonical path to prevent path traversal attacks
                 val canonical = file.canonicalPath
-                if (canonical != file.absolutePath && ctx.imagePath.contains("..")) {
-                    Log.w(TAG, "Path traversal detected, skipping image")
+                // Validate that the file is within the app's files directory
+                val allowedDir = appFilesDir?.canonicalPath
+                if (allowedDir != null && !canonical.startsWith(allowedDir)) {
+                    Log.w(TAG, "Path outside app files dir, skipping image")
                     return@mapNotNull null
                 }
-                if (file.exists()) file.readBytes() else null
+                if (!file.exists()) return@mapNotNull null
+                // Skip files larger than 10MB to avoid OOM
+                if (file.length() > MAX_IMAGE_FILE_SIZE) {
+                    Log.w(TAG, "Image file too large (${file.length()} bytes), skipping")
+                    return@mapNotNull null
+                }
+                file.readBytes()
             } catch (e: SecurityException) {
                 Log.w(TAG, "Security exception reading image path", e)
                 null

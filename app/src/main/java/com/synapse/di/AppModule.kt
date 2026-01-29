@@ -256,7 +256,7 @@ val v2Module = module {
 
     // LLM routing
     single { LlmProviderFactory(get()) }
-    single { QuestionAnswerService(get<LlmProviderFactory>()) }
+    single { QuestionAnswerService(get<LlmProviderFactory>(), androidContext().filesDir) }
 }
 
 /**

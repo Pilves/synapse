@@ -13,6 +13,7 @@ import com.synapse.model.CapturedContext
 class SynapseAccessibilityService : AccessibilityService() {
 
     companion object {
+        @Volatile
         private var instance: SynapseAccessibilityService? = null
 
         fun getInstance(): SynapseAccessibilityService? = instance
@@ -33,6 +34,7 @@ class SynapseAccessibilityService : AccessibilityService() {
     private var currentSourceUrl: String? = null
     private var currentSelectedText: String? = null
     private var currentPageTitle: String? = null
+    @Volatile
     private var nodeCache: List<AccessibilityNodeInfo> = emptyList()
 
     override fun onServiceConnected() {
