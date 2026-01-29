@@ -92,6 +92,7 @@ class SyncRepositoryImpl(
     companion object {
         private const val TAG = "SyncRepository"
         private const val MAX_CHUNKS_PER_REQUEST = 10
+        private const val MAX_BATCH_BYTES = 50L * 1024 * 1024 // 50MB
     }
 
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
@@ -242,12 +243,22 @@ class SyncRepositoryImpl(
                     segment.contexts.isNotEmpty() && segment.chunks.isNotEmpty() -> {
                         val hasImageContext = segment.contexts.any { it is CapturedContext.RegionImage }
 
-                        // Load chunk image bytes for sending directly to the vision LLM
-                        val chunkImageBytes = if (hasImageContext) {
-                            segment.chunks.filter { !it.isCorrupted }.mapNotNull { chunk ->
-                                chunkStorage.loadChunkBytes(sessionId, chunk.id)
+                        // Load chunk image bytes for sending directly to the vision LLM (with size cap)
+                        val chunkImageBytes = mutableListOf<ByteArray>()
+                        if (hasImageContext) {
+                            var cumulativeSize = 0L
+                            for (chunk in segment.chunks.filter { !it.isCorrupted }) {
+                                if (cumulativeSize >= MAX_BATCH_BYTES) {
+                                    Log.w(TAG, "Chunk image batch size cap reached ($cumulativeSize bytes), skipping remaining")
+                                    break
+                                }
+                                val bytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
+                                if (bytes != null) {
+                                    cumulativeSize += bytes.size
+                                    chunkImageBytes.add(bytes)
+                                }
                             }
-                        } else emptyList()
+                        }
 
                         // Try transcribing chunks to text (for the question)
                         val (notes, failed) = transcribeChunks(
@@ -260,12 +271,13 @@ class SyncRepositoryImpl(
 
                         var answerText: String? = null
                         Log.d(TAG, "Segment $segIndex: qaService=${questionAnswerService != null}, configProvider=${llmConfigProvider != null}, notes=${notes.size}, failed=$failed, chunkImages=${chunkImageBytes.size}")
+                        try {
                         if (questionAnswerService != null && llmConfigProvider != null) {
                             val llmConfig = llmConfigProvider.invoke()
                             Log.d(TAG, "Segment $segIndex: llmConfig=${llmConfig != null}")
                             if (llmConfig != null) {
                                 val question = notes.joinToString(" ")
-                                val sendImages = if (hasImageContext && chunkImageBytes.isNotEmpty()) chunkImageBytes else emptyList()
+                                val sendImages = if (hasImageContext && chunkImageBytes.isNotEmpty()) chunkImageBytes.toList() else emptyList()
                                 Log.d(TAG, "Segment $segIndex: question='${question.take(80)}', sendImages=${sendImages.size}, hasImageCtx=$hasImageContext")
 
                                 if (question.isNotBlank() || sendImages.isNotEmpty()) {
@@ -288,6 +300,9 @@ class SyncRepositoryImpl(
                                     }
                                 }
                             }
+                        }
+                        } finally {
+                            chunkImageBytes.clear()
                         }
 
                         val content = buildString {
