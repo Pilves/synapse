@@ -9,6 +9,7 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -416,6 +417,12 @@ fun SimpleCaptureCanvas(
     onSessionEnded: () -> Unit = {}
 ) {
     val viewModel = remember { CaptureViewModel() }
+
+    DisposableEffect(viewModel) {
+        onDispose {
+            viewModel.cleanup()
+        }
+    }
 
     LaunchedEffect(chunkTimeoutMs) {
         viewModel.setChunkTimeout(chunkTimeoutMs)

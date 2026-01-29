@@ -432,6 +432,18 @@ class CaptureViewModel : ViewModel() {
         fadeAnimationJob = null
     }
 
+    /**
+     * Cleans up all resources held by this ViewModel.
+     * Call this when the composable using this ViewModel leaves composition
+     * and the ViewModel is not managed by the Android lifecycle.
+     */
+    fun cleanup() {
+        cancelAllTimers()
+        if (_uiState.value.isSessionActive) {
+            endSession()
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         cancelAllTimers()
