@@ -277,6 +277,118 @@ class OllamaService(
         }
     }
 
+    override suspend fun textQuery(prompt: String, systemPrompt: String?): String {
+        if (!isConfigured()) {
+            throw TranscriptionError.ServiceUnavailable("Ollama server not available at $baseUrl")
+        }
+
+        return executeTextQueryWithRetry(prompt, systemPrompt)
+    }
+
+    private suspend fun executeTextQueryWithRetry(
+        prompt: String,
+        systemPrompt: String?
+    ): String {
+        var lastException: Exception? = null
+        var retryDelay = INITIAL_RETRY_DELAY_MS
+
+        repeat(MAX_RETRIES) { attempt ->
+            try {
+                return executeTextQueryRequest(prompt, systemPrompt)
+            } catch (e: TranscriptionError.ServiceUnavailable) {
+                Log.w(TAG, "Service unavailable on attempt ${attempt + 1}")
+                delay(retryDelay)
+                retryDelay *= 2
+                lastException = e
+            } catch (e: TranscriptionError.ServerError) {
+                Log.w(TAG, "Server error on attempt ${attempt + 1}: ${e.message}")
+                delay(retryDelay)
+                retryDelay *= 2
+                lastException = e
+            } catch (e: ConnectException) {
+                Log.w(TAG, "Connection refused on attempt ${attempt + 1}")
+                delay(retryDelay)
+                retryDelay *= 2
+                lastException = TranscriptionError.ServiceUnavailable(
+                    "Cannot connect to Ollama at $baseUrl. Is Ollama running?"
+                )
+            } catch (e: IOException) {
+                Log.w(TAG, "Network error on attempt ${attempt + 1}: ${e.message}")
+                delay(retryDelay)
+                retryDelay *= 2
+                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
+            }
+        }
+
+        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
+    }
+
+    private fun executeTextQueryRequest(prompt: String, systemPrompt: String?): String {
+        val fullPrompt = if (systemPrompt != null) {
+            "$systemPrompt\n\n$prompt"
+        } else {
+            prompt
+        }
+
+        val requestBody = JSONObject().apply {
+            put("model", model)
+            put("prompt", fullPrompt)
+            put("stream", false)
+            put("options", JSONObject().apply {
+                put("temperature", 0.3)
+                put("top_p", 0.9)
+                put("num_predict", 4096)
+            })
+        }
+
+        val url = "$baseUrl/api/generate"
+
+        val request = Request.Builder()
+            .url(url)
+            .post(requestBody.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+
+        rateLimitState.recordRequest()
+
+        httpClient.newCall(request).execute().use { response ->
+            val responseBody = response.body?.string() ?: ""
+
+            when {
+                response.isSuccessful -> {
+                    return parseTextQueryResponse(responseBody)
+                }
+                response.code == 404 -> {
+                    throw TranscriptionError.InvalidResponse(
+                        "Model '$model' not found. Install it with: ollama pull $model"
+                    )
+                }
+                response.code in 500..599 -> {
+                    throw TranscriptionError.ServerError(response.code, responseBody)
+                }
+                else -> {
+                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+                }
+            }
+        }
+    }
+
+    private fun parseTextQueryResponse(responseBody: String): String {
+        val jsonResponse = JSONObject(responseBody)
+
+        if (jsonResponse.has("error")) {
+            val error = jsonResponse.optString("error", "Unknown error")
+            throw TranscriptionError.InvalidResponse("Ollama error: $error")
+        }
+
+        val content = jsonResponse.optString("response", "")
+
+        if (content.isBlank()) {
+            throw TranscriptionError.InvalidResponse("Empty response from Ollama")
+        }
+
+        return content.trim()
+    }
+
     /**
      * Checks if Ollama is running and accessible.
      * Unlike other services, this doesn't require an API key but needs
