@@ -133,7 +133,7 @@ class GeminiService(
             val responseBody = response.body?.string() ?: ""
             Log.d(TAG, "Gemini response code: ${response.code}")
             if (!response.isSuccessful) {
-                Log.e(TAG, "Gemini error response: $responseBody")
+                Log.e(TAG, "Gemini error response (${responseBody.length} chars)")
             }
 
             when {
@@ -272,7 +272,7 @@ class GeminiService(
 
             return TranscriptionResult(notes, failedChunks)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse transcription JSON: $content", e)
+            Log.e(TAG, "Failed to parse transcription JSON (${content.length} chars)", e)
             throw TranscriptionError.InvalidResponse("Invalid JSON from LLM: ${e.message}", e)
         }
     }

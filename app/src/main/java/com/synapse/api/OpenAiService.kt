@@ -301,7 +301,7 @@ class OpenAiService(
 
             return TranscriptionResult(notes, failedChunks)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse transcription JSON: $content", e)
+            Log.e(TAG, "Failed to parse transcription JSON (${content.length} chars)", e)
             throw TranscriptionError.InvalidResponse("Invalid JSON from LLM: ${e.message}", e)
         }
     }
