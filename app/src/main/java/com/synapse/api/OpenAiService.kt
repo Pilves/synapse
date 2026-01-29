@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
 class OpenAiService(
     @Volatile private var apiKey: String? = null,
     @Volatile private var customPrompt: String? = null,
-    private val rateLimitingSafe: Boolean = true
+    private val rateLimitingSafe: Boolean = true,
+    sharedHttpClient: OkHttpClient? = null
 ) : TranscriptionService {
 
     companion object {
@@ -42,7 +43,7 @@ class OpenAiService(
     private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE, REQUESTS_PER_DAY)
     private val rateLimitState = RateLimitState()
 
-    private val httpClient = OkHttpClient.Builder()
+    private val httpClient = (sharedHttpClient?.newBuilder() ?: OkHttpClient.Builder())
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)

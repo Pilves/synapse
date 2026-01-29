@@ -6,7 +6,9 @@ package com.synapse.api
  * This class centralizes the creation of LLM service implementations and ensures
  * consistent configuration across the app.
  */
-class DefaultTranscriptionServiceFactory : TranscriptionServiceFactory {
+class DefaultTranscriptionServiceFactory(
+    private val httpClient: okhttp3.OkHttpClient? = null
+) : TranscriptionServiceFactory {
 
     private val serviceCache = java.util.concurrent.ConcurrentHashMap<LlmProvider, TranscriptionService>()
     private var lastRateLimitingSafe: Boolean = true
@@ -28,10 +30,10 @@ class DefaultTranscriptionServiceFactory : TranscriptionServiceFactory {
 
             return serviceCache.getOrPut(provider) {
                 when (provider) {
-                    LlmProvider.GEMINI -> GeminiService(apiKey)
-                    LlmProvider.CLAUDE -> ClaudeService(apiKey, rateLimitingSafe = rateLimitingSafe)
-                    LlmProvider.OPENAI -> OpenAiService(apiKey, rateLimitingSafe = rateLimitingSafe)
-                    LlmProvider.OLLAMA -> OllamaService()
+                    LlmProvider.GEMINI -> GeminiService(apiKey, sharedHttpClient = httpClient)
+                    LlmProvider.CLAUDE -> ClaudeService(apiKey, rateLimitingSafe = rateLimitingSafe, sharedHttpClient = httpClient)
+                    LlmProvider.OPENAI -> OpenAiService(apiKey, rateLimitingSafe = rateLimitingSafe, sharedHttpClient = httpClient)
+                    LlmProvider.OLLAMA -> OllamaService(sharedHttpClient = httpClient)
                 }
             }.also { service ->
                 service.setApiKey(apiKey)
@@ -49,10 +51,10 @@ class DefaultTranscriptionServiceFactory : TranscriptionServiceFactory {
      */
     fun createNew(provider: LlmProvider, apiKey: String? = null): TranscriptionService {
         return when (provider) {
-            LlmProvider.GEMINI -> GeminiService(apiKey)
-            LlmProvider.CLAUDE -> ClaudeService(apiKey)
-            LlmProvider.OPENAI -> OpenAiService(apiKey)
-            LlmProvider.OLLAMA -> OllamaService()
+            LlmProvider.GEMINI -> GeminiService(apiKey, sharedHttpClient = httpClient)
+            LlmProvider.CLAUDE -> ClaudeService(apiKey, sharedHttpClient = httpClient)
+            LlmProvider.OPENAI -> OpenAiService(apiKey, sharedHttpClient = httpClient)
+            LlmProvider.OLLAMA -> OllamaService(sharedHttpClient = httpClient)
         }
     }
 

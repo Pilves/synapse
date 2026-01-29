@@ -29,6 +29,8 @@ object RetryHelper {
      *   to wrap with a user-friendly "Is Ollama running?" message.
      * @param block The suspending operation to execute
      */
+    private const val MAX_BACKOFF_MS = 30_000L
+
     suspend fun <T> executeWithRetry(
         maxRetries: Int = 3,
         initialDelayMs: Long = 1000L,
@@ -46,37 +48,41 @@ object RetryHelper {
             } catch (e: TranscriptionError.RateLimitError) {
                 Log.w(tag, "Rate limited on attempt ${attempt + 1}, waiting...")
                 val waitTime = e.retryAfterSeconds?.times(1000L) ?: retryDelay
-                delay(waitTime)
-                retryDelay *= 2
+                delay(waitTime + jitter(waitTime))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
                 lastException = e
             } catch (e: TranscriptionError.ServiceUnavailable) {
                 Log.w(tag, "Service unavailable on attempt ${attempt + 1}")
-                delay(retryDelay)
-                retryDelay *= 2
+                delay(retryDelay + jitter(retryDelay))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
                 lastException = e
             } catch (e: TranscriptionError.ServerError) {
                 if (retryServerErrors(e.statusCode)) {
                     Log.w(tag, "Server error on attempt ${attempt + 1}: ${e.message}")
-                    delay(retryDelay)
-                    retryDelay *= 2
+                    delay(retryDelay + jitter(retryDelay))
+                    retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
                     lastException = e
                 } else {
                     throw e
                 }
             } catch (e: ConnectException) {
                 Log.w(tag, "Connection refused on attempt ${attempt + 1}")
-                delay(retryDelay)
-                retryDelay *= 2
+                delay(retryDelay + jitter(retryDelay))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
                 lastException = onConnectException?.invoke(e)
                     ?: TranscriptionError.NetworkError(e.message ?: "Connection refused", e)
             } catch (e: IOException) {
                 Log.w(tag, "Network error on attempt ${attempt + 1}: ${e.message}")
-                delay(retryDelay)
-                retryDelay *= 2
+                delay(retryDelay + jitter(retryDelay))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
                 lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
             }
         }
 
         throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
+    }
+
+    private fun jitter(delayMs: Long): Long {
+        return (delayMs * 0.1 * Math.random()).toLong()
     }
 }

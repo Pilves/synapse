@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
 class OllamaService(
     @Volatile private var baseUrl: String = DEFAULT_BASE_URL,
     private var model: String = DEFAULT_MODEL,
-    @Volatile private var customPrompt: String? = null
+    @Volatile private var customPrompt: String? = null,
+    sharedHttpClient: OkHttpClient? = null
 ) : TranscriptionService {
 
     companion object {
@@ -42,7 +43,7 @@ class OllamaService(
     private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE, REQUESTS_PER_DAY)
     private val rateLimitState = RateLimitState()
 
-    private val httpClient = OkHttpClient.Builder()
+    private val httpClient = (sharedHttpClient?.newBuilder() ?: OkHttpClient.Builder())
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -364,7 +365,7 @@ class OllamaService(
                 .build()
 
             // Use a short timeout for the health check
-            val healthCheckClient = OkHttpClient.Builder()
+            val healthCheckClient = httpClient.newBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
                 .build()
@@ -388,7 +389,7 @@ class OllamaService(
                 .get()
                 .build()
 
-            val healthCheckClient = OkHttpClient.Builder()
+            val healthCheckClient = httpClient.newBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
                 .build()

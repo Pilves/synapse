@@ -18,7 +18,8 @@ import java.util.concurrent.TimeUnit
  */
 class GeminiService(
     @Volatile private var apiKey: String? = null,
-    @Volatile private var customPrompt: String? = null
+    @Volatile private var customPrompt: String? = null,
+    sharedHttpClient: OkHttpClient? = null
 ) : TranscriptionService {
 
     companion object {
@@ -40,7 +41,7 @@ class GeminiService(
     private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE, REQUESTS_PER_DAY)
     private val rateLimitState = RateLimitState()
 
-    private val httpClient = OkHttpClient.Builder()
+    private val httpClient = (sharedHttpClient?.newBuilder() ?: OkHttpClient.Builder())
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)

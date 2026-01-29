@@ -156,9 +156,9 @@ val apiModule = module {
             .build()
     }
 
-    // TranscriptionServiceFactory - singleton instance
+    // TranscriptionServiceFactory - singleton instance, shares OkHttpClient
     single<TranscriptionServiceFactory> {
-        DefaultTranscriptionServiceFactory()
+        DefaultTranscriptionServiceFactory(get())
     }
 }
 

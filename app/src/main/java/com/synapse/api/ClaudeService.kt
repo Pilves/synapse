@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
 class ClaudeService(
     @Volatile private var apiKey: String? = null,
     @Volatile private var customPrompt: String? = null,
-    private val rateLimitingSafe: Boolean = true
+    private val rateLimitingSafe: Boolean = true,
+    sharedHttpClient: OkHttpClient? = null
 ) : TranscriptionService {
 
     companion object {
@@ -44,7 +45,7 @@ class ClaudeService(
     private val rateLimitState = RateLimitState()
 
     // TODO: Consolidate OkHttpClient instances into a shared singleton (#42)
-    private val httpClient = OkHttpClient.Builder()
+    private val httpClient = (sharedHttpClient?.newBuilder() ?: OkHttpClient.Builder())
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
