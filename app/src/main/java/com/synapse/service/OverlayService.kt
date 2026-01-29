@@ -93,7 +93,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.android.ext.android.inject
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -117,7 +116,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
 
     private var captureViewModel: CaptureViewModel? = null
-    private val pendingChunkCount = AtomicInteger(0)
+    private val pendingChunkCount = mutableIntStateOf(0)
     private var isCaptureActive = false
     private var isRegionMode = false
     private var capturedTextPreview = mutableStateOf<String?>(null)
@@ -210,10 +209,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     capturedChunk.bitmap.recycle()
                 }
 
-                // Update badge count
-                pendingChunkCount.incrementAndGet()
+                // Update badge count (Compose observes this state directly)
                 launch(Dispatchers.Main) {
-                    updateBubble()
+                    pendingChunkCount.intValue++
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to save chunk", e)
@@ -411,7 +409,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         captureViewModel?.endSession()
 
         // Reset badge count since user is going to review
-        pendingChunkCount.set(0)
+        pendingChunkCount.intValue = 0
 
         serviceScope.launch(Dispatchers.IO) {
             try {
@@ -448,8 +446,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             ACTION_SHOW_CAPTURE -> showCaptureOverlay()
             ACTION_HIDE_CAPTURE -> hideCaptureOverlay()
             ACTION_UPDATE_BADGE -> {
-                pendingChunkCount.set(intent.getIntExtra(EXTRA_CHUNK_COUNT, 0))
-                updateBubble()
+                pendingChunkCount.intValue = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
             }
             ACTION_TOGGLE_REGION_MODE -> {
                 isRegionMode = !isRegionMode
@@ -632,7 +629,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             setContent {
                 SynapseTheme {
                     FloatingBubble(
-                        pendingCount = pendingChunkCount.get(),
+                        pendingCount = pendingChunkCount.intValue,
                         screenHeight = screenHeight,
                         initialY = params.y,
                         onClick = { showCaptureOverlay() },
@@ -665,23 +662,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
-    private fun updateBubble() {
-        // Force recomposition by removing and re-adding
-        val view = floatingBubbleView ?: return
-        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
-
-        hideFloatingBubble()
-        showFloatingBubble()
-
-        // Restore position
-        floatingBubbleView?.let {
-            (it.layoutParams as? WindowManager.LayoutParams)?.let { newParams ->
-                newParams.x = params.x
-                newParams.y = params.y
-                windowManager.updateViewLayout(it, newParams)
-            }
-        }
-    }
 
     @SuppressLint("ClickableViewAccessibility")
     private fun showCaptureOverlay() {
@@ -695,8 +675,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             requestScreenCapturePermission()
         }
 
-        // Read settings asynchronously (use cached default until loaded)
-        serviceScope.launch {
+        // Read settings on IO thread (use cached default until loaded)
+        serviceScope.launch(Dispatchers.IO) {
             try {
                 val prefs = settingsDataStore.data.first()
                 val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 1f
