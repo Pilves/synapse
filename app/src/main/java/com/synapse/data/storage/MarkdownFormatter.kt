@@ -14,7 +14,7 @@ import java.util.Locale
 object MarkdownFormatter {
 
     private const val SYNC_SEPARATOR = "---"
-    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
+    private fun createDateFormat() = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US)
 
     /**
      * Formats a list of notes as markdown.
@@ -35,7 +35,7 @@ object MarkdownFormatter {
 
         // Add timestamp header if requested
         if (includeTimestamp) {
-            val timestamp = timestampFormat.format(Date())
+            val timestamp = createDateFormat().format(Date())
             builder.append("## $timestamp")
             builder.append("\n\n")
         }
@@ -108,7 +108,7 @@ object MarkdownFormatter {
 
         // Add timestamp header if requested
         if (includeTimestamp) {
-            val timestamp = timestampFormat.format(Date())
+            val timestamp = createDateFormat().format(Date())
             builder.append("## $timestamp")
             builder.append("\n\n")
         }
@@ -148,7 +148,7 @@ object MarkdownFormatter {
         }
 
         val builder = StringBuilder()
-        val timestamp = timestampFormat.format(Date())
+        val timestamp = createDateFormat().format(Date())
         builder.append("## $timestamp")
         builder.append("\n\n")
 
