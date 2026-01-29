@@ -114,8 +114,8 @@ val repositoryModule = module {
         )
     }
 
-    // LlmSettingsProvider - reads LLM settings from DataStore
-    single { com.synapse.data.LlmSettingsProvider(androidContext().settingsDataStore) }
+    // LlmSettingsProvider - reads LLM settings from DataStore (reuse singleton from appModule)
+    single { com.synapse.data.LlmSettingsProvider(get()) }
 
     // SyncRepository - requires Context, storage classes, and TranscriptionServiceFactory
     single<SyncRepository> {

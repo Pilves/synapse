@@ -34,6 +34,9 @@ class ImageProcessor {
         /** Maximum stitched image dimension to prevent OOM */
         const val MAX_STITCHED_DIMENSION = 4096
 
+        /** Maximum allocation size for stitched bitmap (100MB) */
+        private const val MAX_BITMAP_ALLOCATION_BYTES = 100L * 1024 * 1024
+
         /** WebP file header magic bytes (RIFF....WEBP) */
         private val WEBP_HEADER_RIFF = byteArrayOf(0x52, 0x49, 0x46, 0x46) // "RIFF"
         private val WEBP_HEADER_WEBP = byteArrayOf(0x57, 0x45, 0x42, 0x50) // "WEBP"
@@ -340,12 +343,20 @@ class ImageProcessor {
             totalHeight += spacing * (chunkFiles.size - 1)
 
             // Check dimensions
+            var scaleFactor = 1.0f
             if (maxWidth > MAX_STITCHED_DIMENSION || totalHeight > MAX_STITCHED_DIMENSION) {
-                // Calculate scale factor
-                val scaleFactor = minOf(
+                scaleFactor = minOf(
                     MAX_STITCHED_DIMENSION.toFloat() / maxWidth,
                     MAX_STITCHED_DIMENSION.toFloat() / totalHeight
                 )
+            }
+            // Also check memory allocation (4 bytes per ARGB_8888 pixel)
+            val allocationBytes = maxWidth.toLong() * totalHeight * 4
+            if (allocationBytes > MAX_BITMAP_ALLOCATION_BYTES) {
+                val memScale = Math.sqrt(MAX_BITMAP_ALLOCATION_BYTES.toDouble() / allocationBytes).toFloat()
+                scaleFactor = minOf(scaleFactor, memScale)
+            }
+            if (scaleFactor < 1.0f) {
                 maxWidth = (maxWidth * scaleFactor).toInt()
                 totalHeight = ceil(totalHeight * scaleFactor).toInt()
             }

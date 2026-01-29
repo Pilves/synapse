@@ -33,6 +33,9 @@ class GeminiService(
         // Free tier rate limits
         private const val REQUESTS_PER_MINUTE = 15
         private const val REQUESTS_PER_DAY = 1500
+
+        /** Safety threshold applied to all categories. Change to e.g. "BLOCK_MEDIUM_AND_ABOVE" for stricter filtering. */
+        const val DEFAULT_SAFETY_THRESHOLD = "BLOCK_NONE"
     }
 
     override val provider: LlmProvider = LlmProvider.GEMINI
@@ -154,7 +157,7 @@ class GeminiService(
             ).forEach { category ->
                 put(JSONObject().apply {
                     put("category", category)
-                    put("threshold", "BLOCK_NONE")
+                    put("threshold", DEFAULT_SAFETY_THRESHOLD)
                 })
             }
         }
