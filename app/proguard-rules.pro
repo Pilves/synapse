@@ -28,6 +28,12 @@
 -keepclassmembers class io.ktor.** { volatile <fields>; }
 -keep class io.ktor.client.engine.** { *; }
 -keep class kotlinx.coroutines.** { *; }
+-dontwarn java.lang.management.ManagementFactory
+-dontwarn java.lang.management.RuntimeMXBean
+
+# SLF4J
+-dontwarn org.slf4j.impl.StaticLoggerBinder
+-dontwarn org.slf4j.impl.StaticMDCBinder
 
 # OkHttp
 -dontwarn okhttp3.**

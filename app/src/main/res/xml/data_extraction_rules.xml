@@ -1,22 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-   Sample data extraction rules for Android 12+ backup.
-   Defines what data is backed up to Google cloud.
+   Data extraction rules for Android 12+ backup.
+   Only backs up non-sensitive file data, excluding sessions.
+   SharedPreferences and databases are NOT included (no include rule = not backed up).
 -->
 <data-extraction-rules>
-    <cloud-backup>
-        <!-- Exclude all SharedPreferences (may contain API keys and tokens) -->
-        <exclude domain="sharedpref" path="." />
-        <!-- Exclude session files -->
+    <cloud-backup disableIfNoEncryptionCapabilities="true">
+        <include domain="file" path="." />
         <exclude domain="file" path="sessions/" />
-        <!-- Exclude sensitive data -->
-        <exclude domain="database" path="." />
     </cloud-backup>
     <device-transfer>
-        <!-- Exclude all SharedPreferences (may contain API keys and tokens) -->
-        <exclude domain="sharedpref" path="." />
-        <!-- Exclude session files -->
+        <include domain="file" path="." />
         <exclude domain="file" path="sessions/" />
-        <include domain="database" path="." />
     </device-transfer>
 </data-extraction-rules>

@@ -8,7 +8,6 @@
     <exclude domain="sharedpref" path="." />
     <!-- Exclude session files -->
     <exclude domain="file" path="sessions/" />
-    <!-- Exclude cache and sensitive files -->
-    <exclude domain="cache" path="." />
-    <exclude domain="no_backup" path="." />
+    <!-- Exclude databases -->
+    <exclude domain="database" path="." />
 </full-backup-content>
