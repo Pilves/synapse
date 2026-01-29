@@ -1,30 +1,40 @@
 package com.synapse.model
 
 import android.graphics.Rect
+import java.util.UUID
 
-/**
- * Represents context captured from the user's screen via accessibility services
- * or text selection processing.
- */
 sealed class CapturedContext {
+    abstract val id: String
+    abstract val timestamp: Long
 
-    /** Automatically captured context about the current app/page */
-    data class AutoContext(
-        val sourceApp: String,
-        val sourceUrl: String? = null,
-        val pageTitle: String? = null
-    ) : CapturedContext()
-
-    /** Text that was explicitly selected by the user */
     data class SelectedText(
+        override val id: String = UUID.randomUUID().toString(),
+        override val timestamp: Long = System.currentTimeMillis(),
         val text: String,
-        val sourceApp: String? = null,
-        val sourceUrl: String? = null
+        val sourceApp: String?,
+        val sourceUrl: String?
     ) : CapturedContext()
 
-    /** Text captured from a specific screen region */
     data class RegionText(
+        override val id: String = UUID.randomUUID().toString(),
+        override val timestamp: Long = System.currentTimeMillis(),
         val text: String,
         val bounds: Rect
+    ) : CapturedContext()
+
+    data class RegionImage(
+        override val id: String = UUID.randomUUID().toString(),
+        override val timestamp: Long = System.currentTimeMillis(),
+        val imagePath: String,
+        val bounds: Rect,
+        val description: String? = null
+    ) : CapturedContext()
+
+    data class AutoContext(
+        override val id: String = UUID.randomUUID().toString(),
+        override val timestamp: Long = System.currentTimeMillis(),
+        val sourceApp: String,
+        val sourceUrl: String?,
+        val pageTitle: String?
     ) : CapturedContext()
 }
