@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -212,7 +213,7 @@ private fun SessionHeader(
         if (viewMode == ViewMode.SEPARATE) {
             IconButton(
                 onClick = onSelectAll,
-                modifier = Modifier.size(36.dp)
+                modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
             ) {
                 Icon(
                     imageVector = if (allSelected) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
@@ -229,7 +230,7 @@ private fun SessionHeader(
         // Delete session button
         IconButton(
             onClick = onDelete,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
         ) {
             Icon(
                 imageVector = Icons.Default.Delete,
@@ -241,7 +242,7 @@ private fun SessionHeader(
         // Expand/collapse button
         IconButton(
             onClick = onToggleExpand,
-            modifier = Modifier.size(36.dp)
+            modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
         ) {
             Icon(
                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
@@ -320,7 +321,7 @@ private fun SeparateChunksView(
                 // Delete button for individual chunk
                 IconButton(
                     onClick = { onDeleteChunk(chunk) },
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.sizeIn(minWidth = 48.dp, minHeight = 48.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
