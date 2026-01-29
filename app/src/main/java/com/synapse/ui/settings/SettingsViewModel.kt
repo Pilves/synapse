@@ -15,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import com.synapse.api.LlmProvider
 import com.synapse.api.PromptTemplate
 import com.synapse.data.repository.ProjectRepository
+import com.synapse.model.LlmConfig
 import com.synapse.model.Project
 import com.synapse.ui.overlay.InputMode
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -55,6 +56,12 @@ class SettingsViewModel(
         val ADVANCED_FORMATTING = booleanPreferencesKey("advanced_formatting")
         val RATE_LIMITING_SAFE = booleanPreferencesKey("rate_limiting_safe")
         val CUSTOM_PROMPT_TEMPLATE = stringPreferencesKey("custom_prompt_template")
+
+        // Multi-provider LLM settings
+        val TRANSCRIPTION_PROVIDER = stringPreferencesKey("transcription_provider")
+        val TRANSCRIPTION_API_KEY = stringPreferencesKey("transcription_api_key")
+        val ANSWERING_PROVIDER = stringPreferencesKey("answering_provider")
+        val ANSWERING_API_KEY = stringPreferencesKey("answering_api_key")
 
         // Vault settings
         val VAULT_LOCATION = stringPreferencesKey("vault_location")
@@ -146,6 +153,25 @@ class SettingsViewModel(
         .map { it[PreferenceKeys.DEFAULT_PROJECT_ID] }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
+    val llmConfig: StateFlow<LlmConfig> = dataStore.data
+        .map { prefs ->
+            LlmConfig(
+                transcriptionProvider = prefs[PreferenceKeys.TRANSCRIPTION_PROVIDER]
+                    ?: prefs[PreferenceKeys.LLM_PROVIDER]?.lowercase()
+                    ?: "gemini",
+                transcriptionApiKey = prefs[PreferenceKeys.TRANSCRIPTION_API_KEY]
+                    ?: prefs[PreferenceKeys.API_KEY]
+                    ?: "",
+                answeringProvider = prefs[PreferenceKeys.ANSWERING_PROVIDER],
+                answeringApiKey = prefs[PreferenceKeys.ANSWERING_API_KEY]
+            )
+        }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5000),
+            LlmConfig(transcriptionProvider = "gemini", transcriptionApiKey = "")
+        )
+
     // Capture settings
     fun setChunkTimeout(value: Float) {
         viewModelScope.launch {
@@ -229,6 +255,25 @@ class SettingsViewModel(
 
         _uiState.value = _uiState.value.copy(apiKeyError = null)
         return true
+    }
+
+    fun setLlmConfig(config: LlmConfig) {
+        viewModelScope.launch {
+            dataStore.edit { prefs ->
+                prefs[PreferenceKeys.TRANSCRIPTION_PROVIDER] = config.transcriptionProvider
+                prefs[PreferenceKeys.TRANSCRIPTION_API_KEY] = config.transcriptionApiKey
+                if (config.answeringProvider != null) {
+                    prefs[PreferenceKeys.ANSWERING_PROVIDER] = config.answeringProvider
+                } else {
+                    prefs.remove(PreferenceKeys.ANSWERING_PROVIDER)
+                }
+                if (config.answeringApiKey != null) {
+                    prefs[PreferenceKeys.ANSWERING_API_KEY] = config.answeringApiKey
+                } else {
+                    prefs.remove(PreferenceKeys.ANSWERING_API_KEY)
+                }
+            }
+        }
     }
 
     fun setCleanupMode(enabled: Boolean) {

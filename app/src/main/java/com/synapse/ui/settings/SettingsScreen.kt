@@ -38,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.synapse.api.LlmProvider
+import com.synapse.ui.components.LlmSettingsSection
 import com.synapse.ui.overlay.InputMode
 import com.synapse.ui.settings.components.SettingsDropdown
 import com.synapse.ui.settings.components.SettingsSegmentedToggle
@@ -80,6 +81,7 @@ fun SettingsScreen(
     val defaultViewStitched by viewModel.defaultViewStitched.collectAsState()
     val llmProvider by viewModel.llmProvider.collectAsState()
     val apiKey by viewModel.apiKey.collectAsState()
+    val llmConfig by viewModel.llmConfig.collectAsState()
     val cleanupMode by viewModel.cleanupMode.collectAsState()
     val advancedFormatting by viewModel.advancedFormatting.collectAsState()
     val rateLimitingSafe by viewModel.rateLimitingSafe.collectAsState()
@@ -200,6 +202,17 @@ fun SettingsScreen(
                 isError = uiState.apiKeyError != null,
                 errorMessage = uiState.apiKeyError
             )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Multi-provider LLM configuration section
+            LlmSettingsSection(
+                config = llmConfig,
+                onConfigChange = { viewModel.setLlmConfig(it) },
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             SettingsSwitch(
                 label = "Cleanup mode",
