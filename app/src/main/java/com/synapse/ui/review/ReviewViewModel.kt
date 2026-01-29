@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.synapse.data.repository.ProjectRepository
 import com.synapse.data.repository.SessionRepository
 import com.synapse.data.repository.SyncRepository
+import com.synapse.model.CapturedContext
 import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.Session
@@ -37,7 +38,8 @@ data class ReviewUiState(
     val selectedChunkIds: Set<String> = emptySet(),
     val isLoading: Boolean = false,
     val error: String? = null,
-    val previewChunk: Chunk? = null
+    val previewChunk: Chunk? = null,
+    val contexts: List<CapturedContext> = emptyList()
 )
 
 /**
@@ -385,6 +387,24 @@ class ReviewViewModel(
      */
     fun setPreviewChunk(chunk: Chunk?) {
         _uiState.update { it.copy(previewChunk = chunk) }
+    }
+
+    /**
+     * Add a captured context to the current review
+     */
+    fun addContext(context: CapturedContext) {
+        _uiState.update { state ->
+            state.copy(contexts = state.contexts + context)
+        }
+    }
+
+    /**
+     * Remove a captured context by ID
+     */
+    fun removeContext(contextId: String) {
+        _uiState.update { state ->
+            state.copy(contexts = state.contexts.filter { it.id != contextId })
+        }
     }
 
     /**

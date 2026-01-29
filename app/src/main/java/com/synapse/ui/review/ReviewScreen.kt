@@ -73,6 +73,7 @@ import coil.request.ImageRequest
 import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.SyncStatus
+import com.synapse.ui.components.ContextSection
 import com.synapse.ui.theme.SynapseTheme
 
 /**
@@ -128,6 +129,12 @@ fun ReviewScreen(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 Column {
+                    // Context section showing captured contexts
+                    ContextSection(
+                        contexts = uiState.contexts,
+                        onDeleteContext = viewModel::removeContext
+                    )
+
                     // Sync status bar
                     SyncStatusBar(
                         syncStatus = uiState.syncStatus,
