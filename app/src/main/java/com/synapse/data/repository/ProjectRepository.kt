@@ -6,6 +6,7 @@ import com.synapse.data.storage.VaultManager
 import com.synapse.model.Project
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 
@@ -96,9 +97,11 @@ class ProjectRepositoryImpl(
     private val vaultManager: VaultManager
 ) : ProjectRepository {
 
+    private val initScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
         // Initialize storage to load existing projects from disk
-        CoroutineScope(Dispatchers.IO).launch {
+        initScope.launch {
             projectStorage.initialize()
         }
     }
