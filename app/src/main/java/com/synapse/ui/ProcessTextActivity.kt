@@ -1,6 +1,7 @@
 package com.synapse.ui
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import com.synapse.model.CapturedContext
@@ -22,7 +23,11 @@ class ProcessTextActivity : ComponentActivity() {
             val overlayIntent = Intent(this, OverlayService::class.java).apply {
                 action = OverlayService.ACTION_SHOW_WITH_CONTEXT
             }
-            startService(overlayIntent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(overlayIntent)
+            } else {
+                startService(overlayIntent)
+            }
         }
 
         finish()
