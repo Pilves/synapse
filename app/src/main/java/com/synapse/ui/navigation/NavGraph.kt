@@ -11,6 +11,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import com.synapse.ui.onboarding.AccessibilityPermissionScreen
+import com.synapse.ui.onboarding.DestinationSetupScreen
 import com.synapse.ui.onboarding.OnboardingScreen
 import com.synapse.ui.onboarding.OnboardingViewModel
 import com.synapse.ui.review.ReviewScreen
@@ -41,6 +43,12 @@ sealed class Screen(val route: String) {
 
     /** Project manager for managing Obsidian vault projects */
     object ProjectManager : Screen("project_manager")
+
+    /** Accessibility permission setup (also used within onboarding) */
+    object AccessibilityPermission : Screen("accessibility_permission")
+
+    /** Destination setup for note output (also used within onboarding) */
+    object DestinationSetup : Screen("destination_setup")
 }
 
 /**
@@ -151,6 +159,22 @@ fun SynapseNavGraph(
                     folderPickerCallback.value = callback
                     folderPickerLauncher.launch(null)
                 }
+            )
+        }
+
+        // Accessibility Permission screen (standalone, navigable from settings)
+        composable(route = Screen.AccessibilityPermission.route) {
+            AccessibilityPermissionScreen(
+                onEnabled = { navController.popBackStack() },
+                onSkip = { navController.popBackStack() }
+            )
+        }
+
+        // Destination Setup screen (standalone, navigable from settings)
+        composable(route = Screen.DestinationSetup.route) {
+            DestinationSetupScreen(
+                onComplete = { navController.popBackStack() },
+                onSkip = { navController.popBackStack() }
             )
         }
     }
