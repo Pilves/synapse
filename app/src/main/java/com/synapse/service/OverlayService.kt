@@ -92,6 +92,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.android.inject
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 import androidx.datastore.preferences.core.floatPreferencesKey
 import com.synapse.ui.settings.settingsDataStore
@@ -130,7 +131,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     // Current active session ID
-    private var currentSessionId: String? = null
+    private val currentSessionId = AtomicReference<String?>(null)
 
     // Settings keys
     private val chunkTimeoutKey = floatPreferencesKey("chunk_timeout_seconds")
@@ -181,13 +182,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         serviceScope.launch(Dispatchers.IO) {
             try {
                 // Create session if not exists
-                if (currentSessionId == null) {
+                if (currentSessionId.get() == null) {
                     val session = sessionRepository.createSession()
-                    currentSessionId = session.id
+                    currentSessionId.set(session.id)
                     Log.d(TAG, "Created new session: ${session.id}")
                 }
 
-                val sessionId = currentSessionId ?: return@launch
+                val sessionId = currentSessionId.get() ?: return@launch
 
                 // Calculate timestamp in seconds from epoch
                 val timestampSeconds = capturedChunk.timestamp / 1000f
@@ -221,12 +222,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         serviceScope.launch(Dispatchers.IO) {
             try {
                 // Create session if needed
-                if (currentSessionId == null) {
+                if (currentSessionId.get() == null) {
                     val session = sessionRepository.createSession()
-                    currentSessionId = session.id
+                    currentSessionId.set(session.id)
                     Log.d(TAG, "Created new session for region select: ${session.id}")
                 }
-                val sessionId = currentSessionId ?: return@launch
+                val sessionId = currentSessionId.get() ?: return@launch
 
                 // Try text extraction via accessibility service first
                 var regionText: CapturedContext.RegionText? = null
@@ -329,12 +330,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         serviceScope.launch(Dispatchers.IO) {
             try {
-                if (currentSessionId == null) {
+                if (currentSessionId.get() == null) {
                     val session = sessionRepository.createSession()
-                    currentSessionId = session.id
+                    currentSessionId.set(session.id)
                     Log.d(TAG, "Created new session for pending context: ${session.id}")
                 }
-                val sessionId = currentSessionId ?: return@launch
+                val sessionId = currentSessionId.get() ?: return@launch
                 sessionRepository.addContext(sessionId, context)
                 Log.d(TAG, "Added pending context to session $sessionId")
 
@@ -378,12 +379,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     private fun endCurrentSession() {
-        val sessionId = currentSessionId ?: return
+        val sessionId = currentSessionId.get() ?: return
         serviceScope.launch(Dispatchers.IO) {
             try {
                 sessionRepository.endSession(sessionId)
                 Log.d(TAG, "Ended session: $sessionId")
-                currentSessionId = null
+                currentSessionId.set(null)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to end session", e)
             }
@@ -394,7 +395,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
      * Ends the session and opens Review screen after session is saved.
      */
     private fun finishSessionAndOpenReview() {
-        val sessionId = currentSessionId
+        val sessionId = currentSessionId.get()
         captureViewModel?.endSession()
 
         // Reset badge count since user is going to review
@@ -405,7 +406,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 if (sessionId != null) {
                     sessionRepository.endSession(sessionId)
                     Log.d(TAG, "Ended session: $sessionId")
-                    currentSessionId = null
+                    currentSessionId.set(null)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to end session", e)
@@ -733,7 +734,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                         onDiscard = {
                             captureViewModel?.clearStrokes()
                             // Discard current session without ending
-                            currentSessionId = null
+                            currentSessionId.set(null)
                             hideCaptureOverlay()
                         },
                         onToggleRegionMode = {
