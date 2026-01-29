@@ -28,6 +28,12 @@ class StrokeManager {
     private val strokes = mutableListOf<Stroke>()
     private val lock = Any()
 
+    // Cached bounding box, updated incrementally on addStroke
+    private var boundsMinX = Float.MAX_VALUE
+    private var boundsMinY = Float.MAX_VALUE
+    private var boundsMaxX = Float.MIN_VALUE
+    private var boundsMaxY = Float.MIN_VALUE
+
     /**
      * Adds a new stroke to the collection.
      *
@@ -37,6 +43,12 @@ class StrokeManager {
         synchronized(lock) {
             if (stroke.points.isNotEmpty()) {
                 strokes.add(stroke)
+                for (point in stroke.points) {
+                    boundsMinX = minOf(boundsMinX, point.x)
+                    boundsMinY = minOf(boundsMinY, point.y)
+                    boundsMaxX = maxOf(boundsMaxX, point.x)
+                    boundsMaxY = maxOf(boundsMaxY, point.y)
+                }
             }
         }
     }
@@ -50,6 +62,7 @@ class StrokeManager {
         synchronized(lock) {
             return if (strokes.isNotEmpty()) {
                 strokes.removeAt(strokes.lastIndex)
+                recalculateBounds()
                 true
             } else {
                 false
@@ -63,6 +76,10 @@ class StrokeManager {
     fun clear() {
         synchronized(lock) {
             strokes.clear()
+            boundsMinX = Float.MAX_VALUE
+            boundsMinY = Float.MAX_VALUE
+            boundsMaxX = Float.MIN_VALUE
+            boundsMaxY = Float.MIN_VALUE
         }
     }
 
@@ -96,6 +113,21 @@ class StrokeManager {
     fun strokeCount(): Int {
         synchronized(lock) {
             return strokes.size
+        }
+    }
+
+    private fun recalculateBounds() {
+        boundsMinX = Float.MAX_VALUE
+        boundsMinY = Float.MAX_VALUE
+        boundsMaxX = Float.MIN_VALUE
+        boundsMaxY = Float.MIN_VALUE
+        for (stroke in strokes) {
+            for (point in stroke.points) {
+                boundsMinX = minOf(boundsMinX, point.x)
+                boundsMinY = minOf(boundsMinY, point.y)
+                boundsMaxX = maxOf(boundsMaxX, point.x)
+                boundsMaxY = maxOf(boundsMaxY, point.y)
+            }
         }
     }
 
@@ -179,20 +211,11 @@ class StrokeManager {
         padding: Int = 20
     ): Bitmap {
         synchronized(lock) {
-            // Calculate bounding box of all strokes
-            var minX = Float.MAX_VALUE
-            var minY = Float.MAX_VALUE
-            var maxX = Float.MIN_VALUE
-            var maxY = Float.MIN_VALUE
-
-            for (stroke in strokes) {
-                for (point in stroke.points) {
-                    minX = minOf(minX, point.x)
-                    minY = minOf(minY, point.y)
-                    maxX = maxOf(maxX, point.x)
-                    maxY = maxOf(maxY, point.y)
-                }
-            }
+            // Use cached bounding box
+            var minX = boundsMinX
+            var minY = boundsMinY
+            var maxX = boundsMaxX
+            var maxY = boundsMaxY
 
             // Add padding and clamp to canvas bounds
             minX = maxOf(0f, minX - padding)
