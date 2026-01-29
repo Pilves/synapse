@@ -386,6 +386,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 sessionRepository.endSession(sessionId)
                 Log.d(TAG, "Ended session: $sessionId")
                 currentSessionId.set(null)
+                ScreenshotManager.cleanupScreenshots(this@OverlayService)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to end session", e)
             }
@@ -409,6 +410,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     Log.d(TAG, "Ended session: $sessionId")
                     currentSessionId.set(null)
                 }
+                ScreenshotManager.cleanupScreenshots(this@OverlayService)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to end session", e)
             }

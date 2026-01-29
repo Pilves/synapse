@@ -17,6 +17,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * Manages screen capture via MediaProjection API.
@@ -29,6 +30,22 @@ class ScreenshotManager(private val context: Context) {
 
     companion object {
         private const val TAG = "ScreenshotManager"
+
+        /**
+         * Deletes all temporary screenshot files from internal storage.
+         * Call after session completion to free disk space.
+         */
+        fun cleanupScreenshots(context: Context) {
+            val dir = File(context.filesDir, "screenshots")
+            if (dir.exists() && dir.isDirectory) {
+                val files = dir.listFiles() ?: return
+                var deleted = 0
+                for (file in files) {
+                    if (file.delete()) deleted++
+                }
+                Log.d(TAG, "Cleaned up $deleted temporary screenshot(s)")
+            }
+        }
     }
 
     private var mediaProjection: MediaProjection? = null
