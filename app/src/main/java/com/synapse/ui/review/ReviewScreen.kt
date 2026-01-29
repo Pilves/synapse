@@ -78,6 +78,8 @@ import com.synapse.model.Destination
 import com.synapse.ui.components.ContextSection
 import com.synapse.ui.components.DestinationSelectionRow
 import com.synapse.ui.components.SyncCostBanner
+import com.synapse.ui.components.SyncQueueSummary
+import com.synapse.ui.components.SyncStatusIndicator
 import com.synapse.ui.theme.SynapseTheme
 
 /**
@@ -127,12 +129,22 @@ fun ReviewScreen(
             topBar = {
                 ReviewTopBar(
                     viewMode = uiState.viewMode,
-                    onViewModeChange = viewModel::setViewMode
+                    onViewModeChange = viewModel::setViewMode,
+                    queueStatus = uiState.queueStatus,
+                    onRetrySync = viewModel::retrySyncQueue
                 )
             },
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 Column {
+                    // Sync queue summary showing pending/queued/failed counts
+                    SyncQueueSummary(
+                        pendingCount = uiState.pendingSyncCount,
+                        queuedCount = uiState.queuedSyncCount,
+                        failedCount = uiState.failedSyncCount,
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+
                     // Context section showing captured contexts
                     ContextSection(
                         contexts = uiState.contexts,
@@ -196,7 +208,9 @@ fun ReviewScreen(
 @Composable
 private fun ReviewTopBar(
     viewMode: ViewMode,
-    onViewModeChange: (ViewMode) -> Unit
+    onViewModeChange: (ViewMode) -> Unit,
+    queueStatus: com.synapse.model.QueueStatus? = null,
+    onRetrySync: (() -> Unit)? = null
 ) {
     TopAppBar(
         title = {
@@ -207,6 +221,12 @@ private fun ReviewTopBar(
             )
         },
         actions = {
+            // Sync status indicator in the top bar
+            SyncStatusIndicator(
+                status = queueStatus,
+                onRetry = onRetrySync,
+                modifier = Modifier.padding(end = 8.dp)
+            )
             // View mode toggle
             SingleChoiceSegmentedButtonRow(
                 modifier = Modifier.padding(end = 8.dp)

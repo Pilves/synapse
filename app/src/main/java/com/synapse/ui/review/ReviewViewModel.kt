@@ -10,6 +10,7 @@ import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.model.CapturedContext
 import com.synapse.model.CostEstimate
 import com.synapse.model.Destination
+import com.synapse.model.QueueStatus
 import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.Session
@@ -46,7 +47,11 @@ data class ReviewUiState(
     val contexts: List<CapturedContext> = emptyList(),
     val availableDestinations: List<Destination> = emptyList(),
     val selectedDestinations: List<String> = emptyList(),
-    val costEstimate: CostEstimate? = null
+    val costEstimate: CostEstimate? = null,
+    val queueStatus: QueueStatus? = null,
+    val pendingSyncCount: Int = 0,
+    val queuedSyncCount: Int = 0,
+    val failedSyncCount: Int = 0
 )
 
 /**
@@ -459,6 +464,36 @@ class ReviewViewModel(
             model = model
         )
         _uiState.update { it.copy(costEstimate = estimate) }
+    }
+
+    /**
+     * Update the sync queue summary counts
+     */
+    fun updateQueueSummary(pendingCount: Int, queuedCount: Int, failedCount: Int) {
+        _uiState.update { state ->
+            state.copy(
+                pendingSyncCount = pendingCount,
+                queuedSyncCount = queuedCount,
+                failedSyncCount = failedCount
+            )
+        }
+    }
+
+    /**
+     * Update the current queue status indicator
+     */
+    fun updateQueueStatus(status: QueueStatus?) {
+        _uiState.update { it.copy(queueStatus = status) }
+    }
+
+    /**
+     * Retry failed sync operations
+     */
+    fun retrySyncQueue() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(queueStatus = QueueStatus.PENDING) }
+            syncAll()
+        }
     }
 
     /**
