@@ -104,6 +104,9 @@ dependencies {
     // DataStore - Preferences storage
     implementation(libs.androidx.datastore.preferences)
 
+    // DocumentFile - SAF file access
+    implementation(libs.androidx.documentfile)
+
     // Coil - Image loading
     implementation(libs.coil.compose)
 
