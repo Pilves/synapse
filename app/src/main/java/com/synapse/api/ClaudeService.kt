@@ -3,14 +3,12 @@ package com.synapse.api
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.delay
-import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
@@ -45,16 +43,12 @@ class ClaudeService(
     private val rateLimitConfig = RateLimitConfig(REQUESTS_PER_MINUTE, REQUESTS_PER_DAY)
     private val rateLimitState = RateLimitState()
 
+    // TODO: Consolidate OkHttpClient instances into a shared singleton (#42)
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .readTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .writeTimeout(TIMEOUT_SECONDS, TimeUnit.SECONDS)
         .build()
-
-    private val json = Json {
-        ignoreUnknownKeys = true
-        isLenient = true
-    }
 
     override suspend fun transcribe(
         chunks: List<ChunkData>,
@@ -87,36 +81,14 @@ class ClaudeService(
         prompt: String,
         chunkContext: String
     ): TranscriptionResult {
-        var lastException: Exception? = null
-        var retryDelay = INITIAL_RETRY_DELAY_MS
-
-        repeat(MAX_RETRIES) { attempt ->
-            try {
-                return executeRequest(chunks, prompt, chunkContext)
-            } catch (e: TranscriptionError.RateLimitError) {
-                Log.w(TAG, "Rate limited on attempt ${attempt + 1}, waiting...")
-                val waitTime = e.retryAfterSeconds?.times(1000L) ?: retryDelay
-                delay(waitTime)
-                retryDelay *= 2
-                lastException = e
-            } catch (e: TranscriptionError.ServerError) {
-                if (e.statusCode in 500..599 || e.statusCode == 529) { // 529 = overloaded
-                    Log.w(TAG, "Server error on attempt ${attempt + 1}: ${e.message}")
-                    delay(retryDelay)
-                    retryDelay *= 2
-                    lastException = e
-                } else {
-                    throw e
-                }
-            } catch (e: IOException) {
-                Log.w(TAG, "Network error on attempt ${attempt + 1}: ${e.message}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
-            }
+        return RetryHelper.executeWithRetry(
+            maxRetries = MAX_RETRIES,
+            initialDelayMs = INITIAL_RETRY_DELAY_MS,
+            tag = TAG,
+            retryServerErrors = { it in 500..599 || it == 529 }
+        ) {
+            executeRequest(chunks, prompt, chunkContext)
         }
-
-        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
     }
 
     private fun executeRequest(
@@ -144,25 +116,11 @@ class ClaudeService(
                 response.isSuccessful -> {
                     return parseResponse(responseBody, chunks.size)
                 }
-                response.code == 401 -> {
-                    throw TranscriptionError.ApiKeyInvalid("Invalid API key")
-                }
-                response.code == 403 -> {
-                    throw TranscriptionError.ApiKeyInvalid("API key lacks required permissions")
-                }
-                response.code == 429 -> {
-                    val retryAfter = response.header("retry-after")?.toIntOrNull()
-                    throw TranscriptionError.RateLimitError(retryAfter)
-                }
-                response.code == 529 -> {
-                    throw TranscriptionError.ServiceUnavailable("API overloaded")
-                }
-                response.code in 500..599 -> {
-                    throw TranscriptionError.ServerError(response.code, responseBody)
-                }
-                else -> {
-                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
-                }
+                else -> HttpErrorHandler.handleHttpError(
+                    response, responseBody,
+                    retryAfterHeader = "retry-after",
+                    handle529AsOverloaded = true
+                )
             }
         }
     }
@@ -266,32 +224,7 @@ class ClaudeService(
     }
 
     private fun parseTranscriptionJson(content: String, chunkCount: Int): TranscriptionResult {
-        try {
-            // Clean up the content - remove markdown code fencing if present
-            val cleanedContent = content
-                .replace(Regex("^```json\\s*", RegexOption.MULTILINE), "")
-                .replace(Regex("^```\\s*", RegexOption.MULTILINE), "")
-                .replace(Regex("```$", RegexOption.MULTILINE), "")
-                .trim()
-
-            val transcriptionResponse = json.decodeFromString<TranscriptionResponse>(cleanedContent)
-
-            val notes = transcriptionResponse.notes.map { noteResponse ->
-                Note(
-                    text = noteResponse.text,
-                    chunksUsed = noteResponse.chunksUsed
-                )
-            }
-
-            // Determine which chunks weren't used (failed/skipped)
-            val usedChunks = notes.flatMap { it.chunksUsed }.toSet()
-            val failedChunks = (0 until chunkCount).filter { it !in usedChunks }
-
-            return TranscriptionResult(notes, failedChunks)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to parse transcription JSON (${content.length} chars)", e)
-            throw TranscriptionError.InvalidResponse("Invalid JSON from LLM: ${e.message}", e)
-        }
+        return TranscriptionJsonParser.parse(content, chunkCount)
     }
 
     override suspend fun textQuery(prompt: String, systemPrompt: String?): String {
@@ -372,16 +305,11 @@ class ClaudeService(
 
             when {
                 response.isSuccessful -> return parseTextQueryResponse(responseBody)
-                response.code == 401 ->
-                    throw TranscriptionError.ApiKeyInvalid("Invalid API key")
-                response.code == 429 -> {
-                    val retryAfter = response.header("retry-after")?.toIntOrNull()
-                    throw TranscriptionError.RateLimitError(retryAfter)
-                }
-                response.code in 500..599 ->
-                    throw TranscriptionError.ServerError(response.code, responseBody)
-                else ->
-                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
+                else -> HttpErrorHandler.handleHttpError(
+                    response, responseBody,
+                    retryAfterHeader = "retry-after",
+                    handle529AsOverloaded = true
+                )
             }
         }
     }
@@ -390,36 +318,14 @@ class ClaudeService(
         prompt: String,
         systemPrompt: String?
     ): String {
-        var lastException: Exception? = null
-        var retryDelay = INITIAL_RETRY_DELAY_MS
-
-        repeat(MAX_RETRIES) { attempt ->
-            try {
-                return executeTextQueryRequest(prompt, systemPrompt)
-            } catch (e: TranscriptionError.RateLimitError) {
-                Log.w(TAG, "Rate limited on attempt ${attempt + 1}, waiting...")
-                val waitTime = e.retryAfterSeconds?.times(1000L) ?: retryDelay
-                delay(waitTime)
-                retryDelay *= 2
-                lastException = e
-            } catch (e: TranscriptionError.ServerError) {
-                if (e.statusCode in 500..599 || e.statusCode == 529) {
-                    Log.w(TAG, "Server error on attempt ${attempt + 1}: ${e.message}")
-                    delay(retryDelay)
-                    retryDelay *= 2
-                    lastException = e
-                } else {
-                    throw e
-                }
-            } catch (e: IOException) {
-                Log.w(TAG, "Network error on attempt ${attempt + 1}: ${e.message}")
-                delay(retryDelay)
-                retryDelay *= 2
-                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
-            }
+        return RetryHelper.executeWithRetry(
+            maxRetries = MAX_RETRIES,
+            initialDelayMs = INITIAL_RETRY_DELAY_MS,
+            tag = TAG,
+            retryServerErrors = { it in 500..599 || it == 529 }
+        ) {
+            executeTextQueryRequest(prompt, systemPrompt)
         }
-
-        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
     }
 
     private fun executeTextQueryRequest(prompt: String, systemPrompt: String?): String {
@@ -464,25 +370,11 @@ class ClaudeService(
                 response.isSuccessful -> {
                     return parseTextQueryResponse(responseBody)
                 }
-                response.code == 401 -> {
-                    throw TranscriptionError.ApiKeyInvalid("Invalid API key")
-                }
-                response.code == 403 -> {
-                    throw TranscriptionError.ApiKeyInvalid("API key lacks required permissions")
-                }
-                response.code == 429 -> {
-                    val retryAfter = response.header("retry-after")?.toIntOrNull()
-                    throw TranscriptionError.RateLimitError(retryAfter)
-                }
-                response.code == 529 -> {
-                    throw TranscriptionError.ServiceUnavailable("API overloaded")
-                }
-                response.code in 500..599 -> {
-                    throw TranscriptionError.ServerError(response.code, responseBody)
-                }
-                else -> {
-                    throw TranscriptionError.Unknown("HTTP ${response.code}: $responseBody")
-                }
+                else -> HttpErrorHandler.handleHttpError(
+                    response, responseBody,
+                    retryAfterHeader = "retry-after",
+                    handle529AsOverloaded = true
+                )
             }
         }
     }
