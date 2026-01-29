@@ -2,242 +2,205 @@
 
 **Zero-friction handwriting capture for Obsidian.**
 
-Synapse is an Android overlay app that lets you capture handwritten notes without leaving your current app. Scribble quick thoughts, and later sync them to your Obsidian vault as clean, formatted markdown - transcribed by your choice of LLM.
+Synapse is an Android overlay app that lets you capture handwritten notes without leaving your current app. Scribble quick thoughts, and later sync them to your Obsidian vault as clean, formatted markdown -- transcribed by your choice of LLM.
 
 ## How It Works
 
-1. **Tap the floating bubble** - appears over any app
-2. **Scribble your notes** - on a transparent fullscreen canvas
-3. **Auto-chunks after 3s** - keeps capturing as you write
-4. **Tap Done** - session ends
-5. **Review & Sync** - select project, transcribe via LLM, append to vault
+1. **Tap the floating bubble** -- appears over any app
+2. **Scribble your notes** -- on a transparent fullscreen canvas
+3. **Auto-chunks after 3s** -- keeps capturing as you write
+4. **Tap Done** -- session ends
+5. **Review & Sync** -- select destination, transcribe via LLM, sync to vault
 
 ## Features
 
-- **Floating Overlay** - Capture notes without switching apps
-- **Automatic Chunking** - 3-second timeout creates natural breaks
-- **Multi-Provider LLM** - Gemini, Claude, OpenAI, or local Ollama
-- **Smart Transcription** - Messy handwriting → clean markdown
-- **Mermaid Diagrams** - Hand-drawn flowcharts → code (with advanced formatting)
-- **Obsidian Integration** - Direct sync via Storage Access Framework
-- **Offline Support** - Queue syncs for when you're back online
+### Core Capture
+- **Floating Overlay** -- capture notes without switching apps
+- **Automatic Chunking** -- 3-second timeout creates natural breaks between strokes
+- **Smart Transcription** -- messy handwriting to clean markdown via LLM
+- **Mermaid Diagrams** -- hand-drawn flowcharts converted to Mermaid code (advanced formatting mode)
+- **Undo Support** -- undo last stroke while capturing
+
+### Multi-Provider LLM
+- **Gemini** -- Google's Gemini 1.5 Flash (free tier available)
+- **Claude** -- Anthropic's Claude 3 Haiku
+- **OpenAI** -- GPT-4o Mini
+- **Ollama** -- local LLaVA for fully offline transcription
+- **Separate providers** -- configure different LLMs for transcription (image-based) vs. question answering (text-based)
+
+### Context Capture
+- **Text Selection** -- select text in any app, share it to Synapse via Android's text processing
+- **Region Capture** -- hold-and-drag to select a screen region, extract text via accessibility or screenshot
+- **Auto Context** -- captures active app info via accessibility service
+- **Context-Aware Output** -- captured context is woven into the transcription prompt for smarter results
+
+### Intent Detection
+- **Automatic Classification** -- LLM detects if your note is a plain note, task, question, or reminder
+- **Question Answering** -- detected questions are answered inline using the configured LLM
+- **Reminder Creation** -- detected reminders prompt to set alarms or calendar events
+- **Task Extraction** -- tasks are formatted with checkboxes in markdown output
+
+### Multiple Destinations
+- **Obsidian Vault** -- sync via Storage Access Framework with persistent URI permissions
+- **Local Folder** -- write to any folder on device via SAF
+- **Clipboard** -- copy transcribed text directly
+- **Share Sheet** -- send to any app via Android's share intent
+- **Per-Session Config** -- choose destination(s) for each sync session
+
+### Cost Tracking
+- **Token Pricing** -- tracks estimated cost per LLM call based on model pricing
+- **Usage Statistics** -- cumulative stats stored in DataStore (total tokens, total cost, call count)
+- **Cost Display** -- banner in review screen shows estimated sync cost before you commit
+
+### Offline Support
+- **Network Monitor** -- detects connectivity changes in real time
+- **Sync Queue** -- failed syncs are queued with status tracking (pending, syncing, completed, failed)
+- **Queue Summary** -- UI shows pending/queued/failed counts with retry controls
 
 ## Requirements
 
 - Android 8.0+ (API 26)
-- Stylus recommended (works with finger)
-- Obsidian vault on device storage
-- API key for cloud LLM (or Ollama for local)
+- Stylus recommended (works with finger too)
+- Obsidian vault on device storage (for vault sync)
+- API key for at least one cloud LLM provider, or Ollama running locally
+
+## Permissions
+
+| Permission | Purpose |
+|---|---|
+| `SYSTEM_ALERT_WINDOW` | Floating overlay bubble and capture canvas |
+| `FOREGROUND_SERVICE` | Keep capture service alive during sessions |
+| `POST_NOTIFICATIONS` | Foreground service notification |
+| `INTERNET` | LLM API calls and sync |
+| `ACCESS_NETWORK_STATE` | Offline detection for sync queue |
+| `VIBRATE` | Haptic feedback on region selection |
+| `RECEIVE_BOOT_COMPLETED` | Restore state after reboot |
+| Accessibility Service | Text extraction from screen regions, auto-context capture |
+| MediaProjection | Screenshot-based region capture (requested on demand) |
+| SAF (document access) | Read/write Obsidian vault and local folders |
 
 ## Installation
 
 ### Download
-Coming soon - see [Releases](https://github.com/Pilves/synapse/releases)
+See [Releases](https://github.com/Pilves/synapse/releases).
 
 ### Build from Source
 ```bash
 git clone https://github.com/Pilves/synapse.git
 cd synapse
-# Open in Android Studio
-# Build → Run
+./gradlew assembleDebug
+# APK at app/build/outputs/apk/debug/app-debug.apk
 ```
+
+Or open in Android Studio and run directly on a connected device.
 
 ## Setup
 
-1. Grant overlay permission (draw over other apps)
-2. Select your Obsidian vault folder
-3. Enter API key (Gemini free tier available)
-4. Add projects (subfolders in your vault)
+The onboarding flow walks through these steps:
 
----
+1. **Overlay Permission** -- draw over other apps
+2. **Accessibility Permission** -- enable Synapse accessibility service for context capture
+3. **Vault Selection** -- pick your Obsidian vault folder
+4. **Destination Setup** -- choose default sync destinations
+5. **API Key** -- enter key for your preferred LLM provider
 
-## Roadmap
-
-### Phase 1: Core Foundation ✅
-> *Basic infrastructure and project setup*
-
-- [x] Project structure with Kotlin + Jetpack Compose
-- [x] Koin dependency injection setup
-- [x] Data models (Chunk, Session, Project, Settings)
-- [x] Material 3 theming (light/dark mode)
-- [x] Navigation graph and main activity
-
-### Phase 2: Capture System ✅
-> *The heart of the app - overlay and drawing*
-
-- [x] Floating bubble service (draggable, always on top)
-- [x] Fullscreen transparent overlay canvas
-- [x] Stroke capture with stylus/finger support
-- [x] 3-second chunk timeout with fade animation
-- [x] Undo last stroke functionality
-- [x] Session management (15-min auto-end)
-- [x] Foreground service with notification
-
-### Phase 3: Storage Layer ✅
-> *Reliable persistence of captured data*
-
-- [x] WebP image storage (85% quality)
-- [x] Atomic writes (temp file → verify → rename)
-- [x] Session metadata persistence (JSON)
-- [x] Thumbnail generation for review
-- [x] Image stitching for combined view
-- [x] Storage space checks (50MB minimum)
-- [x] Corrupted file detection and handling
-
-### Phase 4: LLM Integration ✅
-> *Multi-provider transcription system*
-
-- [x] Provider abstraction interface
-- [x] Gemini service (gemini-1.5-flash)
-- [x] Claude service (claude-3-haiku)
-- [x] OpenAI service (gpt-4o-mini)
-- [x] Ollama service (local llava)
-- [x] Prompt template system
-- [x] Rate limiting (safe/fast modes)
-- [x] Batch processing for large sessions
-
-### Phase 5: Review & Sync ✅
-> *User interface for managing captures*
-
-- [x] Review screen with session list
-- [x] Stitched vs separate view modes
-- [x] Chunk selection and deletion
-- [x] Project/file picker for sync target
-- [x] Sync progress indicator
-- [x] Partial success handling
-- [x] Offline queue with auto-retry
-
-### Phase 6: Settings & Configuration ✅
-> *Full customization options*
-
-- [x] Capture settings (timeout, fade, auto-end)
-- [x] LLM provider selection and API keys
-- [x] Cleanup mode toggle
-- [x] Advanced formatting toggle (Mermaid, LaTeX)
-- [x] Custom prompt template editor
-- [x] Project manager (add/edit/delete)
-- [x] DataStore persistence
-
-### Phase 7: Onboarding ✅
-> *First-run experience*
-
-- [x] Welcome screen
-- [x] Overlay permission request
-- [x] Vault folder selection
-- [x] API key setup
-- [x] Permission helper utilities
-
-### Phase 8: Vault Integration ✅
-> *Writing to Obsidian*
-
-- [x] SAF (Storage Access Framework) integration
-- [x] Persistent URI permissions
-- [x] Markdown formatter
-- [x] Append to existing files
-- [x] Create files if needed
-
----
-
-### Phase 9: Polish & Testing 🔄
-> *Quality assurance and refinements*
-
-- [ ] Unit tests for repositories
-- [ ] UI tests for critical flows
-- [ ] Edge case handling improvements
-- [ ] Performance optimization
-- [ ] Memory leak fixes
-- [ ] Battery usage optimization
-- [ ] Crash reporting integration
-
-### Phase 10: Beta Release 📋
-> *Preparing for public use*
-
-- [ ] GitHub Actions CI/CD pipeline
-- [ ] Signed APK builds
-- [ ] Release workflow automation
-- [ ] Privacy policy
-- [ ] Contributing guidelines
-- [ ] Issue templates
-- [ ] Beta testing program
-
-### Phase 11: Enhanced Features 📋
-> *Post-launch improvements*
-
-- [ ] Samsung S Pen Air Command integration
-- [ ] Pen pressure sensitivity
-- [ ] Multiple pen colors (user preference)
-- [ ] Adjustable stroke width
-- [ ] Palm rejection improvements
-- [ ] Widget for quick capture
-- [ ] Wear OS companion (stretch goal)
-
-### Phase 12: Community Features 📋
-> *Based on user feedback*
-
-- [ ] Custom LLM endpoint support
-- [ ] Template library (prompt sharing)
-- [ ] Backup/restore settings
-- [ ] Statistics dashboard
-- [ ] Batch operations in review
-- [ ] Search through past sessions
-
----
-
-## Legend
-
-| Symbol | Status |
-|--------|--------|
-| ✅ | Completed |
-| 🔄 | In Progress |
-| 📋 | Planned |
-
----
-
-## Tech Stack
-
-| Component | Choice |
-|-----------|--------|
-| Language | Kotlin |
-| UI | Jetpack Compose |
-| DI | Koin |
-| State | ViewModel + StateFlow |
-| Storage | DataStore, SAF |
-| Network | OkHttp, Ktor |
-| Images | Coil, WebP |
+After onboarding, configure additional options in Settings:
+- Switch between LLM providers for transcription and answering separately
+- Toggle advanced formatting (Mermaid diagrams, LaTeX)
+- Adjust capture timeout, fade animation, auto-end timer
+- Manage projects (subfolders in your vault)
 
 ## Architecture
 
 ```
-app/
-├── api/           # LLM service implementations
+app/src/main/java/com/synapse/
+├── api/                          # LLM service layer
+│   ├── TranscriptionService.kt   # Interface (transcribe images + text query)
+│   ├── GeminiService.kt          # Google Gemini implementation
+│   ├── ClaudeService.kt          # Anthropic Claude implementation
+│   ├── OpenAiService.kt          # OpenAI implementation
+│   ├── OllamaService.kt          # Local Ollama implementation
+│   ├── LlmProviderFactory.kt     # Routes to correct provider by task type
+│   ├── QuestionAnswerService.kt   # Q&A via text-based LLM calls
+│   ├── PromptTemplate.kt         # Base transcription prompt
+│   └── PromptTemplateV2.kt       # Intent-aware prompt with context
 ├── data/
-│   ├── repository/   # Business logic layer
-│   └── storage/      # File operations
-├── di/            # Koin modules
-├── model/         # Data classes
-├── service/       # Overlay & notifications
+│   ├── cost/
+│   │   ├── LlmCostCalculator.kt  # Token pricing per model
+│   │   └── UsageTracker.kt       # DataStore-backed usage statistics
+│   ├── destination/
+│   │   ├── ClipboardDestination.kt
+│   │   ├── ShareIntentDestination.kt
+│   │   ├── LocalFolderDestination.kt
+│   │   └── DestinationRepository.kt
+│   ├── repository/                # Business logic (sessions, projects)
+│   └── storage/                   # File I/O (WebP, metadata, stitching)
+├── di/
+│   └── AppModule.kt              # Koin DI modules
+├── model/
+│   ├── CapturedContext.kt         # Sealed class: SelectedText, RegionText, RegionImage, AutoContext
+│   ├── CostModels.kt             # CostEstimate, UsageStats, TokenPricing
+│   ├── Destination.kt            # Destination interface + SyncContent, SyncResult
+│   ├── IntentType.kt             # NOTE, TASK, QUESTION, REMINDER + DetectedIntent
+│   ├── LlmConfig.kt              # Multi-provider configuration
+│   ├── QueuedSync.kt             # Offline queue data model
+│   ├── SessionSyncConfig.kt      # Per-session destination selection
+│   └── TranscriptionModels.kt    # TranscribedNote, ProcessedResult, ChunkData
+├── service/
+│   ├── OverlayService.kt         # Floating bubble + capture canvas + region mode
+│   ├── CaptureService.kt         # Stroke capture and chunking
+│   ├── SynapseAccessibilityService.kt  # Screen text extraction
+│   ├── RegionCaptureManager.kt   # Region text/image extraction pipeline
+│   ├── ScreenshotManager.kt      # MediaProjection screen capture
+│   ├── MediaProjectionHolder.kt  # Activity-Service bridge for projection consent
+│   ├── ReminderManager.kt        # Alarm and calendar intent creation
+│   ├── NotificationHelper.kt     # Foreground service notifications
+│   └── NetworkMonitor.kt         # Connectivity state tracking
 ├── ui/
-│   ├── navigation/   # NavGraph, MainScreen
-│   ├── onboarding/   # First-run flow
-│   ├── overlay/      # Canvas, capture
-│   ├── review/       # Session management
-│   └── settings/     # Configuration
-└── util/          # Helpers
+│   ├── components/
+│   │   ├── ContextCard.kt        # Context display cards in review
+│   │   ├── CostDisplay.kt        # Cost banner and usage stats
+│   │   ├── DestinationSelector.kt # Destination picker chips
+│   │   ├── IntentDialogs.kt      # Intent confirmation, Q&A, reminder dialogs
+│   │   ├── LlmSettingsSection.kt # Multi-provider settings UI
+│   │   └── SyncStatusIndicator.kt # Queue status display
+│   ├── navigation/               # NavGraph, Screen sealed class
+│   ├── onboarding/               # Welcome, permissions, vault, destination, API key
+│   ├── overlay/
+│   │   ├── CaptureCanvas.kt      # Drawing surface + region gesture detection
+│   │   └── RegionGestureDetector.kt # Hold-drag gesture recognizer
+│   ├── review/                   # Session list, chunk management, sync
+│   └── settings/                 # Provider config, capture options, projects
+├── util/
+│   ├── OutputFormatter.kt        # Context-aware markdown formatting
+│   └── PermissionHelper.kt       # Runtime permission utilities
+└── ProcessTextActivity.kt        # Android ACTION_PROCESS_TEXT handler
 ```
+
+## Tech Stack
+
+| Component | Technology |
+|---|---|
+| Language | Kotlin |
+| UI | Jetpack Compose + Material 3 |
+| DI | Koin |
+| State | ViewModel + StateFlow |
+| Storage | DataStore, SAF, WebP |
+| Networking | Ktor, OkHttp |
+| Images | Coil |
+| Min SDK | API 26 (Android 8.0) |
+| Target SDK | Latest stable |
+| JVM | Java 17 |
 
 ## Contributing
 
-Contributions welcome! Please:
+Contributions welcome:
 
 1. Check existing issues first
 2. Open an issue to discuss major changes
-3. Fork → branch → PR
-4. Test on a real device
+3. Fork, branch, PR
+4. Test on a real device (overlay and accessibility features need physical hardware)
 
 ## License
 
-MIT License - see [LICENSE](LICENSE)
-
----
-
-*Built for the Obsidian community by note-takers who hate context-switching.*
+MIT License -- see [LICENSE](LICENSE).
