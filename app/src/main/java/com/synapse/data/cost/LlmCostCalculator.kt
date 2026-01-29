@@ -57,7 +57,8 @@ object LlmCostCalculator {
     }
 
     fun isFreeModel(model: String): Boolean {
-        val price = pricing[model] ?: return false
+        if (model.contains("ollama") || model.contains("llava")) return true
+        val price = pricing[model] ?: return true
         return price.input == 0.0 && price.output == 0.0
     }
 }
