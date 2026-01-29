@@ -91,6 +91,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koin.android.ext.android.inject
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -114,7 +115,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
 
     private var captureViewModel: CaptureViewModel? = null
-    private var pendingChunkCount = 0
+    private val pendingChunkCount = AtomicInteger(0)
     private var isCaptureActive = false
     private var isRegionMode = false
     private var capturedTextPreview = mutableStateOf<String?>(null)
@@ -201,7 +202,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 Log.d(TAG, "Saved chunk: ${chunk.id} to session $sessionId")
 
                 // Update badge count
-                pendingChunkCount++
+                pendingChunkCount.incrementAndGet()
                 launch(Dispatchers.Main) {
                     updateBubble()
                 }
@@ -398,7 +399,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         captureViewModel?.endSession()
 
         // Reset badge count since user is going to review
-        pendingChunkCount = 0
+        pendingChunkCount.set(0)
 
         serviceScope.launch(Dispatchers.IO) {
             try {
@@ -434,7 +435,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             ACTION_SHOW_CAPTURE -> showCaptureOverlay()
             ACTION_HIDE_CAPTURE -> hideCaptureOverlay()
             ACTION_UPDATE_BADGE -> {
-                pendingChunkCount = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
+                pendingChunkCount.set(intent.getIntExtra(EXTRA_CHUNK_COUNT, 0))
                 updateBubble()
             }
             ACTION_TOGGLE_REGION_MODE -> {
@@ -617,7 +618,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             setContent {
                 SynapseTheme {
                     FloatingBubble(
-                        pendingCount = pendingChunkCount,
+                        pendingCount = pendingChunkCount.get(),
                         screenHeight = screenHeight,
                         initialY = params.y,
                         onClick = { showCaptureOverlay() },
