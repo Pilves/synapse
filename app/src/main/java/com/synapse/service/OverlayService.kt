@@ -672,6 +672,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     @SuppressLint("ClickableViewAccessibility")
     private fun showCaptureOverlay() {
         if (captureOverlayView != null || isCaptureActive) return
+        val vm = captureViewModel ?: return
         isCaptureActive = true
 
         // Ensure screenshot permission is available
@@ -719,7 +720,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             setContent {
                 SynapseTheme {
                     CaptureOverlayContent(
-                        viewModel = captureViewModel!!,
+                        viewModel = vm,
                         chunkTimeoutMs = chunkTimeoutMs,
                         isRegionMode = isRegionMode,
                         capturedTextPreview = capturedTextPreview.value,
