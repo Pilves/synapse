@@ -73,7 +73,7 @@ data class OnboardingState(
     /**
      * Returns the total number of pages in the onboarding flow.
      */
-    val totalPages: Int = 4
+    val totalPages: Int = 6
 
     companion object {
         /**

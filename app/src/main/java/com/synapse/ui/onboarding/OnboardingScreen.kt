@@ -189,7 +189,11 @@ fun OnboardingScreen(
                         onSkip = { viewModel.nextPage() },
                         onContinue = { viewModel.nextPage() }
                     )
-                    2 -> SelectVaultPage(
+                    2 -> AccessibilityPermissionScreen(
+                        onEnabled = { viewModel.nextPage() },
+                        onSkip = { viewModel.nextPage() }
+                    )
+                    3 -> SelectVaultPage(
                         hasVaultConfigured = state.hasVaultConfigured,
                         vaultPath = state.vaultPath,
                         onPickFolder = {
@@ -198,7 +202,11 @@ fun OnboardingScreen(
                         onSkip = { viewModel.nextPage() },
                         onContinue = { viewModel.nextPage() }
                     )
-                    3 -> ApiKeyPage(
+                    4 -> DestinationSetupScreen(
+                        onComplete = { viewModel.nextPage() },
+                        onSkip = { viewModel.nextPage() }
+                    )
+                    5 -> ApiKeyPage(
                         hasApiKey = state.hasApiKey,
                         isValidating = state.isValidatingApiKey,
                         onSaveApiKey = { key ->
