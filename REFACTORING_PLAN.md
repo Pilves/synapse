@@ -1,4 +1,4 @@
-# Synapse Refactoring Plan: MVP → Consumer Product
+# Synapse Feature Expansion — Technical Specification
 
 ## Codebase Baseline
 
@@ -13,449 +13,633 @@
 
 ---
 
-## Phase 1: UX Hardening ("It Just Works")
+# PART A: CRITICAL UX HARDENING
 
-### 1.1 Ink Smoothing & Latency
-
-**Current state:**
-- `StrokeManager.kt` (255 lines) stores `List<Offset>` per stroke with fixed `strokeWidth: Float = 4f`
-- `CaptureCanvas.kt:318-354` — `createSmoothPath()` uses quadratic bezier interpolation between consecutive raw points
-- No velocity tracking, no pressure data, no variable width
-- The `Stroke` data class at `StrokeManager.kt:15-18` has no pressure/velocity fields
-
-**What needs to change:**
-
-1. **Extend `Stroke` data model** (`StrokeManager.kt:15-18`)
-   - Replace `List<Offset>` with `List<StrokePoint>` where:
-     ```kotlin
-     data class StrokePoint(
-         val position: Offset,
-         val pressure: Float = 0.5f,   // 0..1, from MotionEvent or simulated
-         val timestamp: Long = 0L       // for velocity calculation
-     )
-     ```
-   - Keep `strokeWidth` as base width; actual rendered width = `baseWidth * pressureFactor`
-
-2. **Capture pressure + timestamps** (`CaptureCanvas.kt:170-224`)
-   - In the `pointerInput` gesture handler, extract `pressure` from `PointerInputChange` (available on stylus hardware) and `System.nanoTime()` for timestamps
-   - For non-pressure devices (finger), simulate pressure from velocity: high velocity → thinner stroke, low velocity → thicker
-
-3. **Implement Catmull-Rom spline interpolation** (replace `createSmoothPath` at `CaptureCanvas.kt:318-354`)
-   - Catmull-Rom passes through all control points (unlike cubic bezier which doesn't), giving more natural-feeling curves
-   - Algorithm: for each segment between points P1 and P2, use P0 and P3 as control tangents
-   - Interpolate additional sub-points between samples to increase smoothness (e.g., 4 sub-steps per segment)
-   - Each interpolated point gets an interpolated width from the pressure curve
-
-4. **Variable-width stroke rendering** (new `drawVariableWidthStroke` in `CaptureCanvas.kt`)
-   - Instead of a single `drawPath()` with uniform `Stroke(width=...)`, render the stroke as a filled polygon or sequence of circles/quads
-   - Technique: at each point, compute a perpendicular offset proportional to width, build left/right outline paths, fill the enclosed shape
-   - Apply the same rendering in `StrokeManager.toBitmap()` and `toBitmapForOcr()` for consistent OCR output
-
-5. **Evaluate ink-stroke-modeler integration**
-   - Google's [ink-stroke-modeler](https://github.com/nicholasgasior/ink-stroke-modeler) is C++; wrapping via JNI adds complexity
-   - Recommendation: implement Catmull-Rom + velocity-width natively in Kotlin first. If results aren't satisfactory on low-end devices, then evaluate JNI binding
-   - The pure-Kotlin approach avoids NDK build complexity and keeps the APK smaller
-
-**Files to modify:**
-| File | Change |
-|------|--------|
-| `StrokeManager.kt` | New `StrokePoint` data class, update `Stroke`, update `toBitmap`/`toBitmapForOcr` rendering |
-| `CaptureCanvas.kt` | Capture pressure/timestamp, replace `createSmoothPath`, add `drawVariableWidthStroke` |
-| `CaptureViewModel.kt` | Pass pressure/timestamp through `onDrawStart`/`onDrawMove` |
-
-**Estimated complexity:** Medium-High. Core drawing pipeline change affects capture, display, and bitmap export.
+Ship these with v1. Not features — table stakes.
 
 ---
 
-### 1.2 Robust Permission Recovery ("Self-Healing")
-
-**Current state:**
-- `PermissionHelper.kt` (221 lines) checks overlay, notification, and storage permissions but has no monitoring/recovery loop
-- `SynapseAccessibilityService.kt:17-19` uses `@Volatile instance` singleton — when the OS kills the service, `getInstance()` returns `null`, and features silently degrade
-- `OverlayService.kt:512-521` checks `screenshotManager.hasPermission()` only at startup; if MediaProjection dies mid-session, region capture fails silently
-- No proactive detection of accessibility service death
-- No user-facing recovery UI in the overlay
-
-**What needs to change:**
-
-1. **Accessibility Service health monitor** (new `ServiceHealthMonitor.kt`)
-   - Create a periodic check (every 30s via `Handler.postDelayed` or coroutine `delay` loop) inside `OverlayService`
-   - Check `SynapseAccessibilityService.getInstance() != null` AND `SynapseAccessibilityService.isEnabled(context)`
-   - Track state transitions: `HEALTHY → DEGRADED → DEAD`
-   - Expose as `StateFlow<ServiceHealth>` for the overlay UI to observe
-
-2. **MediaProjection death detection** (`OverlayService.kt`)
-   - Register a `MediaProjection.Callback` on the projection object (via `screenshotManager`) to detect `onStop()`
-   - When triggered, set `screenshotManager.invalidateProjection()` and emit `ServiceHealth.DEGRADED`
-
-3. **Overlay warning indicator** (modify `FloatingBubble` composable, `OverlayService.kt:1026+`)
-   - When `ServiceHealth != HEALTHY`, show a small warning badge (amber ⚠ icon) on the floating bubble
-   - When tapped, show a bottom-sheet-style overlay card explaining what's broken:
-     - Accessibility dead → "Synapse needs accessibility access to capture context. Tap to re-enable." → Deep-link: `Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)`
-     - MediaProjection dead → "Screen capture permission expired. Tap to re-grant." → Trigger `requestScreenCapturePermission()`
-   - Auto-dismiss the warning if the service recovers (user re-enabled and comes back to app)
-
-4. **Graceful degradation flags**
-   - When accessibility is dead: disable region text extraction, hide the region-select toolbar button, but keep basic handwriting capture working
-   - When projection is dead: disable region screenshot, but keep text extraction if accessibility is alive
-   - Show which features are available vs degraded in the toolbar with subtle visual cues
-
-5. **PermissionHelper enhancements** (`PermissionHelper.kt`)
-   - Add `hasAccessibilityPermission(context): Boolean` (mirrors `isEnabled()` on the service)
-   - Add `getAccessibilitySettingsIntent(): Intent` for deep-linking
-   - Add `getAllServiceStatuses(): Map<String, Boolean>` combining overlay, accessibility, projection
-
-**Files to modify:**
-| File | Change |
-|------|--------|
-| New: `ServiceHealthMonitor.kt` | Health check loop, StateFlow emission |
-| `OverlayService.kt` | Integrate monitor, add MediaProjection.Callback, update bubble UI |
-| `PermissionHelper.kt` | Accessibility check helpers |
-| `SynapseAccessibilityService.kt` | Emit health events on connect/disconnect |
-| `AppModule.kt` | Register ServiceHealthMonitor in Koin |
-
-**Estimated complexity:** Medium. Mostly new code, limited changes to existing drawing pipeline.
-
----
-
-### 1.3 Software Palm Rejection
-
-**Current state:**
-- `TouchDifferentiatingOverlayView` (`OverlayService.kt:909-1020`) uses `FLAG_NOT_TOUCHABLE` window flag toggling based on stylus hover/touch detection
-- `CaptureCanvas.kt:170-224` differentiates `PointerType.Stylus` vs `PointerType.Touch` but has no touch-area-based filtering
-- No filtering of large touch contacts (palm), multi-finger rejection, or edge-of-screen rejection
-- In `BOTH_WRITE` mode, a palm resting on the screen will draw unwanted strokes
-
-**What needs to change:**
-
-1. **Extract touch contact area** (`CaptureCanvas.kt` gesture handler)
-   - `MotionEvent` provides `getTouchMajor()` and `getTouchMinor()` for contact ellipse dimensions
-   - In the `pointerInteropFilter` or via a custom `PointerInputModifier`, read the raw `MotionEvent` to get these values
-   - Compose's `PointerInputChange` doesn't expose touch size directly, so we need `pointerInteropFilter` as an additional layer
-
-2. **Palm rejection heuristics** (new `PalmRejectionFilter.kt`)
-   - **Area threshold:** If `touchMajor * touchMinor > PALM_AREA_THRESHOLD` (calibrate per device density, e.g., 2500 sq pixels on mdpi), classify as palm → ignore
-   - **Edge rejection:** If touch starts within 15dp of screen edges and contact area > small threshold, likely palm → ignore
-   - **Multi-touch rejection:** If >2 simultaneous touch points with large areas, assume palm rest → ignore all non-stylus touches
-   - **Velocity filter:** Palm contacts tend to be slow-moving with large areas; fast small contacts are fingers → allow
-
-3. **Integration into CaptureCanvas** (`CaptureCanvas.kt:170-224`)
-   - Wrap the gesture handler to pass each `MotionEvent` through `PalmRejectionFilter` before processing
-   - In `BOTH_WRITE` mode: reject palm touches, allow small-contact finger touches
-   - In `STYLUS_WRITE_FINGER_SCROLL` mode: palm rejection is less critical (fingers pass through anyway) but still useful to avoid accidental toolbar taps
-
-4. **Integration into TouchDifferentiatingOverlayView** (`OverlayService.kt:953-975`)
-   - In `dispatchTouchEvent()`, before calling `super.dispatchTouchEvent(event)`, check touch area
-   - If classified as palm, return `false` (pass through to underlying app)
-
-5. **Device-specific calibration**
-   - Different devices report different `touchMajor`/`touchMinor` scales
-   - Normalize by `displayMetrics.density`
-   - Allow user to adjust sensitivity in settings (optional, Phase 2)
-
-**Files to modify:**
-| File | Change |
-|------|--------|
-| New: `PalmRejectionFilter.kt` | Heuristic engine with area, edge, multi-touch checks |
-| `CaptureCanvas.kt` | Add `pointerInteropFilter` layer before gesture handler |
-| `OverlayService.kt` (TouchDifferentiatingOverlayView) | Palm check in `dispatchTouchEvent()` |
-| `CaptureCanvas.kt` (InputMode) | Consider new `STYLUS_PREFERRED` mode with palm rejection |
-
-**Estimated complexity:** Medium. Self-contained new module with targeted integration points.
-
----
-
-## Phase 2: Feature Expansion
-
-### 2.1 Wire Up Intent System (Calendar, Email, Tasks)
-
-**Current state:**
-- `IntentType.kt` defines NOTE, TASK, QUESTION, REMINDER, REACTION with `DetectedIntent` + `IntentData` sealed class
-- `PromptTemplateV2.kt` already instructs the LLM to detect intents and extract structured data (deadlines, times, questions)
-- `ReminderManager.kt` (55 lines) has `createAlarm()` and `createCalendarEvent()` — functional but not wired to any UI
-- No post-transcription intent routing. After transcription, results are just displayed in ReviewScreen
-
-**What needs to change:**
-
-1. **Intent action router** (new `IntentActionRouter.kt`)
-   - Receives `List<DetectedIntent>` from transcription result
-   - Routes each intent to its handler:
-     - `TASK` with deadline → `ReminderManager.createCalendarEvent()` or create Todoist task
-     - `REMINDER` with time → `ReminderManager.createAlarm()`
-     - `QUESTION` → Query LLM via `textQuery()` and present answer inline
-     - `REACTION` → Copy reaction text to clipboard, show toast
-     - `NOTE` → Default: save to configured destination (file, clipboard)
-
-2. **Intent confirmation UI** (new composable in `ui/overlay/`)
-   - When `needsConfirmation == true` (confidence < 0.8), show a compact dialog:
-     ```
-     ┌─────────────────────────────┐
-     │ 📅 Create calendar event?   │
-     │ "Meeting with John"         │
-     │ Tomorrow at 2:00 PM         │
-     │                             │
-     │ [Create Event]  [Just Save] │
-     └─────────────────────────────┘
-     ```
-   - For high-confidence intents, execute automatically with an undo toast ("Created event. Undo?")
-
-3. **Email drafting via accessibility context** (new `EmailDraftHandler.kt`)
-   - When user is over Gmail/Outlook (detected via `SynapseAccessibilityService.currentSourceApp`)
-   - And writes something like "polite decline" or "reply saying..."
-   - Extract the email body from accessibility nodes
-   - Send to LLM: `{handwriting: "polite decline", emailBody: "...", instruction: "draft reply"}`
-   - Copy result to clipboard and show toast "Draft copied. Paste to reply."
-
-4. **Expand ReminderManager** (`ReminderManager.kt`)
-   - Add `createTask()` — generic task creation intent
-   - Add NLP time parsing: "tomorrow at 2pm", "next Friday", "in 30 minutes" → `Calendar` millis
-   - Currently relies on LLM to output `parsedTime` as epoch millis; add a local fallback parser using `java.time` APIs
-
-5. **Wire into ReviewScreen / OverlayService post-capture flow**
-   - After `SyncRepository` returns transcription results with intents:
-     - If overlay is visible → show intent cards in overlay
-     - If in ReviewScreen → show action buttons per note with detected intent
-
-**Files to modify:**
-| File | Change |
-|------|--------|
-| New: `IntentActionRouter.kt` | Central routing of detected intents |
-| New: `IntentConfirmationDialog.kt` | Composable confirmation UI |
-| New: `EmailDraftHandler.kt` | Gmail/email context + LLM drafting |
-| `ReminderManager.kt` | Expand with task creation, local time parsing |
-| `OverlayService.kt` | Post-capture intent handling |
-| Review UI files | Action buttons per intent type |
-
----
-
-### 2.2 Cloud Integrations (Notion, Todoist, Google Docs)
-
-**Current state:**
-- Output destinations exist at `data/destination/` but only support local file (Obsidian vault via SAF) and clipboard
-- No OAuth2 infrastructure
-- No cloud API clients
-
-**What needs to change:**
-
-1. **OAuth2 infrastructure** (new `auth/` package)
-   - `OAuthManager.kt` — Handle authorization code flow with PKCE
-   - `TokenStorage.kt` — Encrypted SharedPreferences for refresh/access tokens
-   - Per-provider configs: Notion, Todoist, Google (OAuth client IDs)
-
-2. **Cloud destination implementations** (new files in `data/destination/`)
-   - `NotionDestination.kt` — Create page in database via Notion API
-   - `TodoistDestination.kt` — Create task via Todoist REST API
-   - `GoogleDocsDestination.kt` — Append to daily scratchpad doc
-
-3. **Destination picker UI** in settings — multi-select destinations per intent type
-
-4. **Monetization gate** — Cloud destinations behind subscription check (Phase 3 dependency)
-
----
-
-### 2.3 Voice Context (Microphone + LLM)
-
-**What needs to change:**
-
-1. **Mic button in overlay toolbar** (`OverlayService.kt` composable toolbar)
-2. **Audio capture service** — `MediaRecorder` or `AudioRecord` with permission handling
-3. **Transcription pipeline** — Send audio to Whisper API or Gemini multimodal
-4. **Multi-modal LLM prompt** — `{image} + {audioTranscript} + {screenContext}`
-5. **Permission addition** — `RECORD_AUDIO` in manifest and runtime flow
-
----
-
-## Phase 3: Business Model (Monetization)
-
-### 3.1 Pro Subscription ($5/month)
-
-**What needs to change:**
-
-1. **Backend proxy server** (new project, Ktor or Spring Boot)
-   - Endpoint: `POST /api/transcribe` accepting `(image, contextJSON, userToken)`
-   - Backend holds API keys, routes to Azure OpenAI or Anthropic
-   - User authenticates via Google Sign-In → JWT token
-
-2. **Google Play Billing integration** (in-app)
-   - BillingClient v6+ for subscriptions
-   - `SubscriptionManager.kt` — check entitlement, manage lifecycle
-   - Gate cloud features behind subscription status
-
-3. **Auth flow** — Google Sign-In replaces manual API key entry for Pro users
-
-### 3.2 Power User One-Time Purchase ($20)
-
-- BYOK mode (existing functionality)
-- Custom prompt editing (existing `setCustomPrompt()`)
-- Local Ollama support (existing `OllamaService`)
-- Gate behind one-time purchase IAP
-
-### 3.3 Cost Optimization
-
-**Current state:**
-- `ImageProcessor.kt` already crops and scales to max 800px
-- Full-color WebP sent to vision models
-
-**What needs to change:**
-
-1. **Grayscale conversion** (`ImageProcessor.kt`)
-   - Add `toGrayscale()` before encoding — handwriting is monochrome, saves ~60% payload
-   - Only apply for transcription, not for region screenshots (which may need color)
-
-2. **Two-pass LLM logic** (modify transcription flow)
-   - Pass 1: If accessibility text is available and sufficient, use cheap text-only model (Gemini Flash)
-   - Pass 2: Only invoke vision model if text is insufficient or user drew a diagram
-   - Decision logic: if `contexts` contain enough `RegionText`/`SelectedText` → skip vision
-
----
-
-## Phase 4: Codebase Maturity
-
-### 4.1 Modularize LLM Layer
-
-**Current state:**
-- `api/` package contains all LLM logic in-app: `ClaudeService`, `GeminiService`, `OpenAIService`, `OllamaService`
-- `PromptTemplateV2` hardcoded in app
-- `TranscriptionServiceFactory` creates services locally
-
-**What needs to change:**
-
-1. **Extract shared API module** (new Gradle module `:api`)
-   - Move `TranscriptionService` interface, `PromptTemplateV2`, models
-   - App module depends on `:api`
-
-2. **Add remote transcription client** (`RemoteTranscriptionService.kt`)
-   - Implements `TranscriptionService`
-   - Sends `(image, contextJSON, userToken)` to your backend
-   - Backend handles prompt construction and provider routing
-
-3. **Provider routing becomes server-side**
-   - App sends abstract request; server decides Claude vs Gemini vs DeepSeek
-   - Prompt updates ship server-side without app updates
-
-### 4.2 Migrate to Room Database
-
-**Current state:**
-- `SessionStorage.kt` (816 lines) reads/writes JSON files with atomic rename
-- `ChunkStorage.kt` (794 lines) stores WebP files + metadata
-- No indexing, no querying beyond "get all" / "get by ID"
-- All sessions loaded into memory for observation (`observeSessions()` returns `StateFlow<List<Session>>`)
-
-**What needs to change:**
-
-1. **Room entities**
-   ```kotlin
-   @Entity(tableName = "sessions")
-   data class SessionEntity(
-       @PrimaryKey val id: String,
-       val startedAt: Long,
-       val endedAt: Long?,
-       val sourceApp: String?,
-       val tags: String? // comma-separated or JSON array
-   )
-
-   @Entity(tableName = "chunks", foreignKeys = [...])
-   data class ChunkEntity(
-       @PrimaryKey val id: String,
-       val sessionId: String,
-       val index: Int,
-       val filePath: String,
-       val createdAt: Long,
-       val isCorrupted: Boolean
-   )
-
-   @Entity(tableName = "contexts")
-   data class ContextEntity(
-       @PrimaryKey val id: String,
-       val sessionId: String,
-       val type: String, // "SelectedText", "RegionText", etc.
-       val data: String  // JSON blob
-   )
-   ```
-
-2. **DAOs with query support**
-   - `getSessionsByApp(packageName)` — "Show notes taken over Chrome"
-   - `searchNotes(query)` — FTS on transcribed text
-   - `getSessionsByDateRange(start, end)` — date filtering
-   - `getSessionsByTag(tag)` — tag-based filtering
-
-3. **Migration strategy**
-   - Keep `SessionStorage` JSON read capability for migration
-   - On first launch with Room: scan existing JSON files, import into Room
-   - Delete JSON files after successful import
-   - ChunkStorage (WebP files) stays on filesystem — Room just stores metadata paths
-
-4. **Replace `observeSessions()` StateFlow**
-   - Room's `Flow<List<SessionEntity>>` replaces manual `MutableStateFlow` management
-   - Eliminates the in-memory caching and manual flow emission in `SessionStorage`
-
-### 4.3 Harden Accessibility for Play Store
-
-**Current state:**
-- `accessibility_service_config.xml` requests: `typeViewTextSelectionChanged|typeWindowStateChanged|typeWindowContentChanged`
-- `canRetrieveWindowContent="true"` — required for text extraction
-- No privacy policy reference in config
-- No "basic mode" fallback
-
-**What needs to change:**
-
-1. **Basic Mode without Accessibility**
-   - All handwriting capture + LLM transcription works without accessibility
-   - Region capture falls back to screenshot-only (no text extraction)
-   - No auto-context (current app/URL) — user manually provides context
-   - Settings toggle: "Enable Smart Context (requires Accessibility Service)"
-
-2. **Accessibility justification**
-   - Update `accessibility_description` string to clearly state: "Synapse uses accessibility to capture text from your screen to provide context for your handwritten notes"
-   - Add `android:settingsActivity` to `accessibility_service_config.xml` pointing to a dedicated explanation activity
-   - Privacy policy must explicitly describe data collected and how it's used
-
-3. **Minimize accessibility scope**
-   - Consider requesting only `typeWindowStateChanged` (for app detection) in basic accessibility mode
-   - Only add `typeViewTextSelectionChanged` and `typeWindowContentChanged` when user enables "Full Context" mode
-
----
-
-## Implementation Priority & Dependency Graph
-
-```
-Phase 1 (UX Hardening) — No external dependencies, can start immediately
-├── 1.1 Ink Smoothing ─────── standalone, affects drawing pipeline
-├── 1.2 Permission Recovery ── standalone, affects service layer
-└── 1.3 Palm Rejection ─────── standalone, affects input layer
-
-Phase 2 (Features) — Depends on Phase 1 being stable
-├── 2.1 Intent Wiring ───────── depends on stable transcription (existing)
-├── 2.2 Cloud Integrations ──── depends on 2.1 (routes intents to cloud)
-└── 2.3 Voice Context ────────── independent, can parallel with 2.1
-
-Phase 3 (Monetization) — Depends on Phase 2 features existing
-├── 3.1 Pro Subscription ─────── depends on backend (4.1) + cloud (2.2)
-├── 3.2 Power User Purchase ──── depends on billing infra (3.1)
-└── 3.3 Cost Optimization ────── independent, can start during Phase 2
-
-Phase 4 (Tech Debt) — Can interleave with Phase 2
-├── 4.1 LLM Modularization ──── blocks 3.1 (backend proxy)
-├── 4.2 Room Migration ────────── independent, start during Phase 2
-└── 4.3 Accessibility Hardening ─ should do before Play Store submission
+## Critical 1: Permission Recovery (Self-Healing)
+
+### Problem
+
+When Android kills the Accessibility Service or MediaProjection token (battery optimization, memory pressure), features break silently. User thinks app is broken, uninstalls.
+
+### Current Code Analysis
+
+| Component | File | Line | Current Behavior |
+|-----------|------|------|-----------------|
+| Accessibility singleton | `SynapseAccessibilityService.kt` | 17-19 | `@Volatile instance` set to `null` in `onDestroy()`. No recovery signal. |
+| Accessibility check | `SynapseAccessibilityService.kt` | 21-30 | `isEnabled()` parses `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES` — static check only, never called proactively |
+| Overlay permission check | `OverlayService.kt` | 493 | `Settings.canDrawOverlays()` checked once at `startOverlay()` |
+| MediaProjection check | `OverlayService.kt` | 512-521 | `screenshotManager.hasPermission()` checked at startup; stale flag detected but only on start |
+| Projection mid-session | `OverlayService.kt` | 280-282 | `captureRegion()` returns null → logs warning, shows "[Screenshot failed]" text → no recovery action |
+| Permission helper | `PermissionHelper.kt` | 192-197 | `checkAllPermissions()` returns overlay + notification + storage — accessibility is **not included** |
+| Region text extraction | `OverlayService.kt` | 244-248 | `SynapseAccessibilityService.getInstance()?.getTextInRegion()` — returns null silently when service dead |
+| Bubble UI | `OverlayService.kt` | 1026-1107 | `FloatingBubble` composable — no health state parameter, no warning badge |
+
+### Implementation Plan
+
+#### New file: `service/PermissionHealthMonitor.kt`
+
+```kotlin
+class PermissionHealthMonitor(private val context: Context) {
+    data class PermissionHealth(
+        val overlayGranted: Boolean,
+        val accessibilityEnabled: Boolean,
+        val mediaProjectionActive: Boolean
+    )
+
+    private val _health = MutableStateFlow(checkHealth())
+    val health: StateFlow<PermissionHealth> = _health
+    private val checkInterval = 5000L  // 5 seconds
+
+    fun startMonitoring(scope: CoroutineScope) {
+        scope.launch(Dispatchers.Default) {
+            while (true) {
+                _health.value = checkHealth()
+                delay(checkInterval)
+            }
+        }
+    }
+
+    private fun checkHealth(): PermissionHealth { ... }
+}
 ```
 
-## Recommended Execution Order
+#### Modifications required
 
-| Sprint | Work Items | Rationale |
-|--------|-----------|-----------|
-| 1 | 1.1 Ink Smoothing + 1.3 Palm Rejection | Core UX — these run in parallel since they touch different parts of the input pipeline |
-| 2 | 1.2 Permission Recovery + 4.3 Accessibility Hardening | Reliability + Play Store readiness |
-| 3 | 2.1 Intent Wiring + 4.2 Room Migration | Biggest value-add feature + storage foundation |
-| 4 | 4.1 LLM Modularization + 3.3 Cost Optimization | Backend prep + reduce running costs |
-| 5 | 2.2 Cloud Integrations + 3.1 Pro Subscription | Revenue features — need backend from Sprint 4 |
-| 6 | 2.3 Voice Context + 3.2 Power User Purchase | Polish features + complete monetization |
+| File | Location | Change |
+|------|----------|--------|
+| `OverlayService.kt:110-131` | Service fields | Add `permissionHealthMonitor` field, inject or create in `onCreate()` |
+| `OverlayService.kt:151-182` | `onCreate()` | Call `permissionHealthMonitor.startMonitoring(serviceScope)`, collect health state |
+| `OverlayService.kt:1026-1107` | `FloatingBubble` composable | Add `showWarning: Boolean` and `onWarningClick: () -> Unit` parameters; render amber badge overlay when `showWarning == true` |
+| `OverlayService.kt:628-654` | `showFloatingBubble()` | Pass health state to `FloatingBubble` composable; wire warning click to open recovery dialog |
+| `PermissionHelper.kt:192-197` | `checkAllPermissions()` | Add `"accessibility"` key using `SynapseAccessibilityService.isEnabled(context)` |
+| `PermissionHelper.kt` | New methods | Add `hasAccessibilityPermission()`, `getAccessibilitySettingsIntent()` |
+| `SynapseAccessibilityService.kt:40-51` | `onServiceConnected()` | Broadcast or update a shared health state flow |
+| `SynapseAccessibilityService.kt:217-219` | `onDestroy()` | Broadcast disconnection |
+| `AppModule.kt:220-260` | `v2Module` | Register `PermissionHealthMonitor` as singleton |
 
-## Key Architectural Decisions
+#### New composable: `PermissionRecoveryDialog`
 
-1. **Catmull-Rom over ink-stroke-modeler JNI** — Avoids NDK complexity, keeps APK small, sufficient quality for handwriting
-2. **Room over raw JSON** — Enables queries, scales with history, eliminates JSON parsing jank
-3. **Server-side prompt routing** — Decouples provider choice from app releases, enables A/B testing
-4. **Basic Mode fallback** — De-risks Play Store review of accessibility usage
-5. **OAuth2 with PKCE** — Standard secure flow for cloud integrations without backend secret exposure
-6. **Two-pass LLM** — Dramatic cost reduction for text-heavy captures where vision is unnecessary
+Wire into OverlayService. When `health.accessibilityEnabled == false`:
+- Show `AlertDialog` with "Context capture was disabled. Tap Fix to re-enable."
+- Confirm → `Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)`
+- Dismiss → hide, show again on next bubble tap
+
+#### Graceful degradation
+
+In `OverlayService.kt:1198-1214` (region capture toolbar button):
+- When `!health.accessibilityEnabled && !health.mediaProjectionActive` → gray out region button, show tooltip "Requires permissions"
+- When only accessibility dead → region still works via screenshot fallback
+- When only projection dead → region works via text extraction only
+
+### Effort: 0.5 days
+
+---
+
+## Critical 2: Palm Rejection
+
+### Problem
+
+User rests palm on tablet while writing → overlay registers massive touch → interferes with underlying app or creates garbage strokes. Current `BOTH_WRITE` mode at `OverlayService.kt:1141` has zero palm filtering.
+
+### Current Code Analysis
+
+| Component | File | Line | Current Behavior |
+|-----------|------|------|-----------------|
+| Input differentiation | `CaptureCanvas.kt` | 170-224 | `pointerInput` gesture handler checks `PointerType.Stylus` vs `PointerType.Touch` — binary yes/no, no touch geometry |
+| Touch dispatch | `OverlayService.kt` | 953-975 | `TouchDifferentiatingOverlayView.dispatchTouchEvent()` — checks `TOOL_TYPE_STYLUS` vs finger, no area check |
+| Stylus-active flag | `OverlayService.kt` | 958-966 | When stylus is detected, keeps overlay touchable — but doesn't reject concurrent palm contacts |
+| Input mode | `CaptureCanvas.kt` | 175-185 | `BOTH_WRITE` accepts any `STYLUS || FINGER` — palm touch accepted as drawing input |
+| Canvas overlay | `OverlayService.kt` | 716-728 | Window params use `FLAG_NOT_FOCUSABLE | FLAG_LAYOUT_IN_SCREEN` — no touch filtering flags |
+
+### Implementation Plan
+
+#### New file: `ui/overlay/PalmRejectionFilter.kt`
+
+```kotlin
+class PalmRejectionFilter {
+    companion object {
+        private const val MAX_TOUCH_MAJOR = 100f
+        private const val MAX_TOUCH_MINOR = 60f
+        private const val MAX_PRESSURE_FOR_PALM = 0.15f
+    }
+
+    private var activeStylus = false
+
+    fun filterEvent(event: MotionEvent): FilterResult {
+        // Always accept stylus
+        if (event.getToolType(0) == TOOL_TYPE_STYLUS || TOOL_TYPE_ERASER) {
+            activeStylus = true
+            return FilterResult.Accept(event)
+        }
+        // Reject finger while stylus is active
+        if (activeStylus && event.getToolType(0) == TOOL_TYPE_FINGER) {
+            if (event.action == ACTION_UP && event.pointerCount == 1) activeStylus = false
+            return FilterResult.Reject("Finger rejected while stylus active")
+        }
+        // Check palm geometry
+        return if (isPalmTouch(event)) FilterResult.Reject("Palm") else FilterResult.Accept(event)
+    }
+}
+```
+
+#### Modifications required
+
+| File | Location | Change |
+|------|----------|--------|
+| `CaptureCanvas.kt:133-226` | Write mode modifier block | Add `pointerInteropFilter` **before** the `pointerInput` block to intercept raw `MotionEvent`, run through `PalmRejectionFilter`, consume if rejected |
+| `CaptureCanvas.kt:101-111` | `CaptureCanvas` signature | Add optional `palmRejectionEnabled: Boolean = true` parameter |
+| `OverlayService.kt:953-975` | `dispatchTouchEvent()` | Before `super.dispatchTouchEvent(event)`, call `palmFilter.filterEvent(event)` — return `false` if rejected |
+| `OverlayService.kt:909-920` | `TouchDifferentiatingOverlayView` class | Add `private val palmFilter = PalmRejectionFilter()` field |
+
+#### Device-specific tuning
+
+Add `PalmRejectionConfig` object with manufacturer-based defaults:
+- Samsung (S Pen): `trustStylusExclusively = true`, lower thresholds since S Pen already rejects
+- Huawei: Higher `maxTouchMajor` (120f) since M-Pencil reports differently
+- Default: 100f major, 60f minor
+
+### Effort: 0.5 days
+
+---
+
+## Critical 3: Accessibility Service Play Store Compliance
+
+### Problem
+
+Google Play reviews Accessibility Services strictly. Vague descriptions = rejection. Current config is minimal.
+
+### Current Code Analysis
+
+| Component | File | Line | Current State |
+|-----------|------|------|--------------|
+| XML config | `accessibility_service_config.xml` | 1-9 | Missing `android:summary`, missing `android:settingsActivity`, missing `android:accessibilityFlags` for `flagReportViewIds\|flagRetrieveInteractiveWindows` |
+| Description string | `strings.xml` | 25 | One-liner: "Synapse uses accessibility to capture text from your screen..." — needs expansion with DO/DON'T list |
+| No basic mode | — | — | App requires accessibility for context; no fallback path |
+| Privacy policy | — | — | No PRIVACY.md or in-app disclosure |
+
+### Implementation Plan
+
+#### Update `accessibility_service_config.xml`
+
+```xml
+<accessibility-service
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/accessibility_service_description"
+    android:summary="@string/accessibility_service_summary"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowContentChanged|typeViewTextSelectionChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
+    android:canRetrieveWindowContent="true"
+    android:notificationTimeout="100"
+    android:settingsActivity=".ui.settings.AccessibilitySettingsActivity" />
+```
+
+#### Update `strings.xml`
+
+Replace one-liner with detailed DO/DON'T description (required by Google Play policy):
+```xml
+<string name="accessibility_service_description">
+    Synapse uses accessibility to:\n\n
+    • Read selected text to add context to your handwritten notes\n
+    • Detect the app and webpage you\'re viewing for source attribution\n
+    • Extract text from screen regions you explicitly select\n\n
+    Synapse does NOT:\n
+    • Monitor your activity in the background\n
+    • Store or transmit screen content without your action\n
+    • Access passwords, financial data, or private messages\n\n
+    All processing is initiated only when you open the Synapse overlay.
+</string>
+<string name="accessibility_service_summary">Enables context capture for handwritten notes</string>
+```
+
+#### New: Basic Mode fallback (`SynapseCapabilities.kt`)
+
+```kotlin
+class SynapseCapabilities(private val context: Context) {
+    enum class Mode { FULL, BASIC, MINIMAL }
+    enum class Feature { HANDWRITING, AUTO_CONTEXT, SELECTED_TEXT, REGION_TEXT_GRAB, REGION_SCREENSHOT, INTENT_DETECTION }
+
+    fun getCurrentMode(): Mode {
+        val hasAccessibility = SynapseAccessibilityService.isEnabled(context)
+        val hasProjection = ScreenshotManager.hasActiveProjection()
+        return when {
+            hasAccessibility -> Mode.FULL
+            hasProjection -> Mode.BASIC
+            else -> Mode.MINIMAL
+        }
+    }
+}
+```
+
+#### Modifications required
+
+| File | Location | Change |
+|------|----------|--------|
+| `accessibility_service_config.xml` | Entire file | Add `summary`, `settingsActivity`, `accessibilityFlags` |
+| `strings.xml:25` | Accessibility description | Replace with detailed DO/DON'T text |
+| New: `SynapseCapabilities.kt` | `service/` | Mode detection + feature availability |
+| New: `AccessibilitySettingsActivity.kt` | `ui/settings/` | Explanation screen (settingsActivity target) |
+| `OverlayService.kt:1148-1150` | Region mode handling | Check `SynapseCapabilities.getCurrentMode()` before enabling region features |
+| `AndroidManifest.xml` | Activities | Register `AccessibilitySettingsActivity` |
+
+#### Privacy policy
+
+Create `PRIVACY.md` with sections on:
+- Accessibility Service Usage (what we read, when, what we don't)
+- Data Handling (processed on capture only, sent to configured LLM, no permanent screen storage)
+- API Key handling (stored locally in DataStore, never transmitted to our servers in BYOK mode)
+
+### Effort: 0.5 days
+
+---
+
+## Critical 4: Ink Smoothing
+
+### Problem
+
+Raw touch points create jagged strokes. Feels cheap, not like paper. Current quadratic bezier smoothing uses the previous point as control point — produces OK curves but no variable width.
+
+### Current Code Analysis
+
+| Component | File | Line | Current Behavior |
+|-----------|------|------|-----------------|
+| Stroke model | `StrokeManager.kt` | 15-18 | `data class Stroke(val points: List<Offset>, val strokeWidth: Float = 4f)` — flat point list, fixed width |
+| Path creation | `CaptureCanvas.kt` | 318-354 | `createSmoothPath()` — quadratic bezier: uses midpoint of (prev, current) as control point. Produces uniform-width paths. |
+| Stroke rendering | `CaptureCanvas.kt` | 281-313 | `drawStrokeWithOutline()` — single `drawPath()` call with `Stroke(width=strokeWidth)`. No per-point width variation. |
+| Bitmap export | `StrokeManager.kt` | 110-159 | `toBitmap()` — same quadratic bezier, same fixed width paint. Dark outline + white stroke. |
+| OCR export | `StrokeManager.kt` | 173-253 | `toBitmapForOcr()` — same path logic, black stroke on white background, cropped to bounds, max 800px. |
+| Point capture | `CaptureCanvas.kt` | 199-221 | `viewModel.onDrawStart(down.position)` / `onDrawMove(currentPos)` — only `Offset` (x,y). No pressure, no timestamp. |
+| ViewModel | `CaptureViewModel.kt` | 188-242 | `onDrawStart(offset)`, `onDrawMove(offset)`, `onDrawEnd(strokeWidth)` — `Offset` only |
+
+### Implementation Plan
+
+#### New file: `ui/overlay/StrokeSmoother.kt`
+
+Catmull-Rom spline interpolation with velocity-based width variation:
+
+```kotlin
+class StrokeSmoother {
+    fun smoothStroke(rawPoints: List<StrokePoint>): List<SmoothSegment> {
+        // Catmull-Rom: for each 4-point window [P0,P1,P2,P3],
+        // compute cubic bezier control points for segment P1→P2
+        // Width at each point derived from velocity (fast = thin, slow = thick)
+    }
+
+    private fun catmullRomToBezier(p0, p1, p2, p3, tension: Float = 0.5f): Pair<PointF, PointF>
+    private fun calculateVelocity(p1: StrokePoint, p2: StrokePoint): Float
+    private fun velocityToWidth(velocity: Float): Float  // minWidth=1.5f, maxWidth=5f
+}
+
+sealed class SmoothSegment {
+    data class Line(val start, val end, val width: Float)
+    data class Bezier(val start, val cp1, val cp2, val end, val startWidth, val endWidth: Float)
+}
+```
+
+#### New data class: `StrokePoint`
+
+```kotlin
+data class StrokePoint(
+    val position: Offset,
+    val pressure: Float = 0.5f,   // 0..1 from MotionEvent or simulated
+    val timestamp: Long = 0L       // SystemClock.uptimeMillis()
+)
+```
+
+#### Modifications required
+
+| File | Location | Change |
+|------|----------|--------|
+| `StrokeManager.kt:15-18` | `Stroke` data class | Change `points: List<Offset>` → `points: List<StrokePoint>`, keep `strokeWidth` as base |
+| `CaptureViewModel.kt:92-93` | `_currentStroke` flow | Change `MutableStateFlow<List<Offset>>` → `MutableStateFlow<List<StrokePoint>>` |
+| `CaptureViewModel.kt:188-206` | `onDrawStart()` | Accept `StrokePoint` instead of `Offset` |
+| `CaptureViewModel.kt:213-217` | `onDrawMove()` | Accept `StrokePoint` instead of `Offset` |
+| `CaptureViewModel.kt:224-242` | `onDrawEnd()` | Create `Stroke` with `StrokePoint` list |
+| `CaptureCanvas.kt:199` | `onDrawStart` call | Extract `pressure` from `PointerInputChange.pressure`, create `StrokePoint` |
+| `CaptureCanvas.kt:217` | `onDrawMove` call | Same — pass `StrokePoint` with pressure and `System.currentTimeMillis()` |
+| `CaptureCanvas.kt:281-313` | `drawStrokeWithOutline()` | Replace with `drawSmoothStroke()` that uses `StrokeSmoother` and renders `SmoothSegment` list with variable width |
+| `CaptureCanvas.kt:318-354` | `createSmoothPath()` | Replace with Catmull-Rom implementation (or delegate to `StrokeSmoother`) |
+| `StrokeManager.kt:110-159` | `toBitmap()` | Update to use smoothed path + variable width for bitmap export |
+| `StrokeManager.kt:173-253` | `toBitmapForOcr()` | Same update for OCR bitmap |
+| `CaptureCanvas.kt:237-256` | Stroke rendering loop | Both completed strokes and current stroke need updated rendering |
+
+#### Pressure sensitivity (stylus hardware)
+
+```kotlin
+// In CaptureCanvas gesture handler (line ~199):
+val pressure = down.pressure  // Compose PointerInputChange exposes this
+val point = StrokePoint(
+    position = down.position,
+    pressure = if (pressure > 0f) pressure else 0.5f,  // fallback for non-pressure devices
+    timestamp = System.currentTimeMillis()
+)
+viewModel.onDrawStart(point)
+```
+
+For finger input without pressure hardware, simulate from velocity:
+```kotlin
+fun velocityToSimulatedPressure(velocity: Float): Float {
+    // Fast = light press (thin), slow = heavy press (thick)
+    return (1f - (velocity / 50f).coerceIn(0f, 1f)).coerceIn(0.2f, 0.9f)
+}
+```
+
+### Effort: 1 day
+
+---
+
+## Valuable 1: Two-Pass LLM Logic (Cost Optimization)
+
+### Problem
+
+Vision API calls are expensive. Sending every chunk to Claude Vision or GPT-4V when accessibility text is already available wastes money.
+
+### Current Code Analysis
+
+| Component | File | Line | Current Behavior |
+|-----------|------|------|-----------------|
+| Transcription entry | `SyncRepositoryImpl` | (transcription flow) | Always sends chunks as images to vision model regardless of available context |
+| Image prep | `StrokeManager.kt` | 173-253 | `toBitmapForOcr()` crops and scales to max 800px — good baseline |
+| Context availability | `OverlayService.kt` | 244-260 | Region text and auto-context ARE captured and stored on sessions |
+| Prompt template | `PromptTemplateV2.kt` | 5-83 | Already includes context in prompt — but always paired with vision |
+| Image encoding | `ClaudeService.kt` / `GeminiService.kt` | (transcribe methods) | Base64 encode images, send to vision endpoint |
+| Cost tracking | `UsageTracker` / `LlmCostCalculator` | — | Tracks tokens used but doesn't differentiate vision vs text-only |
+
+### Implementation Plan
+
+#### New class: `TwoPassTranscriptionService.kt` (in `api/`)
+
+```kotlin
+class TwoPassTranscriptionService(
+    private val textProvider: TranscriptionService,    // Cheap: Gemini Flash text-only
+    private val visionProvider: TranscriptionService    // Expensive: Claude Vision / GPT-4V
+) : TranscriptionService {
+    suspend fun transcribe(chunks, contexts, settings): TranscriptionResult {
+        val contextText = contexts
+            .filterIsInstance<CapturedContext.SelectedText>().map { it.text } +
+            contexts.filterIsInstance<CapturedContext.RegionText>().map { it.text }
+
+        val needsVision = shouldUseVision(chunks, contextText.joinToString("\n"))
+
+        return if (needsVision) {
+            visionProvider.transcribe(chunks, contexts, settings)
+        } else {
+            textOnlyTranscribe(chunks, contextText, settings)
+        }
+    }
+
+    private fun shouldUseVision(chunks, contextText): Boolean {
+        if (contextText.isBlank()) return true   // No text context
+        // Analyze stroke complexity for diagram detection
+        return chunks.any { isComplexDrawing(it) }
+    }
+}
+```
+
+#### Modifications required
+
+| File | Location | Change |
+|------|----------|--------|
+| New: `api/TwoPassTranscriptionService.kt` | — | Decision logic + text-only fallback |
+| `LlmProviderFactory.kt` | Provider creation | Add option to create a `TwoPassTranscriptionService` wrapping two providers |
+| `AppModule.kt:220-260` | `v2Module` | Wire `TwoPassTranscriptionService` when cost optimization is enabled |
+| `ImageProcessor.kt` | `bitmapToWebP()` | Add optional `toGrayscale()` conversion before encoding — handwriting is monochrome, saves ~60% payload |
+| Settings DataStore | — | Add `prefer_text_only: Boolean` and `vision_threshold: Float` prefs |
+| Cost tracking | `UsageTracker` | Track `costSaved` flag, show user how much they saved |
+
+### Effort: 1 day
+
+---
+
+# PART B: NICE-TO-HAVE FEATURES
+
+Implement after v1.1 ships with real users.
+
+**Priority order:**
+1. **Circle to Do** (gesture actions) — highest impact, moderate effort
+2. **TL;DR Overlay** (summarization) — high value, low effort
+3. **Privacy Shield** (PII blur) — trust builder, moderate effort
+
+---
+
+## Feature 1: Circle to Do
+
+### Concept
+
+Draw a circle around screen content → app detects intent → executes action. No writing required.
+
+### User Flow
+
+```
+User reading article with a date mentioned
+  → Opens overlay
+  → Circles "January 15th at 3pm"
+  → Synapse detects: CALENDAR intent
+  → Shows: "Add to calendar?" [Yes] [No]
+  → User taps Yes → Calendar app opens
+```
+
+### Supported Intents
+
+| Circle Content | Detected Intent | Action |
+|----------------|-----------------|--------|
+| Date/time | CALENDAR | Open calendar with event |
+| Math expression | CALCULATE | Show result inline |
+| Foreign text | TRANSLATE | Show translation overlay |
+| Phone number | CALL | Open dialer |
+| Address | MAPS | Open maps |
+| URL | OPEN | Open browser |
+| Unknown | SEARCH | Web search |
+
+### Current Code to Build On
+
+| Component | File | Line | Reuse Opportunity |
+|-----------|------|------|-------------------|
+| Region gesture | `RegionGestureDetector.kt` | 1-79 | Extend to detect closed shapes (circle) vs rectangle drag |
+| Region capture | `OverlayService.kt` | 229-316 | `handleRegionSelected()` already extracts text from region via accessibility → reuse for circle bounds |
+| Intent types | `IntentType.kt` | 1-34 | Extend enum with CALENDAR, CALCULATE, CALL, MAPS, TRANSLATE |
+| Reminder manager | `ReminderManager.kt` | 1-54 | `createCalendarEvent()` already creates calendar intents |
+| Accessibility text | `SynapseAccessibilityService.kt` | 147-179 | `getTextInRegion()` extracts text by bounds — use circle's bounding rect |
+
+### New Files Required
+
+| File | Purpose |
+|------|---------|
+| `ui/overlay/ShapeGestureDetector.kt` | Detect circles (closed path with >270° rotation) vs rectangles vs underlines vs strokes |
+| `service/CircleActionManager.kt` | Orchestrate: extract content → classify intent → confirm → execute |
+| `service/IntentClassifier.kt` | Local regex patterns (dates, phones, math, URLs) + LLM fallback for ambiguous text |
+| `service/ActionExecutor.kt` | Intent dispatch: calendar, dialer, maps, browser, calculator, clipboard |
+| `ui/overlay/CircleActionPopup.kt` | Compact confirmation card near circle position |
+| `ui/overlay/InlineResultOverlay.kt` | For CALCULATE and TRANSLATE — show result near the circle with copy button |
+
+### Key Integration Points
+
+| Existing File | Location | Change |
+|---------------|----------|--------|
+| `CaptureCanvas.kt:140-167` | Region mode modifier | Add `CIRCLE_ACTION` mode alongside `regionSelectionEnabled` |
+| `RegionGestureDetector.kt` | Entire file | Either extend or replace with `ShapeGestureDetector` that returns `DetectedShape` sealed class |
+| `OverlayService.kt:1198-1214` | Toolbar buttons | Add circle mode toggle button |
+| `OverlayService.kt:760-762` | `onRegionSelected` | Route to `CircleActionManager` when in circle mode |
+| `IntentType.kt:3-9` | Enum values | Add: `CALENDAR`, `CALCULATE`, `TRANSLATE`, `CALL`, `MAPS`, `OPEN`, `SEARCH` (or create separate `CircleIntent` enum) |
+| `ReminderManager.kt` | Class | Add `openDialer()`, `openMaps()`, `openUrl()`, `webSearch()` convenience methods |
+| `AppModule.kt:220-260` | `v2Module` | Register `CircleActionManager`, `IntentClassifier`, `ActionExecutor` |
+
+### Dependencies
+
+```kotlin
+// Math evaluation (for CALCULATE intent)
+implementation("net.objecthunter:exp4j:0.4.8")
+```
+
+### Effort: 4-5 days
+
+---
+
+## Feature 2: TL;DR Overlay (Smart Summarization)
+
+### Concept
+
+When user views long content, bubble pulses. Tap → instant summary bottom sheet with follow-up questions.
+
+### User Flow
+
+```
+User opens long article in Chrome
+  → Synapse detects >500 words on screen
+  → Bubble pulses gently
+  → Tap → bottom sheet with 3-5 bullet summary
+  → Can ask follow-up questions
+```
+
+### Current Code to Build On
+
+| Component | File | Line | Reuse Opportunity |
+|-----------|------|------|-------------------|
+| Text extraction | `SynapseAccessibilityService.kt` | 103-121 | `collectAllTextNodes()` already traverses all text nodes |
+| Window content events | `SynapseAccessibilityService.kt` | 66-68 | `TYPE_WINDOW_CONTENT_CHANGED` already triggers `updateNodeCache()` |
+| LLM providers | `LlmProviderFactory.kt` | — | Route summary request to configured cheap provider |
+| Text query | `TranscriptionService.kt` | — | `textQuery()` method already exists |
+| Bubble composable | `OverlayService.kt` | 1026-1107 | Extend with pulse animation state |
+
+### New Files Required
+
+| File | Purpose |
+|------|---------|
+| `ui/overlay/SummarySheet.kt` | ModalBottomSheet composable with summary display + follow-up input |
+| `ui/overlay/SummaryViewModel.kt` | Manage summarization state, streaming response, follow-up conversation |
+
+### Key Integration Points
+
+| Existing File | Location | Change |
+|---------------|----------|--------|
+| `SynapseAccessibilityService.kt:66-68` | `TYPE_WINDOW_CONTENT_CHANGED` handler | Add word count check, broadcast `ACTION_LONG_CONTENT_DETECTED` when >500 words |
+| `SynapseAccessibilityService.kt` | New method | Add `extractAllText()` public method returning full page text |
+| `OverlayService.kt:1026-1107` | `FloatingBubble` | Add `hasLongContent: Boolean` parameter, add `infiniteTransition` pulse animation (scale 1.0→1.15, glow alpha) |
+| `OverlayService.kt:628-654` | `showFloatingBubble()` | Listen for long content broadcasts, pass state to bubble |
+| `OverlayService.kt:151-182` | `onCreate()` | Register broadcast receiver for `ACTION_LONG_CONTENT_DETECTED` |
+
+### Effort: 2 days
+
+---
+
+## Feature 3: Privacy Shield (PII Blur)
+
+### Concept
+
+Before sharing/saving screenshots, auto-detect and blur sensitive information.
+
+### Detected PII Types
+
+| Type | Detection | Method |
+|------|-----------|--------|
+| Email addresses | Regex | `[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}` |
+| Phone numbers | Regex | `(\+\d{1,3})?[\d\s\-()]{7,}` |
+| Credit cards | Regex + Luhn | `\d{4}[-\s]?\d{4}[-\s]?\d{4}[-\s]?\d{4}` |
+| API keys | Regex | `(sk\|pk\|api\|key\|token)[-_]?[a-zA-Z0-9]{20,}` |
+| SSN | Regex | `\d{3}[-\s]?\d{2}[-\s]?\d{4}` |
+
+### New Files Required
+
+| File | Purpose |
+|------|---------|
+| `util/PiiDetector.kt` | Regex-based PII detection returning `List<PiiMatch>` with type, text, and range |
+| `util/PiiBlurrer.kt` | Pixelate bitmap regions corresponding to detected PII |
+
+### Integration Points
+
+| File | Location | Change |
+|------|----------|--------|
+| `ImageProcessor.kt` | Before save/share | Optional PII scan + blur pass |
+| `OverlayService.kt:318-332` | `saveScreenshot()` | Run `PiiDetector` on extracted text, get regions, apply `PiiBlurrer` to bitmap |
+| Settings DataStore | — | `auto_blur_pii: Boolean` preference |
+
+### Dependencies
+
+```kotlin
+// Optional: ML Kit for on-device PII detection (more accurate than regex)
+implementation("com.google.mlkit:text-recognition:16.0.0")
+```
+
+### Effort: 2.5 days
+
+---
+
+# Implementation Roadmap
+
+## Before Launch (Critical) — 2.5 days total
+
+| # | Feature | Effort | Files Modified | New Files |
+|---|---------|--------|---------------|-----------|
+| C1 | Permission Recovery | 0.5d | OverlayService.kt, PermissionHelper.kt, SynapseAccessibilityService.kt, AppModule.kt | PermissionHealthMonitor.kt, PermissionRecoveryDialog composable |
+| C2 | Palm Rejection | 0.5d | CaptureCanvas.kt, OverlayService.kt (TouchDifferentiatingOverlayView) | PalmRejectionFilter.kt |
+| C3 | Accessibility Compliance | 0.5d | accessibility_service_config.xml, strings.xml, OverlayService.kt, AndroidManifest.xml | SynapseCapabilities.kt, AccessibilitySettingsActivity.kt, PRIVACY.md |
+| C4 | Ink Smoothing | 1.0d | StrokeManager.kt, CaptureCanvas.kt, CaptureViewModel.kt | StrokeSmoother.kt, StrokePoint.kt |
+
+## Post-Launch Phase 1 — 5-6 days
+
+| # | Feature | Effort |
+|---|---------|--------|
+| V1 | Two-Pass LLM | 1d |
+| B1 | Circle to Do | 4-5d |
+
+## Post-Launch Phase 2 — 4.5 days
+
+| # | Feature | Effort |
+|---|---------|--------|
+| B2 | TL;DR Overlay | 2d |
+| B3 | Privacy Shield | 2.5d |
+
+## Dependency Graph
+
+```
+C1 Permission Recovery ──┐
+C2 Palm Rejection ───────┤──→ v1.0 Launch
+C3 Accessibility ────────┤
+C4 Ink Smoothing ────────┘
+                              │
+V1 Two-Pass LLM ─────────────┤──→ v1.1 Cost Optimization
+                              │
+B1 Circle to Do ──────────────┤──→ v1.2 Gesture Actions
+    └── needs: RegionGestureDetector, AccessibilityService, ReminderManager
+                              │
+B2 TL;DR Overlay ─────────────┤──→ v1.3 Summarization
+    └── needs: AccessibilityService, LlmProvider
+                              │
+B3 Privacy Shield ────────────┘──→ v1.4 Trust & Safety
+```
+
+## New Gradle Dependencies
+
+```kotlin
+dependencies {
+    // Math evaluation for Circle to Do (CALCULATE intent)
+    implementation("net.objecthunter:exp4j:0.4.8")
+
+    // Optional: ML Kit for Privacy Shield OCR
+    implementation("com.google.mlkit:text-recognition:16.0.0")
+}
+```
