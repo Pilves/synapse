@@ -88,7 +88,59 @@ abstract class BaseLlmService(
         return if (chunkContext.isNullOrBlank()) prompt else "$prompt\n\n$chunkContext"
     }
 
+    /**
+     * Field mappings for classifying error responses from different LLM providers.
+     */
+    data class ErrorFieldMappings(
+        val errorPath: String,
+        val typePath: String,
+        val messagePath: String,
+        val codeField: String? = null,
+        val authErrors: Set<String>,
+        val rateLimitErrors: Set<String>,
+        val overloadedErrors: Set<String>
+    )
+
+    /**
+     * Classifies an error response body using the provider's field mappings.
+     * Throws the appropriate TranscriptionError.
+     */
+    protected fun classifyError(responseBody: String, mappings: ErrorFieldMappings) {
+        val jsonResponse = JSONObject(responseBody)
+        if (!jsonResponse.has(mappings.errorPath)) return
+
+        val error = jsonResponse.get(mappings.errorPath)
+        val message: String
+        val type: String
+        val code: String
+
+        if (error is JSONObject) {
+            message = error.optString(mappings.messagePath, "Unknown error")
+            type = error.optString(mappings.typePath, "")
+            code = if (mappings.codeField != null) error.optString(mappings.codeField, "") else ""
+        } else {
+            // Ollama has string errors
+            message = error.toString()
+            type = ""
+            code = ""
+        }
+
+        when {
+            type in mappings.authErrors || code in mappings.authErrors ||
+                (type == "invalid_request_error" && message.contains("API key")) ->
+                throw TranscriptionError.ApiKeyInvalid(message)
+            type in mappings.rateLimitErrors || code in mappings.rateLimitErrors ->
+                throw TranscriptionError.RateLimitError(null)
+            type in mappings.overloadedErrors || code in mappings.overloadedErrors ->
+                throw TranscriptionError.ServiceUnavailable(message)
+            code == "insufficient_quota" ->
+                throw TranscriptionError.ApiKeyInvalid("Insufficient quota: $message")
+            else -> throw TranscriptionError.InvalidResponse("API error: $message")
+        }
+    }
+
     // ── Shared state ────────────────────────────────────────────────────
+    /** Lazy is safe because [requestsPerMinute] is effectively immutable in all subclasses. */
     private val rateLimitConfig by lazy { RateLimitConfig(requestsPerMinute) }
     private val rateLimitState = RateLimitState()
 
