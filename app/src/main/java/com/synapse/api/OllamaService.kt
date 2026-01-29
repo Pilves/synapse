@@ -1,6 +1,5 @@
 package com.synapse.api
 
-import android.util.Base64
 import android.util.Log
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -66,7 +65,7 @@ class OllamaService(
     ): JSONObject {
         val images = JSONArray()
         chunks.forEach { chunk ->
-            images.put(Base64.encodeToString(chunk.image, Base64.NO_WRAP))
+            images.put(encodeImageToBase64(chunk.image))
         }
 
         val fullPrompt = buildString {
@@ -114,7 +113,7 @@ class OllamaService(
 
         val imagesArray = JSONArray()
         images.forEach { imageBytes ->
-            imagesArray.put(Base64.encodeToString(imageBytes, Base64.NO_WRAP))
+            imagesArray.put(encodeImageToBase64(imageBytes))
         }
 
         return JSONObject().apply {

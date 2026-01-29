@@ -1,6 +1,5 @@
 package com.synapse.api
 
-import android.util.Base64
 import android.util.Log
 import okhttp3.OkHttpClient
 import org.json.JSONArray
@@ -51,15 +50,14 @@ class OpenAiService(
 
         contentArray.put(JSONObject().apply {
             put("type", "text")
-            put("text", "$prompt\n\n$chunkContext")
+            put("text", buildChunkContextString(prompt, chunkContext))
         })
 
         chunks.forEach { chunk ->
-            val base64Image = Base64.encodeToString(chunk.image, Base64.NO_WRAP)
             contentArray.put(JSONObject().apply {
                 put("type", "image_url")
                 put("image_url", JSONObject().apply {
-                    put("url", "data:image/webp;base64,$base64Image")
+                    put("url", "data:image/webp;base64,${encodeImageToBase64(chunk.image)}")
                     put("detail", "high")
                 })
             })
@@ -135,11 +133,10 @@ class OpenAiService(
         })
 
         images.forEach { imageBytes ->
-            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
             contentArray.put(JSONObject().apply {
                 put("type", "image_url")
                 put("image_url", JSONObject().apply {
-                    put("url", "data:image/png;base64,$base64Image")
+                    put("url", "data:image/png;base64,${encodeImageToBase64(imageBytes)}")
                     put("detail", "high")
                 })
             })

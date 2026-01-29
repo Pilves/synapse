@@ -1,6 +1,5 @@
 package com.synapse.api
 
-import android.util.Base64
 import android.util.Log
 import okhttp3.OkHttpClient
 import org.json.JSONArray
@@ -47,13 +46,12 @@ class GeminiService(
         chunkContext: String
     ): JSONObject {
         val parts = JSONArray()
-        parts.put(JSONObject().put("text", "$prompt\n\n$chunkContext"))
+        parts.put(JSONObject().put("text", buildChunkContextString(prompt, chunkContext)))
 
         chunks.forEach { chunk ->
-            val base64Image = Base64.encodeToString(chunk.image, Base64.NO_WRAP)
             parts.put(JSONObject().put("inline_data", JSONObject().apply {
                 put("mime_type", "image/webp")
-                put("data", base64Image)
+                put("data", encodeImageToBase64(chunk.image))
             }))
         }
 
@@ -102,10 +100,9 @@ class GeminiService(
         parts.put(JSONObject().put("text", fullPrompt))
 
         images.forEach { imageBytes ->
-            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
             parts.put(JSONObject().put("inline_data", JSONObject().apply {
                 put("mime_type", "image/png")
-                put("data", base64Image)
+                put("data", encodeImageToBase64(imageBytes))
             }))
         }
 

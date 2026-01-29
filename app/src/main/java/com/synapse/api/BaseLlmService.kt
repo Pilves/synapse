@@ -1,5 +1,6 @@
 package com.synapse.api
 
+import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.delay
 import okhttp3.MediaType.Companion.toMediaType
@@ -69,6 +70,22 @@ abstract class BaseLlmService(
             extraRetryAfterHeader = httpExtraRetryAfterHeader,
             handle529AsOverloaded = httpHandle529AsOverloaded
         )
+    }
+
+    // ── Shared helpers ─────────────────────────────────────────────────
+
+    /**
+     * Encodes image bytes to Base64 string for API transmission.
+     */
+    protected fun encodeImageToBase64(imageBytes: ByteArray): String {
+        return Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+    }
+
+    /**
+     * Builds combined prompt string with optional chunk context.
+     */
+    protected fun buildChunkContextString(prompt: String, chunkContext: String?): String {
+        return if (chunkContext.isNullOrBlank()) prompt else "$prompt\n\n$chunkContext"
     }
 
     // ── Shared state ────────────────────────────────────────────────────

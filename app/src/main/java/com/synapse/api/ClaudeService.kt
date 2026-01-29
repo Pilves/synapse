@@ -1,6 +1,5 @@
 package com.synapse.api
 
-import android.util.Base64
 import android.util.Log
 import okhttp3.OkHttpClient
 import org.json.JSONArray
@@ -54,20 +53,19 @@ class ClaudeService(
         val contentArray = JSONArray()
 
         chunks.forEach { chunk ->
-            val base64Image = Base64.encodeToString(chunk.image, Base64.NO_WRAP)
             contentArray.put(JSONObject().apply {
                 put("type", "image")
                 put("source", JSONObject().apply {
                     put("type", "base64")
                     put("media_type", "image/webp")
-                    put("data", base64Image)
+                    put("data", encodeImageToBase64(chunk.image))
                 })
             })
         }
 
         contentArray.put(JSONObject().apply {
             put("type", "text")
-            put("text", "$prompt\n\n$chunkContext")
+            put("text", buildChunkContextString(prompt, chunkContext))
         })
 
         val messages = JSONArray().put(JSONObject().apply {
@@ -111,13 +109,12 @@ class ClaudeService(
         val contentArray = JSONArray()
 
         images.forEach { imageBytes ->
-            val base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
             contentArray.put(JSONObject().apply {
                 put("type", "image")
                 put("source", JSONObject().apply {
                     put("type", "base64")
                     put("media_type", "image/png")
-                    put("data", base64Image)
+                    put("data", encodeImageToBase64(imageBytes))
                 })
             })
         }
