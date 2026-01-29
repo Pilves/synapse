@@ -81,6 +81,27 @@ interface TranscriptionService {
      * @return Wait time in milliseconds, or 0 if no wait needed
      */
     fun getWaitTimeMs(): Long
+
+    /**
+     * Sends a text-only query to the LLM and returns the response.
+     *
+     * Unlike [transcribe], this method does not require image input and is
+     * suitable for question-answering, summarization, and other text-only tasks.
+     *
+     * @param prompt The text prompt to send to the LLM
+     * @param systemPrompt Optional system prompt to set the assistant's behavior
+     * @return The LLM's text response
+     * @throws TranscriptionError.NetworkError if network connectivity issues occur
+     * @throws TranscriptionError.RateLimitError if rate limits are exceeded
+     * @throws TranscriptionError.ApiKeyInvalid if the API key is invalid
+     * @throws TranscriptionError.ApiKeyMissing if no API key is configured
+     * @throws TranscriptionError.InvalidResponse if the LLM response cannot be parsed
+     * @throws TranscriptionError.ServerError if the API returns a server error
+     */
+    suspend fun textQuery(
+        prompt: String,
+        systemPrompt: String? = null
+    ): String
 }
 
 /**
