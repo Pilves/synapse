@@ -65,6 +65,19 @@
                 android:value="capture_processing" />
         </service>
 
+        <!-- Process Text Activity for text selection context -->
+        <activity
+            android:name=".ui.ProcessTextActivity"
+            android:label="Synapse"
+            android:theme="@android:style/Theme.NoDisplay"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.PROCESS_TEXT" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
         <!-- Accessibility Service for context capture -->
         <service
             android:name=".service.SynapseAccessibilityService"
