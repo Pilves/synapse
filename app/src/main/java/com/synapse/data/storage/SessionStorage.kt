@@ -110,7 +110,31 @@ class SessionStorage(
      * @return The newly created session
      */
     suspend fun createSession(sessionId: String? = null): Session = mutex.withLock {
-        withContext(Dispatchers.IO) {
+        val id = sessionId ?: generateSessionId()
+        val startTime = System.currentTimeMillis()
+
+        val session = Session(
+            id = id,
+            startedAt = startTime,
+            endedAt = null,
+            chunks = emptyList()
+        )
+
+        saveSessionInternal(session)
+        refreshSessionInMemory(session)
+
+        Log.d(TAG, "Created session ${session.id}")
+        session
+    }
+
+    /**
+     * Creates a new session with result type for better error handling.
+     *
+     * @param sessionId Optional custom session ID
+     * @return SessionResult with the created Session
+     */
+    suspend fun createSessionWithResult(sessionId: String? = null): SessionResult<Session> = mutex.withLock {
+        try {
             val id = sessionId ?: generateSessionId()
             val startTime = System.currentTimeMillis()
 
@@ -121,63 +145,35 @@ class SessionStorage(
                 chunks = emptyList()
             )
 
-            saveSessionInternal(session)
+            // Use atomic write
+            val metadataFile = File(sessionsDir, "$id$JSON_EXTENSION")
+            val tempFile = File(sessionsDir, "$id$JSON_EXTENSION$TEMP_EXTENSION")
+
+            val dto = SessionDto.fromSession(session)
+            tempFile.writeText(json.encodeToString(dto))
+
+            // Atomic rename
+            if (!tempFile.renameTo(metadataFile)) {
+                tempFile.copyTo(metadataFile, overwrite = true)
+                tempFile.delete()
+            }
+
             refreshSessionInMemory(session)
 
-            Log.d(TAG, "Created session ${session.id}")
-            session
-        }
-    }
-
-    /**
-     * Creates a new session with result type for better error handling.
-     *
-     * @param sessionId Optional custom session ID
-     * @return SessionResult with the created Session
-     */
-    suspend fun createSessionWithResult(sessionId: String? = null): SessionResult<Session> = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            try {
-                val id = sessionId ?: generateSessionId()
-                val startTime = System.currentTimeMillis()
-
-                val session = Session(
-                    id = id,
-                    startedAt = startTime,
-                    endedAt = null,
-                    chunks = emptyList()
-                )
-
-                // Use atomic write
-                val metadataFile = File(sessionsDir, "$id$JSON_EXTENSION")
-                val tempFile = File(sessionsDir, "$id$JSON_EXTENSION$TEMP_EXTENSION")
-
-                val dto = SessionDto.fromSession(session)
-                tempFile.writeText(json.encodeToString(dto))
-
-                // Atomic rename
-                if (!tempFile.renameTo(metadataFile)) {
-                    tempFile.copyTo(metadataFile, overwrite = true)
-                    tempFile.delete()
-                }
-
-                refreshSessionInMemory(session)
-
-                Log.d(TAG, "Created session $id")
-                SessionResult.Success(session)
-            } catch (e: IOException) {
-                SessionResult.Error(
-                    SessionResult.ErrorType.WRITE_FAILED,
-                    "Failed to create session: ${e.message}",
-                    e
-                )
-            } catch (e: Exception) {
-                SessionResult.Error(
-                    SessionResult.ErrorType.UNKNOWN,
-                    "Unexpected error creating session: ${e.message}",
-                    e
-                )
-            }
+            Log.d(TAG, "Created session $id")
+            SessionResult.Success(session)
+        } catch (e: IOException) {
+            SessionResult.Error(
+                SessionResult.ErrorType.WRITE_FAILED,
+                "Failed to create session: ${e.message}",
+                e
+            )
+        } catch (e: Exception) {
+            SessionResult.Error(
+                SessionResult.ErrorType.UNKNOWN,
+                "Unexpected error creating session: ${e.message}",
+                e
+            )
         }
     }
 
@@ -276,11 +272,9 @@ class SessionStorage(
      * @param session The session to save
      */
     suspend fun saveSession(session: Session) = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            saveSessionInternal(session)
-            refreshSessionInMemory(session)
-            Log.d(TAG, "Saved session ${session.id}")
-        }
+        saveSessionInternal(session)
+        refreshSessionInMemory(session)
+        Log.d(TAG, "Saved session ${session.id}")
     }
 
     /**
@@ -290,16 +284,14 @@ class SessionStorage(
      * @return The updated session, or null if not found
      */
     suspend fun endSession(sessionId: String): Session? = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val session = getSession(sessionId) ?: return@withContext null
+        val session = getSession(sessionId) ?: return@withLock null
 
-            val updatedSession = session.copy(endedAt = System.currentTimeMillis())
-            saveSessionInternal(updatedSession)
-            refreshSessionInMemory(updatedSession)
+        val updatedSession = session.copy(endedAt = System.currentTimeMillis())
+        saveSessionInternal(updatedSession)
+        refreshSessionInMemory(updatedSession)
 
-            Log.d(TAG, "Ended session $sessionId")
-            updatedSession
-        }
+        Log.d(TAG, "Ended session $sessionId")
+        updatedSession
     }
 
     /**
@@ -309,27 +301,25 @@ class SessionStorage(
      * @return SessionResult with the ended Session
      */
     suspend fun endSessionWithResult(sessionId: String): SessionResult<Session> = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val session = getSession(sessionId)
-                ?: return@withContext SessionResult.Error(
-                    SessionResult.ErrorType.SESSION_NOT_FOUND,
-                    "Session not found: $sessionId"
-                )
+        val session = getSession(sessionId)
+            ?: return@withLock SessionResult.Error(
+                SessionResult.ErrorType.SESSION_NOT_FOUND,
+                "Session not found: $sessionId"
+            )
 
-            try {
-                val updatedSession = session.copy(endedAt = System.currentTimeMillis())
-                saveSessionInternal(updatedSession)
-                refreshSessionInMemory(updatedSession)
+        try {
+            val updatedSession = session.copy(endedAt = System.currentTimeMillis())
+            saveSessionInternal(updatedSession)
+            refreshSessionInMemory(updatedSession)
 
-                Log.d(TAG, "Ended session $sessionId")
-                SessionResult.Success(updatedSession)
-            } catch (e: Exception) {
-                SessionResult.Error(
-                    SessionResult.ErrorType.WRITE_FAILED,
-                    "Failed to end session: ${e.message}",
-                    e
-                )
-            }
+            Log.d(TAG, "Ended session $sessionId")
+            SessionResult.Success(updatedSession)
+        } catch (e: Exception) {
+            SessionResult.Error(
+                SessionResult.ErrorType.WRITE_FAILED,
+                "Failed to end session: ${e.message}",
+                e
+            )
         }
     }
 
@@ -341,18 +331,16 @@ class SessionStorage(
      * @return The updated session, or null if session not found
      */
     suspend fun addChunk(sessionId: String, chunk: Chunk): Session? = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val session = getSession(sessionId) ?: return@withContext null
+        val session = getSession(sessionId) ?: return@withLock null
 
-            val updatedSession = session.copy(
-                chunks = session.chunks + chunk
-            )
-            saveSessionInternal(updatedSession)
-            refreshSessionInMemory(updatedSession)
+        val updatedSession = session.copy(
+            chunks = session.chunks + chunk
+        )
+        saveSessionInternal(updatedSession)
+        refreshSessionInMemory(updatedSession)
 
-            Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
-            updatedSession
-        }
+        Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
+        updatedSession
     }
 
     /**
@@ -363,18 +351,16 @@ class SessionStorage(
      * @return The updated session, or null if session not found
      */
     suspend fun addContext(sessionId: String, context: CapturedContext): Session? = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val session = getSession(sessionId) ?: return@withContext null
+        val session = getSession(sessionId) ?: return@withLock null
 
-            val updatedSession = session.copy(
-                contexts = session.contexts + context
-            )
-            saveSessionInternal(updatedSession)
-            refreshSessionInMemory(updatedSession)
+        val updatedSession = session.copy(
+            contexts = session.contexts + context
+        )
+        saveSessionInternal(updatedSession)
+        refreshSessionInMemory(updatedSession)
 
-            Log.d(TAG, "Added context ${context.id} to session $sessionId")
-            updatedSession
-        }
+        Log.d(TAG, "Added context ${context.id} to session $sessionId")
+        updatedSession
     }
 
     /**
@@ -385,29 +371,27 @@ class SessionStorage(
      * @return SessionResult with the updated Session
      */
     suspend fun addChunkWithResult(sessionId: String, chunk: Chunk): SessionResult<Session> = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val session = getSession(sessionId)
-                ?: return@withContext SessionResult.Error(
-                    SessionResult.ErrorType.SESSION_NOT_FOUND,
-                    "Session not found: $sessionId"
-                )
+        val session = getSession(sessionId)
+            ?: return@withLock SessionResult.Error(
+                SessionResult.ErrorType.SESSION_NOT_FOUND,
+                "Session not found: $sessionId"
+            )
 
-            try {
-                val updatedSession = session.copy(
-                    chunks = session.chunks + chunk
-                )
-                saveSessionInternal(updatedSession)
-                refreshSessionInMemory(updatedSession)
+        try {
+            val updatedSession = session.copy(
+                chunks = session.chunks + chunk
+            )
+            saveSessionInternal(updatedSession)
+            refreshSessionInMemory(updatedSession)
 
-                Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
-                SessionResult.Success(updatedSession)
-            } catch (e: Exception) {
-                SessionResult.Error(
-                    SessionResult.ErrorType.WRITE_FAILED,
-                    "Failed to add chunk: ${e.message}",
-                    e
-                )
-            }
+            Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
+            SessionResult.Success(updatedSession)
+        } catch (e: Exception) {
+            SessionResult.Error(
+                SessionResult.ErrorType.WRITE_FAILED,
+                "Failed to add chunk: ${e.message}",
+                e
+            )
         }
     }
 
@@ -419,19 +403,17 @@ class SessionStorage(
      * @return The updated session, or null if session not found
      */
     suspend fun updateChunk(sessionId: String, chunk: Chunk): Session? = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val session = getSession(sessionId) ?: return@withContext null
+        val session = getSession(sessionId) ?: return@withLock null
 
-            val updatedChunks = session.chunks.map {
-                if (it.id == chunk.id) chunk else it
-            }
-            val updatedSession = session.copy(chunks = updatedChunks)
-            saveSessionInternal(updatedSession)
-            refreshSessionInMemory(updatedSession)
-
-            Log.d(TAG, "Updated chunk ${chunk.id} in session $sessionId")
-            updatedSession
+        val updatedChunks = session.chunks.map {
+            if (it.id == chunk.id) chunk else it
         }
+        val updatedSession = session.copy(chunks = updatedChunks)
+        saveSessionInternal(updatedSession)
+        refreshSessionInMemory(updatedSession)
+
+        Log.d(TAG, "Updated chunk ${chunk.id} in session $sessionId")
+        updatedSession
     }
 
     /**
@@ -442,18 +424,16 @@ class SessionStorage(
      * @return The updated session, or null if session not found
      */
     suspend fun removeChunk(sessionId: String, chunkId: String): Session? = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val session = getSession(sessionId) ?: return@withContext null
+        val session = getSession(sessionId) ?: return@withLock null
 
-            val updatedSession = session.copy(
-                chunks = session.chunks.filter { it.id != chunkId }
-            )
-            saveSessionInternal(updatedSession)
-            refreshSessionInMemory(updatedSession)
+        val updatedSession = session.copy(
+            chunks = session.chunks.filter { it.id != chunkId }
+        )
+        saveSessionInternal(updatedSession)
+        refreshSessionInMemory(updatedSession)
 
-            Log.d(TAG, "Removed chunk $chunkId from session $sessionId")
-            updatedSession
-        }
+        Log.d(TAG, "Removed chunk $chunkId from session $sessionId")
+        updatedSession
     }
 
     /**
@@ -465,31 +445,29 @@ class SessionStorage(
      * @return true if deletion was successful
      */
     suspend fun deleteSession(sessionId: String, deleteChunks: Boolean = true): Boolean = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            try {
-                // Delete chunk files if requested and ChunkStorage is available
-                if (deleteChunks && chunkStorage != null) {
-                    chunkStorage.deleteSessionChunks(sessionId)
-                }
-
-                // Delete metadata file
-                val file = File(sessionsDir, "$sessionId$JSON_EXTENSION")
-                val deleted = !file.exists() || file.delete()
-
-                // Also delete any temp file
-                val tempFile = File(sessionsDir, "$sessionId$JSON_EXTENSION$TEMP_EXTENSION")
-                if (tempFile.exists()) {
-                    tempFile.delete()
-                }
-
-                if (deleted) removeSessionInMemory(sessionId)
-
-                Log.d(TAG, "Deleted session $sessionId: $deleted")
-                deleted
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete session $sessionId", e)
-                false
+        try {
+            // Delete chunk files if requested and ChunkStorage is available
+            if (deleteChunks && chunkStorage != null) {
+                chunkStorage.deleteSessionChunks(sessionId)
             }
+
+            // Delete metadata file
+            val file = File(sessionsDir, "$sessionId$JSON_EXTENSION")
+            val deleted = !file.exists() || file.delete()
+
+            // Also delete any temp file
+            val tempFile = File(sessionsDir, "$sessionId$JSON_EXTENSION$TEMP_EXTENSION")
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+
+            if (deleted) removeSessionInMemory(sessionId)
+
+            Log.d(TAG, "Deleted session $sessionId: $deleted")
+            deleted
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to delete session $sessionId", e)
+            false
         }
     }
 

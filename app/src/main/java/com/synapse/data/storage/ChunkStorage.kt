@@ -108,6 +108,19 @@ class ChunkStorage(private val context: Context) {
     }
 
     /**
+     * Removes the session mutex from the map if it is not currently locked.
+     * Call this after a session is fully processed to prevent unbounded map growth.
+     *
+     * @param sessionId The session ID whose mutex to clean up
+     */
+    fun cleanupSessionMutex(sessionId: String) {
+        val mutex = sessionMutexes[sessionId]
+        if (mutex != null && !mutex.isLocked) {
+            sessionMutexes.remove(sessionId)
+        }
+    }
+
+    /**
      * Generate the filename for a chunk.
      *
      * @param sessionTimestamp The session timestamp

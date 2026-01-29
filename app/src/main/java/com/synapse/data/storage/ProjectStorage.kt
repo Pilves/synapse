@@ -89,23 +89,21 @@ class ProjectStorage(private val context: Context) {
      * @return The created project
      */
     suspend fun addProject(name: String, pathUri: String, defaultFile: String): Project = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val project = Project(
-                id = UUID.randomUUID().toString(),
-                name = name,
-                pathUri = pathUri,
-                defaultFile = defaultFile,
-                lastUsedFile = null
-            )
+        val project = Project(
+            id = UUID.randomUUID().toString(),
+            name = name,
+            pathUri = pathUri,
+            defaultFile = defaultFile,
+            lastUsedFile = null
+        )
 
-            val projects = loadProjectsFromDisk().toMutableList()
-            projects.add(project)
-            saveProjectsToDisk(projects)
-            _projectsFlow.value = projects
+        val projects = loadProjectsFromDisk().toMutableList()
+        projects.add(project)
+        saveProjectsToDisk(projects)
+        _projectsFlow.value = projects
 
-            Log.d(TAG, "Added project: ${project.id} - ${project.name}")
-            project
-        }
+        Log.d(TAG, "Added project: ${project.id} - ${project.name}")
+        project
     }
 
     /**
@@ -114,18 +112,16 @@ class ProjectStorage(private val context: Context) {
      * @param project The updated project
      */
     suspend fun updateProject(project: Project) = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val projects = loadProjectsFromDisk().toMutableList()
-            val index = projects.indexOfFirst { it.id == project.id }
+        val projects = loadProjectsFromDisk().toMutableList()
+        val index = projects.indexOfFirst { it.id == project.id }
 
-            if (index != -1) {
-                projects[index] = project
-                saveProjectsToDisk(projects)
-                _projectsFlow.value = projects
-                Log.d(TAG, "Updated project: ${project.id}")
-            } else {
-                Log.w(TAG, "Project not found for update: ${project.id}")
-            }
+        if (index != -1) {
+            projects[index] = project
+            saveProjectsToDisk(projects)
+            _projectsFlow.value = projects
+            Log.d(TAG, "Updated project: ${project.id}")
+        } else {
+            Log.w(TAG, "Project not found for update: ${project.id}")
         }
     }
 
@@ -135,17 +131,15 @@ class ProjectStorage(private val context: Context) {
      * @param projectId The project ID to delete
      */
     suspend fun deleteProject(projectId: String) = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val projects = loadProjectsFromDisk().toMutableList()
-            val removed = projects.removeAll { it.id == projectId }
+        val projects = loadProjectsFromDisk().toMutableList()
+        val removed = projects.removeAll { it.id == projectId }
 
-            if (removed) {
-                saveProjectsToDisk(projects)
-                _projectsFlow.value = projects
-                Log.d(TAG, "Deleted project: $projectId")
-            } else {
-                Log.w(TAG, "Project not found for deletion: $projectId")
-            }
+        if (removed) {
+            saveProjectsToDisk(projects)
+            _projectsFlow.value = projects
+            Log.d(TAG, "Deleted project: $projectId")
+        } else {
+            Log.w(TAG, "Project not found for deletion: $projectId")
         }
     }
 
@@ -156,16 +150,14 @@ class ProjectStorage(private val context: Context) {
      * @param filename The filename that was last used
      */
     suspend fun setLastUsedFile(projectId: String, filename: String) = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val projects = loadProjectsFromDisk().toMutableList()
-            val index = projects.indexOfFirst { it.id == projectId }
+        val projects = loadProjectsFromDisk().toMutableList()
+        val index = projects.indexOfFirst { it.id == projectId }
 
-            if (index != -1) {
-                projects[index] = projects[index].copy(lastUsedFile = filename)
-                saveProjectsToDisk(projects)
-                _projectsFlow.value = projects
-                Log.d(TAG, "Set last used file for project $projectId: $filename")
-            }
+        if (index != -1) {
+            projects[index] = projects[index].copy(lastUsedFile = filename)
+            saveProjectsToDisk(projects)
+            _projectsFlow.value = projects
+            Log.d(TAG, "Set last used file for project $projectId: $filename")
         }
     }
 

@@ -100,34 +100,32 @@ class SyncStorage(private val context: Context) {
         projectId: String,
         filename: String
     ): SyncQueueItem = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            // Check if already queued
-            val existing = _queueFlow.value.find { it.sessionId == sessionId }
-            if (existing != null) {
-                Log.w(TAG, "Session $sessionId already in queue")
-                return@withContext existing
-            }
-
-            val item = SyncQueueItem(
-                id = UUID.randomUUID().toString(),
-                sessionId = sessionId,
-                projectId = projectId,
-                filename = filename,
-                status = SyncItemStatus.PENDING,
-                createdAt = System.currentTimeMillis(),
-                lastAttemptAt = null,
-                attemptCount = 0,
-                errorMessage = null
-            )
-
-            val queue = loadQueueFromDisk().toMutableList()
-            queue.add(item)
-            saveQueueToDisk(queue)
-            _queueFlow.value = queue
-
-            Log.d(TAG, "Added to sync queue: ${item.id} (session: $sessionId)")
-            item
+        // Check if already queued
+        val existing = _queueFlow.value.find { it.sessionId == sessionId }
+        if (existing != null) {
+            Log.w(TAG, "Session $sessionId already in queue")
+            return@withLock existing
         }
+
+        val item = SyncQueueItem(
+            id = UUID.randomUUID().toString(),
+            sessionId = sessionId,
+            projectId = projectId,
+            filename = filename,
+            status = SyncItemStatus.PENDING,
+            createdAt = System.currentTimeMillis(),
+            lastAttemptAt = null,
+            attemptCount = 0,
+            errorMessage = null
+        )
+
+        val queue = loadQueueFromDisk().toMutableList()
+        queue.add(item)
+        saveQueueToDisk(queue)
+        _queueFlow.value = queue
+
+        Log.d(TAG, "Added to sync queue: ${item.id} (session: $sessionId)")
+        item
     }
 
     /**
@@ -136,16 +134,14 @@ class SyncStorage(private val context: Context) {
      * @param item The updated item
      */
     suspend fun updateQueueItem(item: SyncQueueItem) = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val queue = loadQueueFromDisk().toMutableList()
-            val index = queue.indexOfFirst { it.id == item.id }
+        val queue = loadQueueFromDisk().toMutableList()
+        val index = queue.indexOfFirst { it.id == item.id }
 
-            if (index != -1) {
-                queue[index] = item
-                saveQueueToDisk(queue)
-                _queueFlow.value = queue
-                Log.d(TAG, "Updated queue item: ${item.id}")
-            }
+        if (index != -1) {
+            queue[index] = item
+            saveQueueToDisk(queue)
+            _queueFlow.value = queue
+            Log.d(TAG, "Updated queue item: ${item.id}")
         }
     }
 
@@ -155,15 +151,13 @@ class SyncStorage(private val context: Context) {
      * @param id The queue item ID
      */
     suspend fun removeFromQueue(id: String) = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val queue = loadQueueFromDisk().toMutableList()
-            val removed = queue.removeAll { it.id == id }
+        val queue = loadQueueFromDisk().toMutableList()
+        val removed = queue.removeAll { it.id == id }
 
-            if (removed) {
-                saveQueueToDisk(queue)
-                _queueFlow.value = queue
-                Log.d(TAG, "Removed from queue: $id")
-            }
+        if (removed) {
+            saveQueueToDisk(queue)
+            _queueFlow.value = queue
+            Log.d(TAG, "Removed from queue: $id")
         }
     }
 
@@ -230,28 +224,26 @@ class SyncStorage(private val context: Context) {
      * @return Number of items reset
      */
     suspend fun resetFailedItems(): Int = mutex.withLock {
-        withContext(Dispatchers.IO) {
-            val queue = loadQueueFromDisk().toMutableList()
-            var count = 0
+        val queue = loadQueueFromDisk().toMutableList()
+        var count = 0
 
-            queue.forEachIndexed { index, item ->
-                if (item.status == SyncItemStatus.FAILED) {
-                    queue[index] = item.copy(
-                        status = SyncItemStatus.PENDING,
-                        errorMessage = null
-                    )
-                    count++
-                }
+        queue.forEachIndexed { index, item ->
+            if (item.status == SyncItemStatus.FAILED) {
+                queue[index] = item.copy(
+                    status = SyncItemStatus.PENDING,
+                    errorMessage = null
+                )
+                count++
             }
-
-            if (count > 0) {
-                saveQueueToDisk(queue)
-                _queueFlow.value = queue
-                Log.d(TAG, "Reset $count failed items to pending")
-            }
-
-            count
         }
+
+        if (count > 0) {
+            saveQueueToDisk(queue)
+            _queueFlow.value = queue
+            Log.d(TAG, "Reset $count failed items to pending")
+        }
+
+        count
     }
 
     private suspend fun loadQueue() {
