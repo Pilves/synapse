@@ -19,8 +19,10 @@ import kotlinx.coroutines.launch
  * @param bitmap The rendered bitmap of the strokes
  * @param timestamp The time when the chunk was created
  * @param index The index of this chunk in the session
+ *
+ * Not a data class to avoid Bitmap equality comparison. Consumer must call bitmap.recycle() after persisting.
  */
-data class CapturedChunk(
+class CapturedChunk(
     val bitmap: Bitmap,
     val timestamp: Long,
     val index: Int
