@@ -194,7 +194,20 @@ class ProjectStorage(private val context: Context) {
             val dto = ProjectsDto(
                 projects = projects.map { ProjectDto.fromProject(it) }
             )
-            projectsFile.writeText(json.encodeToString(dto))
+            val tempFile = File(projectsFile.parent, "${projectsFile.name}.tmp")
+
+            // Write to temp file first
+            tempFile.writeText(json.encodeToString(dto))
+
+            // Atomic rename
+            if (projectsFile.exists()) {
+                projectsFile.delete()
+            }
+
+            if (!tempFile.renameTo(projectsFile)) {
+                tempFile.copyTo(projectsFile, overwrite = true)
+                tempFile.delete()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save projects", e)
         }
