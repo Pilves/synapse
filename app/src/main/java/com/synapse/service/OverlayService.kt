@@ -318,32 +318,22 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             y = 300
         }
 
-        // Track bubble Y position for dismiss zone detection
-        var currentBubbleY = params.y
-
         floatingBubbleView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
 
             setContent {
-                var bubbleY by remember { mutableIntStateOf(currentBubbleY) }
-
                 SynapseTheme {
                     FloatingBubble(
                         pendingCount = pendingChunkCount,
                         screenHeight = screenHeight,
-                        bubbleY = bubbleY,
+                        initialY = params.y,
                         onClick = { showCaptureOverlay() },
                         onDismiss = { stopOverlay() },
                         onPositionChanged = { dx, dy ->
                             params.x += dx.roundToInt()
                             params.y += dy.roundToInt()
-                            currentBubbleY = params.y
-                            bubbleY = params.y
                             windowManager.updateViewLayout(this, params)
-                        },
-                        onDragStateChanged = { isDragging ->
-                            // Could show/hide dismiss zone overlay here
                         }
                     )
                 }
@@ -660,17 +650,17 @@ class TouchDifferentiatingOverlayView(
 private fun FloatingBubble(
     pendingCount: Int,
     screenHeight: Int,
-    bubbleY: Int,
+    initialY: Int,
     onClick: () -> Unit,
     onDismiss: () -> Unit,
-    onPositionChanged: (Float, Float) -> Unit,
-    onDragStateChanged: (Boolean) -> Unit
+    onPositionChanged: (Float, Float) -> Unit
 ) {
     var isDragging by remember { mutableStateOf(false) }
+    var currentY by remember { mutableFloatStateOf(initialY.toFloat()) }
 
-    // Check if bubble is in dismiss zone (bottom 12% of screen)
-    val dismissZoneThreshold = screenHeight * 0.88f
-    val isInDismissZone = bubbleY > dismissZoneThreshold && isDragging
+    // Check if bubble is in dismiss zone (bottom 15% of screen)
+    val dismissZoneThreshold = screenHeight * 0.85f
+    val isInDismissZone = currentY > dismissZoneThreshold && isDragging
 
     Box(
         contentAlignment = Alignment.TopEnd
@@ -683,22 +673,20 @@ private fun FloatingBubble(
                     detectDragGestures(
                         onDragStart = {
                             isDragging = true
-                            onDragStateChanged(true)
                         },
                         onDragEnd = {
+                            val shouldDismiss = currentY > dismissZoneThreshold
                             isDragging = false
-                            onDragStateChanged(false)
-                            // Check if should dismiss
-                            if (bubbleY > dismissZoneThreshold) {
+                            if (shouldDismiss) {
                                 onDismiss()
                             }
                         },
                         onDragCancel = {
                             isDragging = false
-                            onDragStateChanged(false)
                         },
                         onDrag = { change, dragAmount ->
                             change.consume()
+                            currentY += dragAmount.y
                             onPositionChanged(dragAmount.x, dragAmount.y)
                         }
                     )
