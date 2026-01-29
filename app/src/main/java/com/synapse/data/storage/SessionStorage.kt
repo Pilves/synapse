@@ -43,8 +43,6 @@ class SessionStorage(
     companion object {
         private const val TAG = "SessionStorage"
         private const val SESSIONS_DIR = "sessions"
-        private const val JSON_EXTENSION = ".json"
-        private const val TEMP_EXTENSION = ".tmp"
     }
 
     private val mutex = Mutex()
@@ -52,26 +50,6 @@ class SessionStorage(
 
     private val sessionsDir: File
         get() = File(context.filesDir, SESSIONS_DIR).also { it.mkdirs() }
-
-    /**
-     * Result of a session operation.
-     */
-    sealed class SessionResult<out T> {
-        data class Success<T>(val data: T) : SessionResult<T>()
-        data class Error(
-            val type: ErrorType,
-            val message: String,
-            val exception: Exception? = null
-        ) : SessionResult<Nothing>()
-
-        enum class ErrorType {
-            SESSION_NOT_FOUND,
-            WRITE_FAILED,
-            READ_FAILED,
-            PERMISSION_DENIED,
-            UNKNOWN
-        }
-    }
 
     /**
      * Initializes the storage and loads existing sessions.
@@ -124,9 +102,9 @@ class SessionStorage(
      * Creates a new session with result type for better error handling.
      *
      * @param sessionId Optional custom session ID
-     * @return SessionResult with the created Session
+     * @return StorageResult with the created Session
      */
-    suspend fun createSessionWithResult(sessionId: String? = null): SessionResult<Session> = mutex.withLock {
+    suspend fun createSessionWithResult(sessionId: String? = null): StorageResult<Session> = mutex.withLock {
         try {
             val id = sessionId ?: generateSessionId()
             val startTime = System.currentTimeMillis()
@@ -138,23 +116,23 @@ class SessionStorage(
                 chunks = emptyList()
             )
 
-            val metadataFile = File(sessionsDir, "$id$JSON_EXTENSION")
+            val metadataFile = File(sessionsDir, "$id${StorageHelper.JSON_EXTENSION}")
             val dto = SessionDto.fromSession(session)
             StorageHelper.atomicWriteText(metadataFile, StorageJson.instance.encodeToString(dto))
 
             refreshSessionInMemory(session)
 
             Log.d(TAG, "Created session $id")
-            SessionResult.Success(session)
+            StorageResult.Success(session)
         } catch (e: IOException) {
-            SessionResult.Error(
-                SessionResult.ErrorType.WRITE_FAILED,
+            StorageResult.Error(
+                ErrorType.WRITE_FAILED,
                 "Failed to create session: ${e.message}",
                 e
             )
         } catch (e: Exception) {
-            SessionResult.Error(
-                SessionResult.ErrorType.UNKNOWN,
+            StorageResult.Error(
+                ErrorType.UNKNOWN,
                 "Unexpected error creating session: ${e.message}",
                 e
             )
@@ -169,7 +147,7 @@ class SessionStorage(
      */
     suspend fun getSession(sessionId: String): Session? = withContext(Dispatchers.IO) {
         try {
-            val file = File(sessionsDir, "$sessionId$JSON_EXTENSION")
+            val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
             if (!file.exists()) return@withContext null
 
             val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
@@ -184,23 +162,23 @@ class SessionStorage(
      * Gets a session by ID with result type for error handling.
      *
      * @param sessionId The session ID
-     * @return SessionResult with the Session
+     * @return StorageResult with the Session
      */
-    suspend fun getSessionWithResult(sessionId: String): SessionResult<Session> = withContext(Dispatchers.IO) {
+    suspend fun getSessionWithResult(sessionId: String): StorageResult<Session> = withContext(Dispatchers.IO) {
         try {
-            val file = File(sessionsDir, "$sessionId$JSON_EXTENSION")
+            val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
             if (!file.exists()) {
-                return@withContext SessionResult.Error(
-                    SessionResult.ErrorType.SESSION_NOT_FOUND,
+                return@withContext StorageResult.Error(
+                    ErrorType.NOT_FOUND,
                     "Session not found: $sessionId"
                 )
             }
 
             val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
-            SessionResult.Success(dto.toSession())
+            StorageResult.Success(dto.toSession())
         } catch (e: Exception) {
-            SessionResult.Error(
-                SessionResult.ErrorType.READ_FAILED,
+            StorageResult.Error(
+                ErrorType.READ_FAILED,
                 "Failed to read session: ${e.message}",
                 e
             )
@@ -282,12 +260,12 @@ class SessionStorage(
      * Ends a session with result type for better error handling.
      *
      * @param sessionId The session ID
-     * @return SessionResult with the ended Session
+     * @return StorageResult with the ended Session
      */
-    suspend fun endSessionWithResult(sessionId: String): SessionResult<Session> = mutex.withLock {
+    suspend fun endSessionWithResult(sessionId: String): StorageResult<Session> = mutex.withLock {
         val session = getSession(sessionId)
-            ?: return@withLock SessionResult.Error(
-                SessionResult.ErrorType.SESSION_NOT_FOUND,
+            ?: return@withLock StorageResult.Error(
+                ErrorType.NOT_FOUND,
                 "Session not found: $sessionId"
             )
 
@@ -297,10 +275,10 @@ class SessionStorage(
             refreshSessionInMemory(updatedSession)
 
             Log.d(TAG, "Ended session $sessionId")
-            SessionResult.Success(updatedSession)
+            StorageResult.Success(updatedSession)
         } catch (e: Exception) {
-            SessionResult.Error(
-                SessionResult.ErrorType.WRITE_FAILED,
+            StorageResult.Error(
+                ErrorType.WRITE_FAILED,
                 "Failed to end session: ${e.message}",
                 e
             )
@@ -352,12 +330,12 @@ class SessionStorage(
      *
      * @param sessionId The session ID
      * @param chunk The chunk to add
-     * @return SessionResult with the updated Session
+     * @return StorageResult with the updated Session
      */
-    suspend fun addChunkWithResult(sessionId: String, chunk: Chunk): SessionResult<Session> = mutex.withLock {
+    suspend fun addChunkWithResult(sessionId: String, chunk: Chunk): StorageResult<Session> = mutex.withLock {
         val session = getSession(sessionId)
-            ?: return@withLock SessionResult.Error(
-                SessionResult.ErrorType.SESSION_NOT_FOUND,
+            ?: return@withLock StorageResult.Error(
+                ErrorType.NOT_FOUND,
                 "Session not found: $sessionId"
             )
 
@@ -369,10 +347,10 @@ class SessionStorage(
             refreshSessionInMemory(updatedSession)
 
             Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
-            SessionResult.Success(updatedSession)
+            StorageResult.Success(updatedSession)
         } catch (e: Exception) {
-            SessionResult.Error(
-                SessionResult.ErrorType.WRITE_FAILED,
+            StorageResult.Error(
+                ErrorType.WRITE_FAILED,
                 "Failed to add chunk: ${e.message}",
                 e
             )
@@ -436,11 +414,11 @@ class SessionStorage(
             }
 
             // Delete metadata file
-            val file = File(sessionsDir, "$sessionId$JSON_EXTENSION")
+            val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
             val deleted = !file.exists() || file.delete()
 
             // Also delete any temp file
-            val tempFile = File(sessionsDir, "$sessionId$JSON_EXTENSION$TEMP_EXTENSION")
+            val tempFile = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}${StorageHelper.TEMP_EXTENSION}")
             if (tempFile.exists()) {
                 tempFile.delete()
             }
@@ -496,7 +474,7 @@ class SessionStorage(
      * @return true if the session exists
      */
     suspend fun sessionExists(sessionId: String): Boolean = withContext(Dispatchers.IO) {
-        val file = File(sessionsDir, "$sessionId$JSON_EXTENSION")
+        val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
         file.exists()
     }
 
@@ -558,7 +536,7 @@ class SessionStorage(
     }
 
     private suspend fun saveSessionInternal(session: Session) {
-        val file = File(sessionsDir, "${session.id}$JSON_EXTENSION")
+        val file = File(sessionsDir, "${session.id}${StorageHelper.JSON_EXTENSION}")
         val dto = SessionDto.fromSession(session)
         StorageHelper.atomicWriteText(file, StorageJson.instance.encodeToString(dto))
     }
@@ -599,7 +577,7 @@ class SessionStorage(
     private fun loadSessionsFromDisk(): List<Session> {
         return try {
             sessionsDir.listFiles()
-                ?.filter { it.isFile && it.name.endsWith(JSON_EXTENSION) && !it.name.endsWith(TEMP_EXTENSION) }
+                ?.filter { it.isFile && it.name.endsWith(StorageHelper.JSON_EXTENSION) && !it.name.endsWith(StorageHelper.TEMP_EXTENSION) }
                 ?.mapNotNull { file ->
                     try {
                         val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())

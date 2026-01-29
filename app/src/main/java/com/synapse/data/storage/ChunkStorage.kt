@@ -44,17 +44,8 @@ class ChunkStorage(private val context: Context) {
         /** Chunk filename middle segment */
         private const val CHUNK_MIDDLE = "_chunk_"
 
-        /** Image file extension */
-        private const val IMAGE_EXTENSION = ".webp"
-
         /** Thumbnail suffix */
         private const val THUMB_SUFFIX = "_thumb"
-
-        /** Temp file extension for atomic writes */
-        private const val TEMP_EXTENSION = ".tmp"
-
-        /** Corrupted file marker extension */
-        private const val CORRUPTED_EXTENSION = ".corrupted"
 
         /** Thumbnail size in pixels */
         private const val THUMBNAIL_SIZE = 150
@@ -70,28 +61,6 @@ class ChunkStorage(private val context: Context) {
 
         /** Minimum valid image size in bytes */
         private const val MIN_VALID_IMAGE_SIZE = 100L
-    }
-
-    /**
-     * Result of a chunk operation.
-     */
-    sealed class ChunkResult<out T> {
-        data class Success<T>(val data: T) : ChunkResult<T>()
-        data class Error(
-            val type: ErrorType,
-            val message: String,
-            val exception: Exception? = null
-        ) : ChunkResult<Nothing>()
-
-        enum class ErrorType {
-            INSUFFICIENT_STORAGE,
-            WRITE_FAILED,
-            FILE_NOT_FOUND,
-            CORRUPTED_FILE,
-            PERMISSION_DENIED,
-            VERIFICATION_FAILED,
-            UNKNOWN
-        }
     }
 
     /** Mutex for ensuring atomic operations per session */
@@ -128,7 +97,7 @@ class ChunkStorage(private val context: Context) {
      * @return Filename in format: session_{timestamp}_chunk_{index}.webp
      */
     fun generateChunkFilename(sessionTimestamp: String, index: Int): String {
-        return "$CHUNK_PREFIX${sessionTimestamp}$CHUNK_MIDDLE${index}$IMAGE_EXTENSION"
+        return "$CHUNK_PREFIX${sessionTimestamp}$CHUNK_MIDDLE${index}$StorageHelper.WEBP_EXTENSION"
     }
 
     /**
@@ -138,7 +107,7 @@ class ChunkStorage(private val context: Context) {
      * @return Pair of (sessionTimestamp, index), or null if parsing fails
      */
     fun parseChunkFilename(filename: String): Pair<String, Int>? {
-        if (!filename.startsWith(CHUNK_PREFIX) || !filename.endsWith(IMAGE_EXTENSION)) {
+        if (!filename.startsWith(CHUNK_PREFIX) || !filename.endsWith(StorageHelper.WEBP_EXTENSION)) {
             return null
         }
 
@@ -147,7 +116,7 @@ class ChunkStorage(private val context: Context) {
             return null
         }
 
-        val withoutExtension = filename.removeSuffix(IMAGE_EXTENSION)
+        val withoutExtension = filename.removeSuffix(StorageHelper.WEBP_EXTENSION)
         val chunkIndex = withoutExtension.lastIndexOf(CHUNK_MIDDLE)
 
         if (chunkIndex == -1) return null
@@ -165,25 +134,25 @@ class ChunkStorage(private val context: Context) {
     /**
      * Check if there is sufficient storage for saving a new chunk.
      *
-     * @return ChunkResult.Success(true) if storage is available, Error otherwise
+     * @return StorageResult.Success(true) if storage is available, Error otherwise
      */
-    suspend fun checkStorageAvailable(): ChunkResult<Boolean> = withContext(Dispatchers.IO) {
+    suspend fun checkStorageAvailable(): StorageResult<Boolean> = withContext(Dispatchers.IO) {
         try {
             val stat = android.os.StatFs(context.cacheDir.path)
             val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
 
             if (availableBytes >= MIN_FREE_STORAGE_BYTES) {
-                ChunkResult.Success(true)
+                StorageResult.Success(true)
             } else {
-                ChunkResult.Error(
-                    ChunkResult.ErrorType.INSUFFICIENT_STORAGE,
+                StorageResult.Error(
+                    ErrorType.INSUFFICIENT_STORAGE,
                     "Insufficient storage: ${StorageHelper.formatBytes(availableBytes)} free, " +
                             "${StorageHelper.formatBytes(MIN_FREE_STORAGE_BYTES)} required"
                 )
             }
         } catch (e: Exception) {
-            ChunkResult.Error(
-                ChunkResult.ErrorType.UNKNOWN,
+            StorageResult.Error(
+                ErrorType.UNKNOWN,
                 "Failed to check storage: ${e.message}",
                 e
             )
@@ -202,19 +171,19 @@ class ChunkStorage(private val context: Context) {
      * @param sessionId The session this chunk belongs to
      * @param index The chunk index within the session
      * @param bitmap The image to save
-     * @return ChunkResult with the chunk ID and file path on success
+     * @return StorageResult with the chunk ID and file path on success
      */
     suspend fun saveChunk(
         sessionId: String,
         index: Int,
         bitmap: Bitmap
-    ): ChunkResult<Pair<String, String>> = withContext(Dispatchers.IO) {
+    ): StorageResult<Pair<String, String>> = withContext(Dispatchers.IO) {
         val mutex = getSessionMutex(sessionId)
 
         mutex.withLock {
             // 1. Pre-flight storage check
             val storageCheck = checkStorageAvailable()
-            if (storageCheck is ChunkResult.Error) {
+            if (storageCheck is StorageResult.Error) {
                 return@withContext storageCheck
             }
 
@@ -222,7 +191,7 @@ class ChunkStorage(private val context: Context) {
             val sessionDir = File(chunksDir, sessionId).also { it.mkdirs() }
             val chunkFilename = generateChunkFilename(sessionId, index)
             val finalFile = File(sessionDir, chunkFilename)
-            val tempFile = File(sessionDir, "${chunkFilename}$TEMP_EXTENSION")
+            val tempFile = File(sessionDir, "${chunkFilename}$StorageHelper.TEMP_EXTENSION")
 
             try {
                 // 3. Write to temp file
@@ -234,8 +203,8 @@ class ChunkStorage(private val context: Context) {
                     )
                     if (!success) {
                         tempFile.delete()
-                        return@withContext ChunkResult.Error(
-                            ChunkResult.ErrorType.WRITE_FAILED,
+                        return@withContext StorageResult.Error(
+                            ErrorType.WRITE_FAILED,
                             "Failed to compress bitmap to WebP"
                         )
                     }
@@ -245,8 +214,8 @@ class ChunkStorage(private val context: Context) {
                 // 4. Verify the written file
                 if (!verifyImageFile(tempFile)) {
                     tempFile.delete()
-                    return@withContext ChunkResult.Error(
-                        ChunkResult.ErrorType.VERIFICATION_FAILED,
+                    return@withContext StorageResult.Error(
+                        ErrorType.VERIFICATION_FAILED,
                         "Written chunk failed verification"
                     )
                 }
@@ -264,8 +233,8 @@ class ChunkStorage(private val context: Context) {
                         tempFile.delete()
                     } catch (e: Exception) {
                         tempFile.delete()
-                        return@withContext ChunkResult.Error(
-                            ChunkResult.ErrorType.WRITE_FAILED,
+                        return@withContext StorageResult.Error(
+                            ErrorType.WRITE_FAILED,
                             "Failed to finalize chunk file: ${e.message}",
                             e
                         )
@@ -278,26 +247,26 @@ class ChunkStorage(private val context: Context) {
                 val chunkId = "${sessionId}_$index"
                 Log.d(TAG, "Saved chunk $chunkId at ${finalFile.absolutePath}")
 
-                ChunkResult.Success(Pair(chunkId, finalFile.absolutePath))
+                StorageResult.Success(Pair(chunkId, finalFile.absolutePath))
 
             } catch (e: SecurityException) {
                 tempFile.delete()
-                ChunkResult.Error(
-                    ChunkResult.ErrorType.PERMISSION_DENIED,
+                StorageResult.Error(
+                    ErrorType.PERMISSION_DENIED,
                     "Permission denied: ${e.message}",
                     e
                 )
             } catch (e: IOException) {
                 tempFile.delete()
-                ChunkResult.Error(
-                    ChunkResult.ErrorType.WRITE_FAILED,
+                StorageResult.Error(
+                    ErrorType.WRITE_FAILED,
                     "IO error: ${e.message}",
                     e
                 )
             } catch (e: Exception) {
                 tempFile.delete()
-                ChunkResult.Error(
-                    ChunkResult.ErrorType.UNKNOWN,
+                StorageResult.Error(
+                    ErrorType.UNKNOWN,
                     "Unexpected error: ${e.message}",
                     e
                 )
@@ -318,8 +287,8 @@ class ChunkStorage(private val context: Context) {
         val nextIndex = (existingChunks.maxOfOrNull { it.index } ?: -1) + 1
 
         when (val result = saveChunk(sessionId, nextIndex, bitmap)) {
-            is ChunkResult.Success -> result.data
-            is ChunkResult.Error -> {
+            is StorageResult.Success -> result.data
+            is StorageResult.Error -> {
                 Log.e(TAG, "Failed to save chunk: ${result.message}")
                 null
             }
@@ -332,7 +301,7 @@ class ChunkStorage(private val context: Context) {
     private fun saveThumbnail(sessionDir: File, sessionId: String, index: Int, bitmap: Bitmap) {
         try {
             val thumbnail = createThumbnail(bitmap)
-            val thumbFilename = "${CHUNK_PREFIX}${sessionId}${CHUNK_MIDDLE}${index}${THUMB_SUFFIX}$IMAGE_EXTENSION"
+            val thumbFilename = "${CHUNK_PREFIX}${sessionId}${CHUNK_MIDDLE}${index}${THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION"
             val thumbFile = File(sessionDir, thumbFilename)
 
             FileOutputStream(thumbFile).use { out ->
@@ -399,7 +368,7 @@ class ChunkStorage(private val context: Context) {
             }
 
             // Check corruption marker
-            val corruptedMarker = File(file.path + CORRUPTED_EXTENSION)
+            val corruptedMarker = File(file.path + StorageHelper.CORRUPTED_EXTENSION)
             if (corruptedMarker.exists()) {
                 Log.w(TAG, "Chunk is marked as corrupted: ${file.path}")
                 return@withContext null
@@ -438,7 +407,7 @@ class ChunkStorage(private val context: Context) {
             // Legacy support: look for file with matching chunk ID
             sessionDir.listFiles()?.find {
                 it.name.contains(chunkId) &&
-                it.name.endsWith(IMAGE_EXTENSION) &&
+                it.name.endsWith(StorageHelper.WEBP_EXTENSION) &&
                 !it.name.contains(THUMB_SUFFIX)
             }
         }
@@ -464,7 +433,7 @@ class ChunkStorage(private val context: Context) {
             }
 
             val thumbFile = if (index != null) {
-                val thumbFilename = "${CHUNK_PREFIX}${sessionId}${CHUNK_MIDDLE}${index}${THUMB_SUFFIX}$IMAGE_EXTENSION"
+                val thumbFilename = "${CHUNK_PREFIX}${sessionId}${CHUNK_MIDDLE}${index}${THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION"
                 File(sessionDir, thumbFilename)
             } else {
                 // Legacy support
@@ -570,14 +539,14 @@ class ChunkStorage(private val context: Context) {
                 deleted = chunkFile.delete()
 
                 // Delete thumbnail
-                val thumbFilename = chunkFile.name.replace(IMAGE_EXTENSION, "${THUMB_SUFFIX}$IMAGE_EXTENSION")
+                val thumbFilename = chunkFile.name.replace(StorageHelper.WEBP_EXTENSION, "${THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION")
                 val thumbFile = File(sessionDir, thumbFilename)
                 if (thumbFile.exists()) {
                     thumbFile.delete()
                 }
 
                 // Delete corrupted marker if exists
-                val corruptedMarker = File(chunkFile.path + CORRUPTED_EXTENSION)
+                val corruptedMarker = File(chunkFile.path + StorageHelper.CORRUPTED_EXTENSION)
                 if (corruptedMarker.exists()) {
                     corruptedMarker.delete()
                 }
@@ -632,11 +601,11 @@ class ChunkStorage(private val context: Context) {
         val chunks = mutableListOf<Chunk>()
 
         sessionDir.listFiles()?.forEach { file ->
-            if (file.isFile && file.name.endsWith(IMAGE_EXTENSION) && !file.name.contains(THUMB_SUFFIX)) {
+            if (file.isFile && file.name.endsWith(StorageHelper.WEBP_EXTENSION) && !file.name.contains(THUMB_SUFFIX)) {
                 val parsed = parseChunkFilename(file.name)
                 if (parsed != null) {
                     val (_, index) = parsed
-                    val isCorrupted = File(file.path + CORRUPTED_EXTENSION).exists()
+                    val isCorrupted = File(file.path + StorageHelper.CORRUPTED_EXTENSION).exists()
 
                     chunks.add(
                         Chunk(
@@ -674,7 +643,7 @@ class ChunkStorage(private val context: Context) {
      */
     suspend fun markAsCorrupted(filePath: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val markerFile = File(filePath + CORRUPTED_EXTENSION)
+            val markerFile = File(filePath + StorageHelper.CORRUPTED_EXTENSION)
             markerFile.createNewFile()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to mark file as corrupted: $filePath", e)
@@ -689,7 +658,7 @@ class ChunkStorage(private val context: Context) {
      * @return true if the chunk is marked as corrupted
      */
     fun isMarkedAsCorrupted(filePath: String): Boolean {
-        val markerFile = File(filePath + CORRUPTED_EXTENSION)
+        val markerFile = File(filePath + StorageHelper.CORRUPTED_EXTENSION)
         return markerFile.exists()
     }
 
@@ -757,7 +726,7 @@ class ChunkStorage(private val context: Context) {
         var cleanedCount = 0
 
         chunksDir.walkTopDown().forEach { file ->
-            if (file.isFile && file.name.endsWith(TEMP_EXTENSION)) {
+            if (file.isFile && file.name.endsWith(StorageHelper.TEMP_EXTENSION)) {
                 if (file.delete()) {
                     cleanedCount++
                 }
