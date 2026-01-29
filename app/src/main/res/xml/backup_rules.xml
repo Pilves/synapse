@@ -4,8 +4,10 @@
    Defines what data is backed up.
 -->
 <full-backup-content>
-    <!-- Include user preferences -->
-    <include domain="sharedpref" path="." />
+    <!-- Exclude all SharedPreferences (may contain API keys and tokens) -->
+    <exclude domain="sharedpref" path="." />
+    <!-- Exclude session files -->
+    <exclude domain="file" path="sessions/" />
     <!-- Exclude cache and sensitive files -->
     <exclude domain="cache" path="." />
     <exclude domain="no_backup" path="." />
