@@ -1,5 +1,7 @@
 package com.synapse.ui.overlay
 
+import android.graphics.Rect
+import android.view.MotionEvent
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -13,10 +15,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
@@ -25,6 +30,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.PointerType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 
@@ -85,7 +91,11 @@ data class StrokeConfig(
  * @param inputMode How to handle stylus vs finger input
  * @param onInputTypeChanged Callback when input type changes
  * @param onFingerTouchPassThrough Callback when finger touch should pass through (for scrolling)
+ * @param regionSelectionEnabled Whether hold-and-drag region selection is enabled
+ * @param onRegionSelected Callback when a screen region is selected via hold-and-drag
+ * @param onVibrate Callback to trigger haptic feedback when region selection activates
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun CaptureCanvas(
     viewModel: CaptureViewModel,
@@ -93,13 +103,29 @@ fun CaptureCanvas(
     strokeConfig: StrokeConfig = StrokeConfig(),
     inputMode: InputMode = InputMode.STYLUS_WRITE_FINGER_SCROLL,
     onInputTypeChanged: ((InputType) -> Unit)? = null,
-    onFingerTouchPassThrough: (() -> Unit)? = null
+    onFingerTouchPassThrough: (() -> Unit)? = null,
+    regionSelectionEnabled: Boolean = false,
+    onRegionSelected: ((Rect) -> Unit)? = null,
+    onVibrate: (() -> Unit)? = null
 ) {
     val strokes by viewModel.strokes.collectAsState()
     val currentStroke by viewModel.currentStroke.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
 
     var lastInputType by remember { mutableStateOf(InputType.UNKNOWN) }
+    var selectionRect by remember { mutableStateOf<Rect?>(null) }
+
+    // Region gesture detector for hold-and-drag selection
+    val regionGestureDetector = remember(regionSelectionEnabled) {
+        if (regionSelectionEnabled) {
+            RegionGestureDetector(
+                onRegionSelected = { rect ->
+                    onRegionSelected?.invoke(rect)
+                },
+                onVibrate = { onVibrate?.invoke() }
+            )
+        } else null
+    }
 
     val density = LocalDensity.current
 
@@ -110,6 +136,36 @@ fun CaptureCanvas(
             .onSizeChanged { size ->
                 viewModel.setCanvasSize(size.width, size.height)
             }
+            .then(
+                if (regionSelectionEnabled && regionGestureDetector != null) {
+                    Modifier.pointerInteropFilter { motionEvent ->
+                        val result = regionGestureDetector.onTouchEvent(motionEvent)
+                        when (result) {
+                            is RegionGestureResult.SelectionInProgress -> {
+                                selectionRect = result.rect
+                                true // consume the event
+                            }
+                            is RegionGestureResult.SelectionComplete -> {
+                                selectionRect = null
+                                true
+                            }
+                            is RegionGestureResult.SelectionCancelled -> {
+                                selectionRect = null
+                                false // let it fall through to stroke handling
+                            }
+                            is RegionGestureResult.Pending -> {
+                                // Still deciding - consume to wait for hold threshold
+                                true
+                            }
+                            is RegionGestureResult.Stroke -> {
+                                selectionRect = null
+                                false // not a region gesture, let stroke handling take over
+                            }
+                            is RegionGestureResult.Ignored -> false
+                        }
+                    }
+                } else Modifier
+            )
             .pointerInput(inputMode) {
                 awaitEachGesture {
                     // Wait for first touch/pen down
@@ -207,6 +263,11 @@ fun CaptureCanvas(
                     outlineWidth = strokeConfig.outlineWidth
                 )
             }
+
+            // Draw region selection rectangle
+            selectionRect?.let { rect ->
+                drawRegionSelection(rect)
+            }
         }
     }
 }
@@ -299,6 +360,50 @@ private fun createSmoothPath(points: List<Offset>): Path {
     path.lineTo(lastPoint.x, lastPoint.y)
 
     return path
+}
+
+/**
+ * Draws a dashed selection rectangle with a semi-transparent fill
+ * to indicate the region being selected.
+ */
+private fun DrawScope.drawRegionSelection(rect: Rect) {
+    val topLeft = Offset(rect.left.toFloat(), rect.top.toFloat())
+    val size = Size(rect.width().toFloat(), rect.height().toFloat())
+
+    // Semi-transparent fill
+    drawRect(
+        color = Color(0x3300AAFF),
+        topLeft = topLeft,
+        size = size
+    )
+
+    // Dashed border
+    drawRect(
+        color = Color(0xFF00AAFF),
+        topLeft = topLeft,
+        size = size,
+        style = Stroke(
+            width = 3f,
+            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+        )
+    )
+
+    // Corner handles
+    val handleSize = 16f
+    val handleColor = Color(0xFF00AAFF)
+    val corners = listOf(
+        topLeft,
+        Offset(rect.right.toFloat() - handleSize, rect.top.toFloat()),
+        Offset(rect.left.toFloat(), rect.bottom.toFloat() - handleSize),
+        Offset(rect.right.toFloat() - handleSize, rect.bottom.toFloat() - handleSize)
+    )
+    for (corner in corners) {
+        drawRect(
+            color = handleColor,
+            topLeft = corner,
+            size = Size(handleSize, handleSize)
+        )
+    }
 }
 
 /**
