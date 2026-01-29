@@ -23,6 +23,14 @@ class GeminiService(
 
         /** Safety threshold applied to all categories. */
         const val DEFAULT_SAFETY_THRESHOLD = "BLOCK_NONE"
+        val ERROR_MAPPINGS = ErrorFieldMappings(
+            errorPath = "error",
+            typePath = "status",
+            messagePath = "message",
+            authErrors = emptySet(),
+            rateLimitErrors = emptySet(),
+            overloadedErrors = emptySet()
+        )
     }
 
     override val provider: LlmProvider = LlmProvider.GEMINI
@@ -157,12 +165,7 @@ class GeminiService(
     }
 
     override fun handleErrorResponse(responseBody: String) {
-        val jsonResponse = JSONObject(responseBody)
-        if (jsonResponse.has("error")) {
-            val error = jsonResponse.getJSONObject("error")
-            val message = error.optString("message", "Unknown error")
-            throw TranscriptionError.InvalidResponse("API error: $message")
-        }
+        classifyError(responseBody, ERROR_MAPPINGS)
     }
 
     private fun buildSafetySettings(): JSONArray {

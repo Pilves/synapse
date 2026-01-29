@@ -22,6 +22,14 @@ class ClaudeService(
         private const val BASE_URL = "https://api.anthropic.com/v1/messages"
         private const val DEFAULT_MODEL = "claude-3-5-haiku-20241022"
         private const val ANTHROPIC_VERSION = "2023-06-01"
+        val ERROR_MAPPINGS = ErrorFieldMappings(
+            errorPath = "error",
+            typePath = "type",
+            messagePath = "message",
+            authErrors = setOf("authentication_error"),
+            rateLimitErrors = setOf("rate_limit_error"),
+            overloadedErrors = setOf("overloaded_error")
+        )
     }
 
     override val provider: LlmProvider = LlmProvider.CLAUDE
@@ -182,18 +190,6 @@ class ClaudeService(
     }
 
     override fun handleErrorResponse(responseBody: String) {
-        val jsonResponse = JSONObject(responseBody)
-        if (jsonResponse.has("error")) {
-            val error = jsonResponse.getJSONObject("error")
-            val message = error.optString("message", "Unknown error")
-            val type = error.optString("type", "")
-
-            when (type) {
-                "authentication_error" -> throw TranscriptionError.ApiKeyInvalid(message)
-                "rate_limit_error" -> throw TranscriptionError.RateLimitError(null)
-                "overloaded_error" -> throw TranscriptionError.ServiceUnavailable(message)
-                else -> throw TranscriptionError.InvalidResponse("API error: $message")
-            }
-        }
+        classifyError(responseBody, ERROR_MAPPINGS)
     }
 }

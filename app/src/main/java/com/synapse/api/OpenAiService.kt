@@ -21,6 +21,15 @@ class OpenAiService(
     companion object {
         private const val BASE_URL = "https://api.openai.com/v1/chat/completions"
         private const val DEFAULT_MODEL = "gpt-4o-mini"
+        val ERROR_MAPPINGS = ErrorFieldMappings(
+            errorPath = "error",
+            typePath = "type",
+            messagePath = "message",
+            codeField = "code",
+            authErrors = setOf("invalid_api_key"),
+            rateLimitErrors = setOf("rate_limit_exceeded", "tokens"),
+            overloadedErrors = emptySet()
+        )
     }
 
     override val provider: LlmProvider = LlmProvider.OPENAI
@@ -191,22 +200,6 @@ class OpenAiService(
     }
 
     override fun handleErrorResponse(responseBody: String) {
-        val jsonResponse = JSONObject(responseBody)
-        if (jsonResponse.has("error")) {
-            val error = jsonResponse.getJSONObject("error")
-            val message = error.optString("message", "Unknown error")
-            val type = error.optString("type", "")
-            val code = error.optString("code", "")
-
-            when {
-                code == "invalid_api_key" || type == "invalid_request_error" && message.contains("API key") ->
-                    throw TranscriptionError.ApiKeyInvalid(message)
-                code == "rate_limit_exceeded" || type == "tokens" ->
-                    throw TranscriptionError.RateLimitError(null)
-                code == "insufficient_quota" ->
-                    throw TranscriptionError.ApiKeyInvalid("Insufficient quota: $message")
-                else -> throw TranscriptionError.InvalidResponse("API error: $message")
-            }
-        }
+        classifyError(responseBody, ERROR_MAPPINGS)
     }
 }
