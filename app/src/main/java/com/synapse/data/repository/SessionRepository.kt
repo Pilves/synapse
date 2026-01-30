@@ -89,6 +89,14 @@ interface SessionRepository {
      * @param context The captured context to add
      */
     suspend fun addContext(sessionId: String, context: CapturedContext)
+
+    /**
+     * Removes a captured context from a session.
+     *
+     * @param sessionId The session ID
+     * @param contextId The context ID to remove
+     */
+    suspend fun removeContext(sessionId: String, contextId: String)
 }
 
 /**
@@ -157,5 +165,9 @@ class SessionRepositoryImpl(
 
     override suspend fun addContext(sessionId: String, context: CapturedContext) {
         sessionStorage.addContext(sessionId, context)
+    }
+
+    override suspend fun removeContext(sessionId: String, contextId: String) {
+        sessionStorage.removeContext(sessionId, contextId)
     }
 }

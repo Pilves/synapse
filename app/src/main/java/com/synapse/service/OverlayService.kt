@@ -422,6 +422,71 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
+    /**
+     * Deletes the most recent scribble (chunk) or captured image/text (context) from the session.
+     * If there are unsaved strokes on the canvas, clears those first.
+     * If the session becomes empty after deletion, discards the session entirely.
+     */
+    private fun deleteLastSessionItem() {
+        // If there are unsaved strokes on the canvas, just clear them
+        val vm = captureViewModel
+        if (vm != null && vm.hasStrokes()) {
+            vm.clearStrokes()
+            Log.d(TAG, "Cleared unsaved strokes from canvas")
+            return
+        }
+
+        val sessionId = currentSessionId.get()
+        if (sessionId == null) {
+            Log.d(TAG, "No active session, nothing to delete")
+            return
+        }
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val session = sessionRepository.getSession(sessionId) ?: return@launch
+
+                // Find the latest item by timestamp
+                val lastChunk = session.chunks.maxByOrNull { it.createdAt }
+                val lastContext = session.contexts.maxByOrNull { it.timestamp }
+
+                val chunkTs = lastChunk?.createdAt ?: 0L
+                val contextTs = lastContext?.timestamp ?: 0L
+
+                if (chunkTs == 0L && contextTs == 0L) {
+                    Log.d(TAG, "Session is empty, discarding")
+                    currentSessionId.set(null)
+                    return@launch
+                }
+
+                if (chunkTs >= contextTs && lastChunk != null) {
+                    // Delete the last chunk
+                    sessionRepository.deleteChunk(sessionId, lastChunk.id)
+                    Log.d(TAG, "Deleted last chunk: ${lastChunk.id}")
+                    launch(Dispatchers.Main) {
+                        if (pendingChunkCount.intValue > 0) {
+                            pendingChunkCount.intValue--
+                        }
+                    }
+                } else if (lastContext != null) {
+                    // Delete the last context
+                    sessionRepository.removeContext(sessionId, lastContext.id)
+                    Log.d(TAG, "Deleted last context: ${lastContext.id}")
+                }
+
+                // Check if session is now empty — if so, discard it
+                val updated = sessionRepository.getSession(sessionId)
+                if (updated != null && updated.chunks.isEmpty() && updated.contexts.isEmpty()) {
+                    sessionRepository.deleteSession(sessionId)
+                    currentSessionId.set(null)
+                    Log.d(TAG, "Session now empty, discarded")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to delete last session item", e)
+            }
+        }
+    }
+
     private fun endCurrentSession() {
         val sessionId = currentSessionId.get() ?: return
         serviceScope.launch(Dispatchers.IO) {
@@ -840,10 +905,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                             finishSessionAndOpenReview()
                         },
                         onDiscard = {
-                            captureViewModel?.clearStrokes()
-                            // Discard current session without ending
-                            currentSessionId.set(null)
-                            hideCaptureOverlay()
+                            deleteLastSessionItem()
                         },
                         onToggleRegionMode = {
                             isRegionMode = !isRegionMode
@@ -1355,14 +1417,14 @@ private fun CaptureOverlayContent(
                     )
                 }
 
-                // Discard - clear all and close
+                // Delete last item - removes latest scribble/image from session
                 SmallFloatingActionButton(
                     onClick = onDiscard,
                     containerColor = MaterialTheme.colorScheme.error
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Discard",
+                        contentDescription = "Delete last item",
                         tint = MaterialTheme.colorScheme.onError
                     )
                 }

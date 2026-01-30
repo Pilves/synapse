@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.synapse.util.OutputSanitizer
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -197,8 +198,10 @@ class SyncRepositoryImpl(
                 return@withContext error
             }
 
-            // Get transcription service (needed if any segment has chunks)
-            val transcriptionService = if (session.chunks.isNotEmpty()) {
+            // Get transcription service (needed if any segment has chunks or RegionImage contexts)
+            val hasImages = session.contexts.any { it is CapturedContext.RegionImage }
+            val needsLlm = session.chunks.isNotEmpty() || hasImages
+            val transcriptionService = if (needsLlm) {
                 val service = transcriptionServiceProvider()
                 if (service == null || !service.isConfigured()) {
                     Log.e(TAG, "Transcription service not configured")
@@ -223,15 +226,26 @@ class SyncRepositoryImpl(
                 _syncStatus.value = SyncStatus.InProgress(segProgress)
 
                 when {
-                    // Context-only segment: write context text as markdown quotes
+                    // Context-only segment: write context text as markdown quotes,
+                    // but send RegionImage contexts through vision LLM for transcription
                     segment.contexts.isNotEmpty() && segment.chunks.isEmpty() -> {
-                        val content = buildString {
-                            for (ctx in segment.contexts) {
+                        val sb = StringBuilder()
+                        for (ctx in segment.contexts) {
+                            if (ctx is CapturedContext.RegionImage && transcriptionService != null) {
+                                // Send screenshot image to LLM for transcription
+                                val transcribed = transcribeRegionImage(ctx, transcriptionService)
+                                if (transcribed != null) {
+                                    sb.append(transcribed)
+                                    sb.append("\n\n")
+                                } else {
+                                    sb.append("> (image transcription failed)\n\n")
+                                }
+                            } else {
                                 val text = contextToText(ctx)
-                                append("> $text\n\n")
+                                sb.append("> $text\n\n")
                             }
                         }
-                        segmentResults.add(content)
+                        segmentResults.add(sb.toString())
                         Log.d(TAG, "Segment $segIndex: context-only (${segment.contexts.size} contexts)")
                     }
 
@@ -430,6 +444,40 @@ class SyncRepositoryImpl(
             if (ctx.pageTitle != null) append(" - ${ctx.pageTitle}")
         }
         is CapturedContext.RegionImage -> ctx.description ?: "(image)"
+    }
+
+    /**
+     * Sends a RegionImage to the LLM vision API for transcription.
+     * Returns the transcribed text, or null if transcription fails.
+     */
+    private suspend fun transcribeRegionImage(
+        ctx: CapturedContext.RegionImage,
+        transcriptionService: TranscriptionService
+    ): String? {
+        return try {
+            val file = File(ctx.imagePath)
+            if (!file.exists() || !file.canRead()) {
+                Log.w(TAG, "RegionImage file not accessible: ${ctx.imagePath}")
+                return null
+            }
+            val imageBytes = file.readBytes()
+            if (imageBytes.isEmpty()) {
+                Log.w(TAG, "RegionImage file is empty: ${ctx.imagePath}")
+                return null
+            }
+
+            val prompt = "Transcribe all text and content visible in this screenshot. " +
+                "Output clean markdown suitable for Obsidian notes. " +
+                "If there are diagrams or charts, describe them. " +
+                "Do not add any commentary — only output the transcribed content."
+
+            val result = transcriptionService.visionQuery(prompt, listOf(imageBytes))
+            Log.d(TAG, "RegionImage transcribed: ${result.take(80)}")
+            result
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to transcribe RegionImage: ${ctx.imagePath}", e)
+            null
+        }
     }
 
     /**

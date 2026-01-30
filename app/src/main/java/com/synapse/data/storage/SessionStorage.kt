@@ -431,6 +431,22 @@ class SessionStorage(
     }
 
     /**
+     * Removes a context from a session by its context ID.
+     */
+    suspend fun removeContext(sessionId: String, contextId: String): Session? = mutex.withLock {
+        val session = getSession(sessionId) ?: return@withLock null
+
+        val updatedSession = session.copy(
+            contexts = session.contexts.filter { it.id != contextId }
+        )
+        saveSessionInternal(updatedSession)
+        refreshSessionInMemory(updatedSession)
+
+        Log.d(TAG, "Removed context $contextId from session $sessionId")
+        updatedSession
+    }
+
+    /**
      * Deletes a session and its metadata file.
      * Optionally also deletes associated chunk files.
      *
