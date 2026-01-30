@@ -112,7 +112,7 @@ class SyncStorage(private val context: Context) {
             errorMessage = null
         )
 
-        val queue = loadQueueFromDisk().toMutableList()
+        val queue = _queueFlow.value.toMutableList()
         queue.add(item)
         saveQueueToDisk(queue)
         _queueFlow.value = queue
@@ -127,7 +127,7 @@ class SyncStorage(private val context: Context) {
      * @param item The updated item
      */
     suspend fun updateQueueItem(item: SyncQueueItem) = mutex.withLock {
-        val queue = loadQueueFromDisk().toMutableList()
+        val queue = _queueFlow.value.toMutableList()
         val index = queue.indexOfFirst { it.id == item.id }
 
         if (index != -1) {
@@ -144,7 +144,7 @@ class SyncStorage(private val context: Context) {
      * @param id The queue item ID
      */
     suspend fun removeFromQueue(id: String) = mutex.withLock {
-        val queue = loadQueueFromDisk().toMutableList()
+        val queue = _queueFlow.value.toMutableList()
         val removed = queue.removeAll { it.id == id }
 
         if (removed) {
@@ -217,7 +217,7 @@ class SyncStorage(private val context: Context) {
      * @return Number of items reset
      */
     suspend fun resetFailedItems(): Int = mutex.withLock {
-        val queue = loadQueueFromDisk().toMutableList()
+        val queue = _queueFlow.value.toMutableList()
         var count = 0
 
         queue.forEachIndexed { index, item ->
