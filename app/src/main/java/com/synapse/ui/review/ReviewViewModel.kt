@@ -3,16 +3,12 @@ package com.synapse.ui.review
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.data.cost.LlmCostCalculator
-import com.synapse.data.destination.DestinationRepository
 import com.synapse.data.LlmSettingsProvider
 import com.synapse.data.repository.ProjectRepository
 import com.synapse.data.repository.SessionRepository
 import com.synapse.data.repository.SyncRepository
 import com.synapse.model.CapturedContext
 import com.synapse.model.CostEstimate
-import com.synapse.model.Destination
-import com.synapse.model.IntentData
-import com.synapse.model.IntentType
 import com.synapse.model.QueueStatus
 import com.synapse.model.Chunk
 import com.synapse.model.Project
@@ -49,24 +45,12 @@ data class ReviewUiState(
     val error: String? = null,
     val previewChunk: Chunk? = null,
     val contexts: List<CapturedContext> = emptyList(),
-    val availableDestinations: List<Destination> = emptyList(),
-    val selectedDestinations: List<String> = emptyList(),
     val costEstimate: CostEstimate? = null,
     val queueStatus: QueueStatus? = null,
     val pendingSyncCount: Int = 0,
     val queuedSyncCount: Int = 0,
-    val failedSyncCount: Int = 0,
-    val pendingDialog: PendingDialog? = null
+    val failedSyncCount: Int = 0
 )
-
-/**
- * Sealed class representing the single pending dialog that can be shown at a time.
- */
-sealed class PendingDialog {
-    data class IntentConfirmation(val noteText: String, val suggestedType: IntentType) : PendingDialog()
-    data class QuestionAnswer(val question: String, val answer: String) : PendingDialog()
-    data class Reminder(val reminderText: String, val timeText: String?) : PendingDialog()
-}
 
 /**
  * ViewModel for the Review screen
@@ -78,7 +62,6 @@ class ReviewViewModel(
     private val sessionRepository: SessionRepository,
     private val projectRepository: ProjectRepository,
     private val syncRepository: SyncRepository,
-    private val destinationRepository: DestinationRepository? = null,
     private val llmSettingsProvider: LlmSettingsProvider? = null
 ) : ViewModel() {
 
@@ -88,7 +71,6 @@ class ReviewViewModel(
     init {
         observeSessions()
         loadProjects()
-        loadDestinations()
     }
 
     /**
@@ -179,29 +161,6 @@ class ReviewViewModel(
                 }
             }
         }
-    }
-
-    /**
-     * Load available destinations for the destination selector
-     */
-    private fun loadDestinations() {
-        viewModelScope.launch {
-            val destinations = destinationRepository?.getAllDestinations() ?: emptyList()
-            val mainDest = destinationRepository?.mainDestination?.value
-            _uiState.update { state ->
-                state.copy(
-                    availableDestinations = destinations,
-                    selectedDestinations = if (mainDest != null) listOf(mainDest) else emptyList()
-                )
-            }
-        }
-    }
-
-    /**
-     * Update the selected destinations list
-     */
-    fun updateSelectedDestinations(destinations: List<String>) {
-        _uiState.update { it.copy(selectedDestinations = destinations) }
     }
 
     /**
@@ -491,75 +450,6 @@ class ReviewViewModel(
         _uiState.update { state ->
             state.copy(contexts = state.contexts.filter { it.id != contextId })
         }
-    }
-
-    /**
-     * Show an intent confirmation dialog for a transcribed note
-     */
-    fun showIntentConfirmation(noteText: String, suggestedType: IntentType) {
-        _uiState.update { state ->
-            state.copy(pendingDialog = PendingDialog.IntentConfirmation(noteText, suggestedType))
-        }
-    }
-
-    /**
-     * Handle intent confirmation result
-     */
-    fun confirmIntent(intentType: IntentType) {
-        _uiState.update { it.copy(pendingDialog = null) }
-    }
-
-    /**
-     * Dismiss intent confirmation dialog
-     */
-    fun dismissIntentConfirmation() {
-        _uiState.update { it.copy(pendingDialog = null) }
-    }
-
-    /**
-     * Show a question/answer dialog
-     */
-    fun showQuestionAnswer(question: String, answer: String) {
-        _uiState.update { state ->
-            state.copy(pendingDialog = PendingDialog.QuestionAnswer(question, answer))
-        }
-    }
-
-    /**
-     * Handle saving both question and answer
-     */
-    fun saveQuestionAndAnswer() {
-        _uiState.update { it.copy(pendingDialog = null) }
-    }
-
-    /**
-     * Handle saving question only
-     */
-    fun saveQuestionOnly() {
-        _uiState.update { it.copy(pendingDialog = null) }
-    }
-
-    /**
-     * Dismiss question/answer dialog
-     */
-    fun dismissQuestionAnswer() {
-        _uiState.update { it.copy(pendingDialog = null) }
-    }
-
-    /**
-     * Show a reminder dialog
-     */
-    fun showReminder(reminderText: String, timeText: String?) {
-        _uiState.update { state ->
-            state.copy(pendingDialog = PendingDialog.Reminder(reminderText, timeText))
-        }
-    }
-
-    /**
-     * Dismiss reminder dialog
-     */
-    fun dismissReminder() {
-        _uiState.update { it.copy(pendingDialog = null) }
     }
 
     /**
