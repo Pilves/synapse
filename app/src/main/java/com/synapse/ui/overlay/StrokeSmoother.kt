@@ -113,6 +113,7 @@ object StrokeSmoother {
      * Creates a smooth path from simple Offset points (backward-compatible).
      * Uses quadratic bezier (same as the original CaptureCanvas logic).
      */
+    @JvmName("createSmoothPathFromOffsets")
     fun createSmoothPath(points: List<Offset>): Path {
         val path = Path()
         if (points.isEmpty()) return path
