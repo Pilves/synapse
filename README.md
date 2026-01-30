@@ -123,9 +123,9 @@ Choose default destinations during onboarding, or change per-session in the revi
 |---|---|---|
 | Chunk timeout | 1 second | 1–10 seconds |
 | Session auto-end | 15 minutes | 5–60 minutes |
-| Fade animation | 0.2 seconds | 0–1 second |
+| Fade animation | 0.3 seconds | 0–1 second |
 | Rate limiting | Fast | Safe / Fast |
-| Advanced formatting | Off | On (Mermaid, LaTeX) / Off |
+| Advanced formatting | On | On (Mermaid, LaTeX) / Off |
 
 ## Usage
 
@@ -136,13 +136,6 @@ Choose default destinations during onboarding, or change per-session in the revi
 3. **Auto-chunking** — after the chunk timeout (default 1s of inactivity), a chunk is captured and the canvas clears for more writing
 4. **Tap Done** — ends the session and opens the review screen
 
-### Input Modes
-
-| Mode | Stylus | Finger | Best for |
-|---|---|---|---|
-| **Stylus write, finger scroll** (default) | Writes | Passes through to app below | Note-taking over scrollable apps |
-| **Both write** | Writes | Writes | Finger-only devices |
-| **Stylus only** | Writes | Ignored | Avoiding accidental palm input |
 
 ### Context Capture
 
@@ -383,4 +376,4 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
 
 ## License
 
-MIT License — see [LICENSE](LICENSE).
+GPL License — see [LICENSE](LICENSE).
