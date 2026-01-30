@@ -133,23 +133,15 @@ class SessionStorage(
      * @param sessionId The session ID
      * @return StorageResult with the Session
      */
-    suspend fun getSession(sessionId: String): StorageResult<Session> = withContext(Dispatchers.IO) {
-        try {
-            val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
-            if (!file.exists()) {
-                return@withContext StorageResult.Error(
-                    ErrorType.NOT_FOUND,
-                    "Session not found: $sessionId"
-                )
-            }
-
-            val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
-            StorageResult.Success(dto.toSession())
-        } catch (e: Exception) {
+    suspend fun getSession(sessionId: String): StorageResult<Session> {
+        // Read from in-memory flow first (kept in sync by all write operations)
+        val session = _sessionsFlow.value.find { it.id == sessionId }
+        return if (session != null) {
+            StorageResult.Success(session)
+        } else {
             StorageResult.Error(
-                ErrorType.READ_FAILED,
-                "Failed to read session: ${e.message}",
-                e
+                ErrorType.NOT_FOUND,
+                "Session not found: $sessionId"
             )
         }
     }
@@ -170,8 +162,8 @@ class SessionStorage(
      *
      * @return List of all sessions, sorted by start time descending
      */
-    suspend fun getAllSessions(): List<Session> = withContext(Dispatchers.IO) {
-        loadSessionsFromDisk()
+    suspend fun getAllSessions(): List<Session> {
+        return _sessionsFlow.value
     }
 
     /**
@@ -179,8 +171,8 @@ class SessionStorage(
      *
      * @return The active session, or null if none
      */
-    suspend fun getActiveSession(): Session? = withContext(Dispatchers.IO) {
-        loadSessionsFromDisk().find { it.endedAt == null }
+    suspend fun getActiveSession(): Session? {
+        return _sessionsFlow.value.find { it.endedAt == null }
     }
 
     /**
@@ -191,8 +183,8 @@ class SessionStorage(
      *
      * @return List of pending sessions, sorted by start time descending
      */
-    suspend fun getPendingSessions(): List<Session> = withContext(Dispatchers.IO) {
-        loadSessionsFromDisk().filter { session ->
+    suspend fun getPendingSessions(): List<Session> {
+        return _sessionsFlow.value.filter { session ->
             session.endedAt != null && (session.chunks.isNotEmpty() || session.contexts.isNotEmpty())
         }
     }
@@ -202,8 +194,8 @@ class SessionStorage(
      *
      * @return List of in-progress sessions
      */
-    suspend fun getInProgressSessions(): List<Session> = withContext(Dispatchers.IO) {
-        loadSessionsFromDisk().filter { session ->
+    suspend fun getInProgressSessions(): List<Session> {
+        return _sessionsFlow.value.filter { session ->
             session.endedAt == null
         }
     }
@@ -426,13 +418,13 @@ class SessionStorage(
      * @param chunkId The chunk ID
      * @return Pair of session ID and chunk, or null if not found
      */
-    suspend fun findChunk(chunkId: String): Pair<String, Chunk>? = withContext(Dispatchers.IO) {
-        loadSessionsFromDisk().forEach { session ->
+    suspend fun findChunk(chunkId: String): Pair<String, Chunk>? {
+        _sessionsFlow.value.forEach { session ->
             session.chunks.find { it.id == chunkId }?.let { chunk ->
-                return@withContext Pair(session.id, chunk)
+                return Pair(session.id, chunk)
             }
         }
-        null
+        return null
     }
 
     /**
@@ -462,14 +454,14 @@ class SessionStorage(
      *
      * @return Map of statistic names to values
      */
-    suspend fun getSessionStatistics(): Map<String, Any> = withContext(Dispatchers.IO) {
-        val allSessions = loadSessionsFromDisk()
+    suspend fun getSessionStatistics(): Map<String, Any> {
+        val allSessions = _sessionsFlow.value
         val pendingSessions = allSessions.filter { it.endedAt != null && it.chunks.isNotEmpty() }
         val inProgressSessions = allSessions.filter { it.endedAt == null }
         val completedSessions = allSessions.filter { it.endedAt != null }
         val totalChunks = allSessions.sumOf { it.chunks.size }
 
-        mapOf(
+        return mapOf(
             "totalSessions" to allSessions.size,
             "pendingSessions" to pendingSessions.size,
             "inProgressSessions" to inProgressSessions.size,
@@ -484,11 +476,11 @@ class SessionStorage(
      * @param deleteEmpty Whether to delete sessions with no chunks
      * @return Number of sessions cleaned up
      */
-    suspend fun cleanupOrphanedSessions(deleteEmpty: Boolean = true): Int = withContext(Dispatchers.IO) {
-        if (!deleteEmpty) return@withContext 0
+    suspend fun cleanupOrphanedSessions(deleteEmpty: Boolean = true): Int {
+        if (!deleteEmpty) return 0
 
         var cleanedCount = 0
-        val sessions = loadSessionsFromDisk()
+        val sessions = _sessionsFlow.value
 
         for (session in sessions) {
             // Only clean up ended sessions with no chunks
