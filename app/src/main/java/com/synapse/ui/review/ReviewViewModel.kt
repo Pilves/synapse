@@ -388,6 +388,7 @@ class ReviewViewModel(
                 val totalSessions = sessionsToSync.size
                 var syncedCount = 0
                 var failedCount = 0
+                var lastErrorMessage: String? = null
 
                 for ((index, session) in sessionsToSync.withIndex()) {
                     val result = syncRepository.syncSession(
@@ -408,14 +409,19 @@ class ReviewViewModel(
                             // Still delete the session - partial success means some chunks synced
                             sessionRepository.deleteSession(session.id)
                         }
-                        is SyncStatus.Error -> failedCount++
+                        is SyncStatus.Error -> {
+                            failedCount++
+                            lastErrorMessage = result.message
+                        }
                         else -> {}
                     }
                 }
 
                 val finalStatus = when {
                     failedCount == 0 && syncedCount > 0 -> SyncStatus.Success
-                    syncedCount == 0 -> SyncStatus.Error("All sessions failed to sync")
+                    syncedCount == 0 -> SyncStatus.Error(
+                        lastErrorMessage ?: "All sessions failed to sync"
+                    )
                     else -> SyncStatus.PartialSuccess(syncedCount, failedCount)
                 }
 
