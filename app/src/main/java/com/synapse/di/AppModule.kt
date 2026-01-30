@@ -36,6 +36,7 @@ import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.NetworkMonitor
 import com.synapse.util.PermissionHelper
 import okhttp3.CertificatePinner
+import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
@@ -181,6 +182,7 @@ val apiModule = module {
             .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .certificatePinner(get())
+            .connectionPool(ConnectionPool(2, 30, TimeUnit.SECONDS))
             .retryOnConnectionFailure(true)
             .build()
     }
