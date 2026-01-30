@@ -20,6 +20,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.roundToInt
 
 /**
@@ -45,12 +46,14 @@ class FloatingBubbleManager(
     private var bubbleIconView: android.widget.ImageView? = null
 
     /** Last known bubble X position, used for toolbar anchoring. */
-    var lastBubbleX: Int = 100
-        private set
+    var lastBubbleX: Int
+        get() = cachedBubbleX.get()
+        private set(value) { cachedBubbleX.set(value) }
 
     /** Last known bubble Y position, used for toolbar anchoring. */
-    var lastBubbleY: Int = 300
-        private set
+    var lastBubbleY: Int
+        get() = cachedBubbleY.get()
+        private set(value) { cachedBubbleY.set(value) }
 
     /** Number of pending chunks to display on the badge. */
     var pendingChunkCount: Int = 0
@@ -61,23 +64,30 @@ class FloatingBubbleManager(
     private val bubbleXKey = intPreferencesKey("bubble_position_x")
     private val bubbleYKey = intPreferencesKey("bubble_position_y")
 
+    // In-memory cache of bubble position, loaded async from DataStore
+    private val cachedBubbleX = AtomicInteger(100)
+    private val cachedBubbleY = AtomicInteger(300)
+
+    init {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val prefs = dataStore.data.first()
+                cachedBubbleX.set(prefs[bubbleXKey] ?: 100)
+                cachedBubbleY.set(prefs[bubbleYKey] ?: 300)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to load bubble position, using defaults", e)
+            }
+        }
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     fun showFloatingBubble() {
         Log.d(TAG, "showFloatingBubble called, existing view: ${floatingBubbleView != null}")
         if (floatingBubbleView != null) return
 
-        // Load saved bubble position (or use defaults)
-        var savedX = 100
-        var savedY = 300
-        try {
-            val prefs = kotlinx.coroutines.runBlocking {
-                dataStore.data.first()
-            }
-            savedX = prefs[bubbleXKey] ?: 100
-            savedY = prefs[bubbleYKey] ?: 300
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to load bubble position, using defaults", e)
-        }
+        // Use cached bubble position (loaded async from DataStore in init)
+        val savedX = cachedBubbleX.get()
+        val savedY = cachedBubbleY.get()
 
         try {
         // Get screen dimensions
