@@ -43,6 +43,7 @@ import com.synapse.util.NetworkMonitor
 import com.synapse.util.PermissionHelper
 import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
+import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.viewmodel.dsl.viewModel
@@ -69,7 +70,11 @@ val storageModule = module {
     single { ChunkStorage(androidContext()) }
 
     // SessionStorage - requires Context and optionally ChunkStorage for cleanup
-    single { SessionStorage(androidContext(), get<ChunkStorage>()) }
+    single {
+        SessionStorage(androidContext(), get<ChunkStorage>()).also {
+            runBlocking { it.initialize() }
+        }
+    }
 
     // ProjectStorage - requires Context
     single { ProjectStorage(androidContext()) }

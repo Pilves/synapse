@@ -315,6 +315,12 @@ class SessionStorage(
     suspend fun addChunk(sessionId: String, chunk: Chunk): Session? = mutex.withLock {
         val session = getSession(sessionId) ?: return@withLock null
 
+        // Deduplicate: skip if a chunk with this ID already exists
+        if (session.chunks.any { it.id == chunk.id }) {
+            Log.w(TAG, "Chunk ${chunk.id} already exists in session $sessionId, skipping")
+            return@withLock session
+        }
+
         val updatedSession = session.copy(
             chunks = session.chunks + chunk
         )
@@ -358,6 +364,12 @@ class SessionStorage(
                 ErrorType.NOT_FOUND,
                 "Session not found: $sessionId"
             )
+
+        // Deduplicate: return existing session if chunk already exists
+        if (session.chunks.any { it.id == chunk.id }) {
+            Log.w(TAG, "Chunk ${chunk.id} already exists in session $sessionId, skipping")
+            return@withLock StorageResult.Success(session)
+        }
 
         try {
             val updatedSession = session.copy(
