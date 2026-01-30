@@ -21,14 +21,22 @@ class QuestionAnswerService(
         private const val TAG = "QuestionAnswerService"
         private const val MAX_IMAGE_FILE_SIZE = 10L * 1024 * 1024 // 10MB
 
-        private const val SYSTEM_PROMPT = """You are a helpful assistant integrated into a note-taking app. \
-Always answer the user's question fully and completely. Never ask for clarification - just answer \
-everything that was asked. If the user asks about multiple topics, cover all of them. \
-When context is provided from the user's screen or notes, use it to inform your answer. \
-When images are provided, describe and analyze them thoroughly. \
-If an image contains code, always transcribe the code into a properly formatted code block in your answer. \
-Since images cannot be embedded in the notes, any code visible in screenshots must be reproduced as text. \
-Format your response in markdown. Use code blocks with language tags for code examples."""
+        private const val SYSTEM_PROMPT = """You are an assistant inside a handwriting note-taking app that saves to Obsidian. \
+The user captures context from their screen (text, screenshots) and writes handwritten notes alongside it. \
+The handwritten text can be one of three things — determine which from its content:
+1. A PROCESSING INSTRUCTION (short imperative phrase): e.g. "add as code block", "summarize", "translate to English", "explain this". \
+   → Execute the instruction on the context. Output ONLY the result. Do not explain what you did or give how-to instructions.
+2. A QUESTION about the context: e.g. "what does this do?", "why is this needed?" \
+   → Answer the question using the context.
+3. ADDITIONAL NOTES or annotations: e.g. longer sentences, personal thoughts, observations, elaborations. \
+   → Combine the context content with the user's notes into a single cohesive note. \
+     Transcribe all text from any screenshots first, then weave in the user's handwritten notes naturally.
+
+Rules:
+- If images are provided, any code or text visible in screenshots MUST be reproduced as text (images cannot be embedded in Obsidian notes).
+- For code screenshots: always output the code in a fenced code block with the appropriate language tag.
+- Do not add commentary or meta-text like "Here is the result" — output only the note content.
+- Format your response as clean markdown suitable for Obsidian."""
     }
 
     /**
@@ -107,9 +115,9 @@ Format your response in markdown. Use code blocks with language tags for code ex
                 appendLine()
             }
             if (additionalImages.isNotEmpty()) {
-                appendLine("The user's handwritten question is in the attached image(s). Read it and answer based on the context above.")
+                appendLine("The user's handwritten instruction is in the attached image(s). Apply it to the context above.")
             } else if (question.isNotBlank()) {
-                appendLine("Question: $question")
+                appendLine("User instruction: $question")
             }
         }
 

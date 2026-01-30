@@ -341,24 +341,19 @@ class SyncRepositoryImpl(
                         }
 
                         val content = buildString {
-                            // Context
-                            append("### Context\n\n")
-                            for (ctx in segment.contexts) {
-                                append("> ${contextToText(ctx)}\n\n")
-                            }
-                            // Question
-                            if (notes.isNotEmpty()) {
-                                append("### Question\n\n")
+                            if (answerText != null) {
+                                // LLM produced a result — output it directly
+                                append(answerText)
+                                append("\n\n")
+                            } else {
+                                // Fallback: no LLM answer, show raw context + notes
+                                for (ctx in segment.contexts) {
+                                    append("> ${contextToText(ctx)}\n\n")
+                                }
                                 notes.forEach { note ->
                                     append(note)
                                     append("\n\n")
                                 }
-                            }
-                            // Answer
-                            if (answerText != null) {
-                                append("### Answer\n\n")
-                                append(answerText)
-                                append("\n\n")
                             }
                         }
                         segmentResults.add(content)
@@ -490,11 +485,14 @@ class SyncRepositoryImpl(
     ): List<String> {
         val rawContent = rawSegments.joinToString("\n---\n\n")
 
-        val systemPrompt = """You are a markdown formatting assistant for Obsidian notes.
-You will receive raw markdown content. Your job is to clean up the formatting so it
-renders nicely in Obsidian. Fix spacing issues, ensure headers/lists/code blocks are
-properly formatted, and improve readability. Do NOT change the actual content or meaning —
-only fix formatting. Return ONLY the cleaned markdown, nothing else."""
+        val systemPrompt = """You are a final-pass editor for Obsidian notes. You receive raw markdown and must:
+1. Fix formatting: spacing, headers, lists, code blocks (add language tags if missing), LaTeX, Mermaid.
+2. Remove any meta-commentary that is not actual note content — phrases like "Here is the result", \
+"The transcribed content is:", "I've summarized the following", or similar preamble/postamble. \
+The output should read as if the user wrote it themselves.
+3. Remove duplicate content — if the same text appears both as a quote and in the body, keep only the body version.
+4. Do NOT change the actual meaning or substance of the content.
+5. Return ONLY the cleaned markdown, nothing else."""
 
         val polished = transcriptionService.textQuery(rawContent, systemPrompt)
         return listOf(polished)

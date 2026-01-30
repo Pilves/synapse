@@ -2,11 +2,12 @@ package com.synapse.ui.review
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.data.destination.DestinationRepository
+import com.synapse.data.LlmSettingsProvider
 import com.synapse.data.repository.ProjectRepository
 import com.synapse.data.repository.SessionRepository
 import com.synapse.data.repository.SyncRepository
-import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.model.CapturedContext
 import com.synapse.model.CostEstimate
 import com.synapse.model.Destination
@@ -77,7 +78,8 @@ class ReviewViewModel(
     private val sessionRepository: SessionRepository,
     private val projectRepository: ProjectRepository,
     private val syncRepository: SyncRepository,
-    private val destinationRepository: DestinationRepository? = null
+    private val destinationRepository: DestinationRepository? = null,
+    private val llmSettingsProvider: LlmSettingsProvider? = null
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(ReviewUiState())
@@ -109,7 +111,21 @@ class ReviewViewModel(
                         isLoading = false
                     )
                 }
+                refreshCostEstimate()
             }
+        }
+    }
+
+    /**
+     * Recalculate cost estimate from the configured LLM provider.
+     */
+    private fun refreshCostEstimate() {
+        viewModelScope.launch {
+            try {
+                val (provider, _, _) = llmSettingsProvider?.readLlmSettings()
+                    ?: return@launch
+                updateCostEstimate(provider.defaultModel)
+            } catch (_: Exception) { }
         }
     }
 

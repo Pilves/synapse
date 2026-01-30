@@ -10,6 +10,8 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.synapse.data.storage.SecureKeyStorage
+import com.synapse.service.SynapseAccessibilityService
 import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.ApiKeyValidator
 import com.synapse.util.PermissionHelper
@@ -34,7 +36,8 @@ import kotlinx.coroutines.launch
  */
 class OnboardingViewModel(
     application: Application,
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val secureKeyStorage: SecureKeyStorage
 ) : AndroidViewModel(application) {
 
     companion object {
@@ -76,17 +79,19 @@ class OnboardingViewModel(
             // Check permissions
             val hasOverlay = permissionHelper.hasOverlayPermission()
             val hasNotification = permissionHelper.hasNotificationPermission()
+            val hasAccessibility = SynapseAccessibilityService.isEnabled(context)
 
             // Load all state from single settings DataStore
             val prefs = dataStore.data.first()
             val isComplete = prefs[PreferenceKeys.ONBOARDING_COMPLETE] ?: false
             val vaultPath = prefs[SettingsKeys.VAULT_LOCATION]
-            val apiKey = prefs[SettingsKeys.TRANSCRIPTION_API_KEY]
-                ?: prefs[SettingsKeys.API_KEY]
+            val apiKey = secureKeyStorage.getKey("transcription")
+                ?: secureKeyStorage.getKey("legacy")
 
             _state.update { currentState ->
                 currentState.copy(
                     hasOverlayPermission = hasOverlay,
+                    hasAccessibilityPermission = hasAccessibility,
                     hasNotificationPermission = hasNotification,
                     hasVaultConfigured = !vaultPath.isNullOrBlank(),
                     vaultPath = vaultPath,
@@ -104,6 +109,7 @@ class OnboardingViewModel(
         _state.update { currentState ->
             currentState.copy(
                 hasOverlayPermission = permissionHelper.hasOverlayPermission(),
+                hasAccessibilityPermission = SynapseAccessibilityService.isEnabled(context),
                 hasNotificationPermission = permissionHelper.hasNotificationPermission()
             )
         }
@@ -223,14 +229,16 @@ class OnboardingViewModel(
                     return@launch
                 }
 
-                // Save to settings DataStore (app-wide source of truth)
+                // Save to encrypted storage (used by LlmSettingsProvider at sync time)
                 val trimmedKey = apiKey.trim()
+                secureKeyStorage.saveKey("transcription", trimmedKey)
+                secureKeyStorage.saveKey("legacy", trimmedKey)
+
+                // Save provider to DataStore (non-secret config)
                 val provider = ApiKeyValidator.detectProvider(trimmedKey)
                 context.settingsDataStore.edit { prefs ->
                     prefs[SettingsKeys.TRANSCRIPTION_PROVIDER] = provider
-                    prefs[SettingsKeys.TRANSCRIPTION_API_KEY] = trimmedKey
                     prefs[SettingsKeys.LLM_PROVIDER] = provider
-                    prefs[SettingsKeys.API_KEY] = trimmedKey
                 }
 
                 _state.update { currentState ->

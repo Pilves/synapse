@@ -15,6 +15,12 @@ data class OnboardingState(
     val hasOverlayPermission: Boolean = false,
 
     /**
+     * Whether the accessibility service has been enabled.
+     * Required for screen text capture functionality.
+     */
+    val hasAccessibilityPermission: Boolean = false,
+
+    /**
      * Whether an Obsidian vault folder has been selected and configured.
      */
     val hasVaultConfigured: Boolean = false,
@@ -73,7 +79,7 @@ data class OnboardingState(
     /**
      * Returns the total number of pages in the onboarding flow.
      */
-    val totalPages: Int = 7
+    val totalPages: Int = 5
 
     companion object {
         /**

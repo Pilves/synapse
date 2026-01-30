@@ -83,9 +83,9 @@ class SettingsViewModel(
         val INPUT_MODE = InputMode.STYLUS_WRITE_FINGER_SCROLL
         const val DEFAULT_VIEW_STITCHED = true
         val LLM_PROVIDER = LlmProvider.GEMINI
-        const val CLEANUP_MODE = false
-        const val ADVANCED_FORMATTING = false
-        const val RATE_LIMITING_SAFE = true
+        const val CLEANUP_MODE = true
+        const val ADVANCED_FORMATTING = true
+        const val RATE_LIMITING_SAFE = false
         const val VAULT_LOCATION = ""
         const val PREFER_TEXT_ONLY = true
     }

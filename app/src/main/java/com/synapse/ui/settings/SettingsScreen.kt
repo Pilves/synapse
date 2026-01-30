@@ -45,7 +45,7 @@ import androidx.compose.ui.unit.dp
 import com.synapse.BuildConfig
 import com.synapse.api.LlmProvider
 import com.synapse.ui.components.LlmSettingsSection
-import com.synapse.ui.overlay.InputMode
+
 import com.synapse.ui.settings.components.SettingsDropdown
 import com.synapse.ui.settings.components.SettingsSegmentedToggle
 import com.synapse.ui.settings.components.SettingsSlider
@@ -82,8 +82,6 @@ fun SettingsScreen(
     // Collect all settings states
     val chunkTimeout by viewModel.chunkTimeout.collectAsState()
     val fadeAnimation by viewModel.fadeAnimation.collectAsState()
-    val sessionAutoEnd by viewModel.sessionAutoEnd.collectAsState()
-    val inputMode by viewModel.inputMode.collectAsState()
     val defaultViewStitched by viewModel.defaultViewStitched.collectAsState()
     val llmProvider by viewModel.llmProvider.collectAsState()
     val apiKey by viewModel.apiKey.collectAsState()
@@ -148,31 +146,6 @@ fun SettingsScreen(
                 valueRange = 0f..1f,
                 steps = 9,
                 valueFormatter = ::formatDecimalSeconds
-            )
-
-            var localSessionAutoEnd by remember(sessionAutoEnd) { mutableFloatStateOf(sessionAutoEnd.toFloat()) }
-            SettingsSlider(
-                label = "Session auto-end",
-                value = localSessionAutoEnd,
-                onValueChange = { localSessionAutoEnd = it },
-                onValueChangeFinished = { viewModel.setSessionAutoEnd(localSessionAutoEnd.roundToInt()) },
-                valueRange = 5f..60f,
-                steps = 10,
-                valueFormatter = ::formatMinutes
-            )
-
-            SettingsDropdown(
-                label = "Input mode",
-                options = InputMode.entries,
-                selectedOption = inputMode,
-                onOptionSelected = { viewModel.setInputMode(it) },
-                optionLabel = { mode ->
-                    when (mode) {
-                        InputMode.STYLUS_WRITE_FINGER_SCROLL -> "Stylus writes, finger scrolls"
-                        InputMode.BOTH_WRITE -> "Both stylus and finger write"
-                        InputMode.STYLUS_ONLY -> "Stylus only"
-                    }
-                }
             )
 
             SettingsDivider()
@@ -253,7 +226,7 @@ fun SettingsScreen(
                 icon = Icons.AutoMirrored.Filled.Help,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse("https://github.com/synapse-app/synapse/wiki")
+                        data = Uri.parse("https://github.com/Pilves/synapse#readme")
                     }
                     context.startActivity(intent)
                 }
@@ -269,7 +242,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Code,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse("https://github.com/synapse-app/synapse")
+                        data = Uri.parse("https://github.com/Pilves/synapse")
                     }
                     context.startActivity(intent)
                 }

@@ -24,7 +24,9 @@ object LlmCostCalculator {
         contextCount: Int = 0,
         model: String
     ): CostEstimate {
-        val price = pricing[model] ?: return CostEstimate(0, 0, 0.0, model)
+        val price = pricing[model]
+            ?: pricing.entries.firstOrNull { model.startsWith(it.key) }?.value
+            ?: return CostEstimate(0, 0, 0.0, model)
 
         val imageBytes = chunkSizes.sum()
         val imageTokens = (imageBytes / 1024) * TOKENS_PER_KB_IMAGE

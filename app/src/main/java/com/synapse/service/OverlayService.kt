@@ -89,6 +89,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -187,8 +188,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                         endCurrentSession()
                     }
                     is CaptureEvent.SessionTimeout -> {
-                        Log.d(TAG, "Session timeout")
+                        Log.d(TAG, "Session timeout — ending session and closing overlay")
                         endCurrentSession()
+                        withContext(Dispatchers.Main) { hideCaptureOverlay() }
                     }
                     is CaptureEvent.Error -> {
                         Log.e(TAG, "Capture error: ${event.message}")

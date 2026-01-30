@@ -130,30 +130,6 @@ fun OnboardingScreen(
         viewModel.refreshPermissions()
     }
 
-    val screenCaptureLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
-            com.synapse.service.MediaProjectionHolder.setResult(result.resultCode, requireNotNull(result.data))
-            // Forward to OverlayService if it's running
-            try {
-                val serviceIntent = android.content.Intent(context, com.synapse.service.OverlayService::class.java).apply {
-                    action = com.synapse.service.OverlayService.ACTION_SET_MEDIA_PROJECTION
-                    putExtra(com.synapse.service.OverlayService.EXTRA_PROJECTION_RESULT_CODE, result.resultCode)
-                    putExtra(com.synapse.service.OverlayService.EXTRA_PROJECTION_DATA, result.data)
-                }
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent)
-                } else {
-                    context.startService(serviceIntent)
-                }
-            } catch (e: Exception) {
-                // Service might not be running yet during onboarding, that's ok
-            }
-            goToNextPage()
-        }
-    }
-
     val folderPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
@@ -213,34 +189,22 @@ fun OnboardingScreen(
                     0 -> WelcomePage(
                         onGetStarted = goToNextPage
                     )
-                    1 -> OverlayPermissionPage(
-                        hasPermission = state.hasOverlayPermission,
-                        onGrantPermission = {
+                    1 -> PermissionsPage(
+                        hasOverlayPermission = state.hasOverlayPermission,
+                        hasAccessibilityPermission = state.hasAccessibilityPermission,
+                        onGrantOverlay = {
                             viewModel.getOverlayPermissionIntent()?.let { intent ->
                                 overlayPermissionLauncher.launch(intent)
                             }
                         },
-                        onRefreshPermissions = { viewModel.refreshPermissions() },
-                        onSkip = goToNextPage,
-                        onContinue = goToNextPage
-                    )
-                    2 -> AccessibilityPermissionScreen(
-                        onEnabled = goToNextPage,
-                        onSkip = goToNextPage
-                    )
-                    3 -> ScreenCapturePermissionPage(
-                        onGrant = {
-                            val projectionManager = context.getSystemService(
-                                android.content.Context.MEDIA_PROJECTION_SERVICE
-                            ) as android.media.projection.MediaProjectionManager
-                            screenCaptureLauncher.launch(
-                                projectionManager.createScreenCaptureIntent()
-                            )
+                        onGrantAccessibility = {
+                            val intent = android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                            context.startActivity(intent)
                         },
-                        onSkip = goToNextPage,
+                        onRefreshPermissions = { viewModel.refreshPermissions() },
                         onContinue = goToNextPage
                     )
-                    4 -> SelectVaultPage(
+                    2 -> SelectVaultPage(
                         hasVaultConfigured = state.hasVaultConfigured,
                         vaultPath = state.vaultPath,
                         onPickFolder = {
@@ -249,11 +213,11 @@ fun OnboardingScreen(
                         onSkip = goToNextPage,
                         onContinue = goToNextPage
                     )
-                    5 -> DestinationSetupScreen(
+                    4 -> DestinationSetupScreen(
                         onComplete = { _ -> goToNextPage() },
                         onSkip = goToNextPage
                     )
-                    6 -> ApiKeyPage(
+                    5 -> ApiKeyPage(
                         hasApiKey = state.hasApiKey,
                         isValidating = state.isValidatingApiKey,
                         onSaveApiKey = { key ->
@@ -326,17 +290,18 @@ private fun WelcomePage(
 }
 
 /**
- * Page 2: Overlay permission page
+ * Page 1: Combined permissions page for overlay and accessibility.
  */
 @Composable
-private fun OverlayPermissionPage(
-    hasPermission: Boolean,
-    onGrantPermission: () -> Unit,
+private fun PermissionsPage(
+    hasOverlayPermission: Boolean,
+    hasAccessibilityPermission: Boolean,
+    onGrantOverlay: () -> Unit,
+    onGrantAccessibility: () -> Unit,
     onRefreshPermissions: () -> Unit,
-    onSkip: () -> Unit,
     onContinue: () -> Unit
 ) {
-    // Check permission when returning from settings
+    // Refresh permission state when returning from settings
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -348,55 +313,114 @@ private fun OverlayPermissionPage(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    OnboardingPage(
-        icon = "\uD83D\uDCF1",
-        title = "Overlay Permission",
-        description = "Synapse needs to draw over\nother apps to capture your notes.",
-        primaryButtonText = if (hasPermission) "Continue" else "Grant Permission",
-        onPrimaryClick = if (hasPermission) onContinue else onGrantPermission,
-        tertiaryButtonText = if (!hasPermission) "Skip for now" else null,
-        onTertiaryClick = if (!hasPermission) onSkip else null
-    )
+    val allGranted = hasOverlayPermission && hasAccessibilityPermission
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Text(
+            text = "\uD83D\uDD12",
+            fontSize = androidx.compose.ui.unit.TextUnit(72f, androidx.compose.ui.unit.TextUnitType.Sp),
+            modifier = Modifier.padding(bottom = 24.dp)
+        )
+
+        Text(
+            text = "Permissions",
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(bottom = 16.dp)
+        )
+
+        Text(
+            text = "Synapse needs these permissions\nto capture your handwriting.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            modifier = Modifier.padding(bottom = 32.dp)
+        )
+
+        // Overlay permission row
+        PermissionRow(
+            label = "Draw over apps",
+            description = "Show capture overlay",
+            granted = hasOverlayPermission,
+            onGrant = onGrantOverlay
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Accessibility permission row
+        PermissionRow(
+            label = "Accessibility",
+            description = "Read on-screen text for context",
+            granted = hasAccessibilityPermission,
+            onGrant = onGrantAccessibility
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
+        androidx.compose.material3.Button(
+            onClick = onContinue,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+        ) {
+            Text(
+                text = if (allGranted) "Continue" else "Skip for now",
+                style = MaterialTheme.typography.labelLarge
+            )
+        }
+    }
 }
 
 /**
- * Page 3: Screen capture permission page
+ * A row showing a permission with its grant status and an action button.
  */
 @Composable
-private fun ScreenCapturePermissionPage(
-    onGrant: () -> Unit,
-    onSkip: () -> Unit,
-    onContinue: () -> Unit
+private fun PermissionRow(
+    label: String,
+    description: String,
+    granted: Boolean,
+    onGrant: () -> Unit
 ) {
-    // After returning from the system dialog, auto-advance if permission was granted
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                if (com.synapse.service.MediaProjectionHolder.hasResult()) {
-                    onContinue()
-                }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        if (granted) {
+            Text(
+                text = "\u2705",
+                fontSize = androidx.compose.ui.unit.TextUnit(24f, androidx.compose.ui.unit.TextUnitType.Sp)
+            )
+        } else {
+            androidx.compose.material3.OutlinedButton(onClick = onGrant) {
+                Text("Grant")
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
-
-    val hasPermission = com.synapse.service.MediaProjectionHolder.hasResult()
-
-    OnboardingPage(
-        icon = "\uD83D\uDDBC\uFE0F",
-        title = "Screen Capture",
-        description = "Synapse can capture screenshots\nwhen no text is found in a selection.\nGreat for diagrams and images.",
-        primaryButtonText = if (hasPermission) "Continue" else "Grant Permission",
-        onPrimaryClick = if (hasPermission) onContinue else onGrant,
-        tertiaryButtonText = if (!hasPermission) "Skip for now" else null,
-        onTertiaryClick = if (!hasPermission) onSkip else null
-    )
 }
 
 /**
- * Page 4: Select vault page
+ * Page 3: Select vault page
  */
 @Composable
 private fun SelectVaultPage(
