@@ -422,8 +422,7 @@ class ReviewViewModel(
                         is SyncStatus.PartialSuccess -> {
                             syncedCount++
                             failedCount += result.failedCount
-                            // Still delete the session - partial success means some chunks synced
-                            sessionRepository.deleteSession(session.id)
+                            // Keep session in review so user can retry failed chunks
                         }
                         is SyncStatus.Error -> {
                             failedCount++
@@ -444,10 +443,8 @@ class ReviewViewModel(
                 progressJob.cancel()
                 _uiState.update { it.copy(syncStatus = finalStatus) }
 
-                // If successful, refresh the session list
-                if (finalStatus == SyncStatus.Success || finalStatus is SyncStatus.PartialSuccess) {
-                    loadPendingSessions()
-                }
+                // Refresh the session list (removes deleted sessions, keeps partial failures)
+                loadPendingSessions()
             } catch (e: Exception) {
                 progressJob.cancel()
                 _uiState.update {
