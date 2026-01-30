@@ -93,6 +93,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.android.ext.android.inject
+import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 import androidx.datastore.preferences.core.floatPreferencesKey
@@ -213,8 +214,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 launch(Dispatchers.Main) {
                     pendingChunkCount.intValue++
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to save chunk", e)
+            } catch (e: IOException) {
+                Log.e(TAG, "IO error saving chunk", e)
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Invalid state saving chunk", e)
             }
         }
     }
@@ -243,7 +246,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 try {
                     regionText = SynapseAccessibilityService.getInstance()
                         ?.getTextInRegion(region)
-                } catch (e: Exception) {
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "Text extraction denied", e)
+                } catch (e: IllegalStateException) {
                     Log.w(TAG, "Text extraction failed, will try screenshot", e)
                 }
 
@@ -302,8 +307,14 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     isRegionMode = false
                     refreshCaptureOverlay()
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to capture region", e)
+            } catch (e: IOException) {
+                Log.e(TAG, "IO error capturing region", e)
+                capturedTextPreview.value = "[Selection failed]"
+            } catch (e: SecurityException) {
+                Log.e(TAG, "Permission denied capturing region", e)
+                capturedTextPreview.value = "[Selection failed]"
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Invalid state capturing region", e)
                 capturedTextPreview.value = "[Selection failed]"
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                     isRegionMode = false
@@ -323,8 +334,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             }
             Log.d(TAG, "Screenshot saved to ${file.absolutePath}")
             file.absolutePath
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save screenshot", e)
+        } catch (e: IOException) {
+            Log.e(TAG, "IO error saving screenshot", e)
+            null
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Permission denied saving screenshot", e)
             null
         }
     }
@@ -354,8 +368,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     }
                     capturedTextPreview.value = preview
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to add pending context to session", e)
+            } catch (e: IOException) {
+                Log.e(TAG, "IO error adding pending context", e)
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Invalid state adding pending context", e)
             }
         }
     }
@@ -382,8 +398,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     vibrator.vibrate(50)
                 }
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to vibrate", e)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Vibration permission denied", e)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Vibrator not available", e)
         }
     }
 
@@ -395,8 +413,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 Log.d(TAG, "Ended session: $sessionId")
                 currentSessionId.set(null)
                 ScreenshotManager.cleanupScreenshots(this@OverlayService)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to end session", e)
+            } catch (e: IOException) {
+                Log.e(TAG, "IO error ending session", e)
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Invalid state ending session", e)
             }
         }
     }
@@ -419,8 +439,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     currentSessionId.set(null)
                 }
                 ScreenshotManager.cleanupScreenshots(this@OverlayService)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to end session", e)
+            } catch (e: IOException) {
+                Log.e(TAG, "IO error ending session for review", e)
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Invalid state ending session for review", e)
             }
 
             // Hide overlay and open review on main thread after session is saved
@@ -550,8 +572,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 screenshotManager.setMediaProjection(projection)
                 Log.d(TAG, "MediaProjection set from service")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to set media projection", e)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Permission denied setting media projection", e)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Invalid state setting media projection", e)
         }
     }
 
@@ -577,8 +601,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 )
                 Log.d(TAG, "Upgraded foreground service type for media projection")
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to upgrade foreground service type", e)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Permission denied upgrading foreground service type", e)
+            return false
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Invalid state upgrading foreground service type", e)
             return false
         }
 
@@ -646,8 +673,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         windowManager.addView(floatingBubbleView, params)
             Log.d(TAG, "Floating bubble added to window manager")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to show floating bubble", e)
+        } catch (e: SecurityException) {
+            Log.e(TAG, "Overlay permission denied for bubble", e)
+        } catch (e: WindowManager.BadTokenException) {
+            Log.e(TAG, "Bad window token showing bubble", e)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Invalid state showing bubble", e)
         }
     }
 
@@ -655,8 +686,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         floatingBubbleView?.let {
             try {
                 windowManager.removeViewImmediate(it)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to remove floating bubble view", e)
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "Bubble view not attached", e)
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "Invalid state removing bubble view", e)
             }
             floatingBubbleView = null
         }
@@ -681,8 +714,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 val prefs = settingsDataStore.data.first()
                 val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 1f
                 chunkTimeoutMs = (chunkTimeoutSeconds * 1000).toLong()
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to read settings", e)
+            } catch (e: IOException) {
+                Log.e(TAG, "IO error reading settings", e)
+            } catch (e: IllegalStateException) {
+                Log.e(TAG, "Invalid state reading settings", e)
             }
         }
 
@@ -770,8 +805,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         captureOverlayView?.let {
             try {
                 windowManager.removeViewImmediate(it)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to remove capture overlay view", e)
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "Capture overlay view not attached", e)
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "Invalid state removing capture overlay", e)
             }
             captureOverlayView = null
         }
@@ -963,8 +1000,10 @@ class TouchDifferentiatingOverlayView(
         try {
             windowManager?.updateViewLayout(this, params)
             Log.d(TAG, "Touch capture enabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to enable touch capture", e)
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "View not attached for touch capture", e)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Invalid state enabling touch capture", e)
         }
     }
 
@@ -977,8 +1016,10 @@ class TouchDifferentiatingOverlayView(
         try {
             windowManager?.updateViewLayout(this, params)
             Log.d(TAG, "Pass-through enabled")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to enable pass-through", e)
+        } catch (e: IllegalArgumentException) {
+            Log.e(TAG, "View not attached for pass-through", e)
+        } catch (e: IllegalStateException) {
+            Log.e(TAG, "Invalid state enabling pass-through", e)
         }
     }
 
