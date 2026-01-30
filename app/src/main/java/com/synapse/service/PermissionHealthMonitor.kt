@@ -1,11 +1,7 @@
 package com.synapse.service
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import android.provider.Settings
-import androidx.core.content.ContextCompat
 import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,40 +39,22 @@ class PermissionHealthMonitor(private val context: Context) {
     private val _health = MutableStateFlow(PermissionHealth.HEALTHY)
     val health: StateFlow<PermissionHealth> = _health.asStateFlow()
 
-    private var receiver: BroadcastReceiver? = null
+    private var isMonitoring = false
 
     /**
      * Starts monitoring. Call from service onCreate.
      */
     fun startMonitoring() {
+        if (isMonitoring) return
+        isMonitoring = true
         refresh()
-
-        receiver = object : BroadcastReceiver() {
-            override fun onReceive(ctx: Context, intent: Intent) {
-                if (intent.action == ACTION_ACCESSIBILITY_STATE_CHANGED) {
-                    val connected = intent.getBooleanExtra(EXTRA_IS_CONNECTED, false)
-                    Log.d(TAG, "Accessibility state broadcast: connected=$connected")
-                    refresh()
-                }
-            }
-        }
-
-        val filter = IntentFilter(ACTION_ACCESSIBILITY_STATE_CHANGED)
-        ContextCompat.registerReceiver(context, receiver, filter, ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     /**
      * Stops monitoring. Call from service onDestroy.
      */
     fun stopMonitoring() {
-        receiver?.let {
-            try {
-                context.unregisterReceiver(it)
-            } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "Receiver not registered", e)
-            }
-        }
-        receiver = null
+        isMonitoring = false
     }
 
     /**
