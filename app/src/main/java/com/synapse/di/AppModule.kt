@@ -4,6 +4,9 @@ import com.synapse.api.DefaultTranscriptionServiceFactory
 import com.synapse.api.LlmProviderFactory
 import com.synapse.api.QuestionAnswerService
 
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.data.repository.ChunkRepository
 import com.synapse.data.repository.ChunkRepositoryImpl
@@ -56,8 +59,8 @@ val storageModule = module {
     // SecureKeyStorage - encrypted API key storage
     single { SecureKeyStorage(androidContext()) }
 
-    // ChunkStorage - requires Context
-    single { ChunkStorage(androidContext()) }
+    // ChunkStorage - requires Context, scope for async thumbnail generation
+    single { ChunkStorage(androidContext(), CoroutineScope(SupervisorJob() + Dispatchers.IO)) }
 
     // SessionStorage - requires Context and optionally ChunkStorage for cleanup
     single { SessionStorage(androidContext(), get<ChunkStorage>()) }

@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -29,7 +31,10 @@ import java.io.IOException
  * - Corruption detection and marking
  * - Session-based chunk organization
  */
-class ChunkStorage(private val context: Context) {
+class ChunkStorage(
+    private val context: Context,
+    private val scope: CoroutineScope? = null
+) {
 
     companion object {
         private const val TAG = "ChunkStorage"
@@ -261,8 +266,14 @@ class ChunkStorage(private val context: Context) {
                     }
                 }
 
-                // 6. Save thumbnail
-                saveThumbnail(sessionDir, sessionId, index, bitmap)
+                // 6. Save thumbnail asynchronously (non-critical)
+                if (scope != null) {
+                    scope.launch(Dispatchers.IO) {
+                        saveThumbnail(sessionDir, sessionId, index, bitmap)
+                    }
+                } else {
+                    saveThumbnail(sessionDir, sessionId, index, bitmap)
+                }
 
                 val chunkId = "${sessionId}_$index"
                 Log.d(TAG, "Saved chunk $chunkId at ${finalFile.absolutePath}")
