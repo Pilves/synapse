@@ -30,6 +30,34 @@ class SynapseAccessibilityService : AccessibilityService() {
         }
     }
 
+    /**
+     * Packages excluded from accessibility event processing.
+     * Banking, password managers, and other sensitive app categories.
+     */
+    private val excludedPackages = setOf(
+        // Banking apps
+        "com.chase.sig.android",
+        "com.bankofamerica.cashpromobile",
+        "com.wf.wellsfargomobile",
+        "com.citi.citimobile",
+        "com.usaa.mobile.android.usaa",
+        "com.ally.MobileBanking",
+        // Password managers
+        "com.onepassword.android",
+        "com.lastpass.lpandroid",
+        "com.x8bit.bitwarden",
+        "com.dashlane",
+        "keepass2android.keepass2android",
+        // Payment apps
+        "com.venmo",
+        "com.squareup.cash",
+        "com.paypal.android.p2pmobile",
+        // Authenticator apps
+        "com.google.android.apps.authenticator2",
+        "com.authy.authy",
+        "org.fedorahosted.freeotp"
+    )
+
     private var currentSourceApp: String? = null
     private var currentSourceUrl: String? = null
     private var currentSelectedText: String? = null
@@ -52,6 +80,10 @@ class SynapseAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // Skip events from excluded sensitive apps
+        val pkg = event.packageName?.toString()
+        if (pkg != null && pkg in excludedPackages) return
+
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
                 val text = event.text?.joinToString("") ?: ""
@@ -61,6 +93,14 @@ class SynapseAccessibilityService : AccessibilityService() {
             }
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 currentSourceApp = event.packageName?.toString()
+                // Clear cached data when switching to an excluded app
+                if (currentSourceApp in excludedPackages) {
+                    nodeCache = emptyList()
+                    currentSelectedText = null
+                    currentSourceUrl = null
+                    currentPageTitle = null
+                    return
+                }
                 updateUrlFromWindow(event)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
