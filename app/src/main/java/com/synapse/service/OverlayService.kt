@@ -95,6 +95,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.android.ext.android.inject
+import android.view.Choreographer
 import android.widget.Toast
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
@@ -784,6 +785,12 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             y = 300
         }
 
+        // Accumulate drag deltas and apply once per vsync frame for smooth movement
+        var pendingDx = 0f
+        var pendingDy = 0f
+        var frameCallbackScheduled = false
+        val choreographer = Choreographer.getInstance()
+
         floatingBubbleView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
@@ -807,9 +814,23 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                         },
                         onDismiss = { stopOverlay() },
                         onPositionChanged = { dx, dy ->
-                            params.x += dx.roundToInt()
-                            params.y += dy.roundToInt()
-                            windowManager.updateViewLayout(this, params)
+                            pendingDx += dx
+                            pendingDy += dy
+                            if (!frameCallbackScheduled) {
+                                frameCallbackScheduled = true
+                                choreographer.postFrameCallback {
+                                    frameCallbackScheduled = false
+                                    params.x += pendingDx.roundToInt()
+                                    params.y += pendingDy.roundToInt()
+                                    pendingDx = 0f
+                                    pendingDy = 0f
+                                    try {
+                                        windowManager.updateViewLayout(this, params)
+                                    } catch (e: IllegalArgumentException) {
+                                        Log.w(TAG, "Bubble view not attached during drag update", e)
+                                    }
+                                }
+                            }
                         }
                     )
                 }
