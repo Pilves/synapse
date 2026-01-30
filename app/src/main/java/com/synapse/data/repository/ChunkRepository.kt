@@ -91,7 +91,14 @@ class ChunkRepositoryImpl(
     private val sessionStorage: SessionStorage
 ) : ChunkRepository {
 
-    private val imageCache = LruCache<String, Bitmap>(20)
+    private val imageCache = object : LruCache<String, Bitmap>(
+        (Runtime.getRuntime().maxMemory() / 16).toInt()
+    ) {
+        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+        override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) {
+            if (evicted) oldValue.recycle()
+        }
+    }
 
     override suspend fun saveChunk(sessionId: String, bitmap: Bitmap, timestampSeconds: Float): Chunk {
         // Validate session exists
