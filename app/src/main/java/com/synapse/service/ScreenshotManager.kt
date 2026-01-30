@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.WindowManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -103,10 +104,24 @@ class ScreenshotManager(private val context: Context) {
     private fun setupVirtualDisplay(projection: MediaProjection) {
         tearDownVirtualDisplay()
 
-        val metrics = context.resources.displayMetrics
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
+        val wm = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val width: Int
+        val height: Int
+        val density: Int
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val windowMetrics = wm.currentWindowMetrics
+            width = windowMetrics.bounds.width()
+            height = windowMetrics.bounds.height()
+            density = context.resources.configuration.densityDpi
+        } else {
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            wm.defaultDisplay.getRealMetrics(metrics)
+            width = metrics.widthPixels
+            height = metrics.heightPixels
+            density = metrics.densityDpi
+        }
+        Log.d(TAG, "Screen metrics for VirtualDisplay: ${width}x${height} @ ${density}dpi")
 
         val reader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
         imageReader = reader
@@ -259,12 +274,22 @@ class ScreenshotManager(private val context: Context) {
         // Wait for a fresh frame after reattaching surface
         delay(200)
 
-        val image = requireNotNull(reader) { "ImageReader not initialized" }.acquireLatestImage()
-        val fullBitmap = image?.let { imageToBitmap(it) }
-        image?.close()
+        // Retry acquiring the latest image up to 3 times with increasing delays
+        var fullBitmap: Bitmap? = null
+        val actualReader = requireNotNull(reader) { "ImageReader not initialized" }
+        for (attempt in 1..3) {
+            val image = actualReader.acquireLatestImage()
+            if (image != null) {
+                fullBitmap = imageToBitmap(image)
+                image.close()
+                break
+            }
+            Log.w(TAG, "acquireLatestImage returned null (attempt $attempt/3)")
+            delay(150L * attempt)
+        }
 
         if (fullBitmap == null) {
-            Log.w(TAG, "acquireLatestImage returned null")
+            Log.w(TAG, "Failed to acquire image after 3 attempts")
             return@withContext null
         }
 
