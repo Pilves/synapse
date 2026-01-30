@@ -513,15 +513,13 @@ class SyncRepositoryImpl(
     }
 
     /**
-     * Sends assembled markdown through the LLM to clean up formatting for Obsidian.
-     * Returns a single-element list with the polished content.
+     * Sends each segment through the LLM individually to clean up formatting for Obsidian.
+     * Segments are polished independently to prevent content bleeding between them.
      */
     private suspend fun polishMarkdownFormatting(
         rawSegments: List<String>,
         transcriptionService: TranscriptionService
     ): List<String> {
-        val rawContent = rawSegments.joinToString("\n---\n\n")
-
         val systemPrompt = """You are a final-pass editor for Obsidian notes. You receive raw markdown and must:
 1. Fix formatting: spacing, headers, lists, code blocks (add language tags if missing), LaTeX, Mermaid.
 2. Remove any meta-commentary that is not actual note content — phrases like "Here is the result", \
@@ -531,8 +529,14 @@ The output should read as if the user wrote it themselves.
 4. Do NOT change the actual meaning or substance of the content.
 5. Return ONLY the cleaned markdown, nothing else."""
 
-        val polished = transcriptionService.textQuery(rawContent, systemPrompt)
-        return listOf(polished)
+        return rawSegments.map { segment ->
+            try {
+                transcriptionService.textQuery(segment, systemPrompt)
+            } catch (e: Exception) {
+                Log.w(TAG, "Segment polish failed, using raw", e)
+                segment
+            }
+        }
     }
 
     /**
