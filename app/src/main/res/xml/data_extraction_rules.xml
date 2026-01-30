@@ -1,16 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
    Data extraction rules for Android 12+ backup.
-   Only backs up non-sensitive file data, excluding sessions.
+   Excludes sensitive directories from cloud backup and device transfer.
    SharedPreferences and databases are NOT included (no include rule = not backed up).
 -->
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
         <include domain="file" path="." />
         <exclude domain="file" path="sessions/" />
+        <exclude domain="file" path="datastore/" />
+        <exclude domain="file" path="projects/" />
+        <exclude domain="file" path="sync/" />
     </cloud-backup>
     <device-transfer>
         <include domain="file" path="." />
         <exclude domain="file" path="sessions/" />
+        <exclude domain="file" path="datastore/" />
+        <exclude domain="file" path="projects/" />
+        <exclude domain="file" path="sync/" />
     </device-transfer>
 </data-extraction-rules>
