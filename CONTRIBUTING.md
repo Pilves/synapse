@@ -39,7 +39,7 @@ Overlay and accessibility features can behave differently across OEMs, so device
 
 ### Prerequisites
 
-- Android Studio Ladybug (2024.2) or newer
+- Android Studio Meerkat (2025.1) or newer (required for AGP 9.0)
 - JDK 17
 - An Android device running 8.0+ (API 26+) with USB debugging enabled
 - A stylus is recommended but not required
@@ -57,7 +57,11 @@ Open the project in Android Studio, let Gradle sync, and run on your device.
 
 ```bash
 # Debug build
+# Linux/macOS
 ./gradlew assembleDebug
+
+# Windows
+gradlew.bat assembleDebug
 
 # APK output
 # app/build/outputs/apk/debug/app-debug.apk
@@ -83,7 +87,7 @@ Before submitting a PR, run the following locally:
 ./gradlew lint
 ```
 
-The CI pipeline runs both on every PR. Ensure these pass before requesting review.
+Run `./gradlew test` and `./gradlew lint` locally before submitting. CI can also be triggered manually via GitHub Actions.
 
 For overlay, accessibility, and MediaProjection features, manual testing on a physical device is required — emulators do not support these.
 

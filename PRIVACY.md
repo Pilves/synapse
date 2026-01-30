@@ -34,12 +34,20 @@ Synapse is a local-first Android app. Your data stays on your device unless you 
 - Crash data includes: stack traces, device manufacturer/model, Android API level, and OS version
 - This data is sent to Google servers to help diagnose and fix bugs
 - Crashlytics does not collect usage behavior, screen views, or user interactions
-- You can opt out of crash reporting by disabling Crashlytics in your device's Google settings
+- Crash reporting is enabled by default and there is currently no in-app opt-out toggle. Users can disable Firebase Crashlytics data collection through their device's Google settings, though this may not fully override the app's behavior
 
 ### Storage Access (SAF)
 - Used to read and write files in your chosen Obsidian vault or local folder
 - Access is scoped to the specific folder you select -- Synapse cannot access other files on your device
 - URI permissions persist across app restarts so you don't have to re-select your vault
+
+### Android Permissions
+- `INTERNET` — Used for LLM API calls and crash reporting
+- `FOREGROUND_SERVICE` — Required for the persistent overlay and capture services
+- `SYSTEM_ALERT_WINDOW` — Draw-over-other-apps permission for the floating overlay
+- `POST_NOTIFICATIONS` — Required on Android 13+ for foreground service notifications
+- `WAKE_LOCK` — Keeps CPU active during sync processing
+- `VIBRATE` — Haptic feedback during region selection
 
 ## What Synapse Does NOT Do
 

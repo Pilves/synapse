@@ -205,26 +205,22 @@ implementation("com.google.mlkit:text-recognition:16.0.0")  // More accurate tha
 
 # REMAINING ITEMS (not in a phase)
 
-## Persistent Retry/Sync Queue
+## Persistent Retry/Sync Queue [COMPLETED]
 
-`RetryHelper.kt` handles transient HTTP failures with exponential backoff, but if the process dies mid-sync, work is lost.
+The persistent sync queue is fully implemented. `SyncStorage` persists a JSON-based work queue at `files/sync/queue.json`, and `SyncRepositoryImpl` processes queued items (PENDING -> IN_PROGRESS -> COMPLETED/FAILED) with `retryFailed()` support.
 
-### Changes
-
-| File | Change |
-|------|--------|
-| New or extend `SyncStorage` | Persistent work queue (Room or WorkManager) for failed sync operations |
-| `SyncRepositoryImpl` | Retry on next app launch or connectivity change |
-| `NetworkMonitor` | Trigger queue processing on connectivity restored |
+**Still needed:** Connectivity-triggered queue processing (`NetworkMonitor` triggering `processQueue()` on network restored) is not yet implemented.
 
 ## Error Recovery UI
+
+Backend infrastructure exists: `FloatingBubble` supports overlay badges and `SyncRepositoryImpl.retryFailed()` resets FAILED items to PENDING. However, specific UI elements are still needed.
 
 ### Changes
 
 | File | Change |
 |------|--------|
 | `FloatingBubble` | Add red badge for sync failure (distinct from amber permission warning) |
-| `ReviewScreen.kt` | Add retry action for failed syncs |
+| `ReviewScreen.kt` | Add destination picker (currently a TODO placeholder) |
 
 ## Destination Picker
 

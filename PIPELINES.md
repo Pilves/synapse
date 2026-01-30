@@ -28,10 +28,13 @@ Touch Input → CaptureCanvas → StrokeManager (accumulates points)
   → StrokeManager.toBitmapForOcr() renders strokes to bitmap
   → ChunkStorage.saveChunk() writes WebP (quality 85%)
       ├─ Atomic write: .tmp → verify RIFF/WEBP header → rename to .webp
-      ├─ Location: cache/chunks/{sessionId}/session_{id}_chunk_{index}.webp
+      ├─ Location: cache/chunks/{sessionId}/session_{sessionId}_chunk_{index}.webp
       └─ Thumbnail: _thumb.webp (quality 70%, 150px)
   → SessionStorage appends chunk metadata to session JSON
-  → CaptureViewModel emits ChunkCaptured event → fade animation (200ms)
+  → CaptureViewModel emits ChunkCaptured event
+  → OverlayService → OverlaySessionManager.saveChunk()
+  → ChunkRepository.saveChunk() → ChunkStorage (disk write) + SessionStorage (metadata)
+  → fade animation (200ms)
 ```
 
 **End state:** WebP image on disk + metadata in session JSON.
@@ -44,7 +47,7 @@ Touch Input → CaptureCanvas → StrokeManager (accumulates points)
 
 ```
 startSession()
-  → sessionId = System.currentTimeMillis()
+  → sessionId = UUID.randomUUID().toString()
   → SessionStorage.createSession() writes files/sessions/{sessionId}.json
   → Starts 1-second interval timer for duration tracking
 
@@ -113,7 +116,7 @@ Context boundaries create new segments.
 
 Three segment types, each processed differently:
 
-**Context-only** — No LLM call. Written as a markdown blockquote.
+**Context-only** — Text contexts are routed through LLM markdown formatting when a transcription service is available. Otherwise written as a markdown blockquote.
 
 **Chunk-only** — Images sent to LLM for transcription:
 ```
@@ -126,25 +129,33 @@ ChunkRepository.getChunkImage() → load from storage
 ```
 Transcribe chunk images → question text
 Load context images from disk
+  → RegionImage contexts sent through vision LLM for transcription
   → QuestionAnswerService.answerQuestion()
   → LLM.visionQuery(prompt, allImages)
   → Returns markdown: Context / Question / Answer
+```
+
+### Phase 3.5: Post-Processing
+```
+All assembled markdown → polishMarkdownFormatting() (LLM cleanup pass)
+  → OutputSanitizer.sanitize() applied to all content
 ```
 
 ### Phase 4: File Writing
 ```
 Parse project URI (SAF)
   → Find or create target file in project folder
-  → Append markdown with timestamp header via ContentResolver
+  → Append sanitized markdown with timestamp header via ContentResolver
 ```
 
 ### Phase 5: Completion
 ```
 ProjectStorage.setLastUsedFile()
-UsageTracker.recordSync(cost)
 Delete synced session data
 Update UI state (Success / PartialSuccess / Error)
 ```
+
+Note: Cost tracking is handled separately in ReviewViewModel as a pre-sync estimate (see Pipeline 10), not as a post-sync recording from the sync pipeline.
 
 ---
 
@@ -158,7 +169,7 @@ Five storage layers, all using mutex-locked atomic writes:
 | Chunk images | `cache/chunks/{sessionId}/*.webp` | ChunkStorage | WebP |
 | Project config | `files/projects/projects.json` | ProjectStorage | JSON |
 | Sync queue | `files/sync/queue.json` | SyncStorage | JSON |
-| Settings | DataStore preferences | SettingsViewModel | Key-value |
+| Settings | DataStore preferences | DataStore<Preferences> | Key-value |
 
 **Corruption detection:** ChunkStorage verifies the RIFF/WEBP header on write. If a decode fails later, a `.corrupted` marker file is created and the chunk is excluded from LLM requests.
 
@@ -178,7 +189,7 @@ UI toggle/slider → SettingsViewModel.setX()
 LLM configuration specifically flows through `LlmSettingsProvider`:
 ```
 DataStore → readLlmSettings() → Triple<Provider, ApiKey, RateLimitingSafe>
-  → TranscriptionServiceFactory.create(provider, key, rateLimiting)
+  → DefaultTranscriptionServiceFactory.create(provider, key, rateLimiting)
   → Returns GeminiService | ClaudeService | OpenAiService | OllamaService
 ```
 
@@ -198,9 +209,9 @@ TranscriptionService interface
   └─ OllamaService
 
 Methods:
-  transcribe(chunks) → TranscriptionResult
-  textQuery(prompt) → String
-  visionQuery(prompt, images) → String
+  transcribe(chunks: List<ChunkData>, cleanupEnabled: Boolean, advancedFormatting: Boolean) → TranscriptionResult
+  textQuery(prompt: String, systemPrompt: String?) → String
+  visionQuery(prompt: String, images: List<ByteArray>, systemPrompt: String?) → String
 ```
 
 **Batching:** Max 10 chunks per request to avoid token overflow.
@@ -260,18 +271,20 @@ Queue persisted at `files/sync/queue.json`.
 
 ## Pipeline 10: Cost Tracking
 
-**Origin:** Completed sync events
+**Origin:** ReviewViewModel pre-sync estimation
 
 ```
-Sync completes → LlmCostCalculator.estimateCost(chunkSizes, contextCount, model)
-  → UsageTracker.recordSync(cost)
+ReviewViewModel.updateCostEstimate()
+  → LlmCostCalculator.estimateCost(chunkSizes, contextCount, model)
+  → UI displays estimated cost before user taps "Sync"
   → DataStore updates:
       usage_total_cost (all-time)
       usage_monthly_cost (resets each month)
       usage_monthly_syncs (count)
       usage_current_month (for reset detection)
-  → ReviewViewModel.updateCostEstimate() → UI display
 ```
+
+Cost tracking is an estimate computed in ReviewViewModel before sync, not a post-sync recording. UsageTracker is not called from SyncRepository.
 
 ---
 
@@ -312,9 +325,11 @@ ViewModels share data through Koin-injected repositories. No direct screen-to-sc
 **Origin:** First app launch
 
 ```
-Step 1: Request accessibility permission (needed for region capture)
-Step 2: Select output destinations → DestinationRepository → DataStore
-Step 3: Create project → pick folder via SAF → ProjectRepository → projects.json
+Page 1: Welcome + overlay permission request
+Page 2: Accessibility permission request (needed for region capture)
+Page 3: Vault/destination setup → DestinationRepository → DataStore
+Page 4: API key entry → encrypted storage
+Page 5: Completion + notification permission request
 ```
 
 ---
@@ -361,4 +376,4 @@ UI updated with result status
 - **StateFlow** for all observable data
 - **Dispatchers.IO** for file operations
 - **Atomic writes** via temp file + header verification + rename
-- **Result types** (`ChunkResult<T>`, `ImageResult<T>`, `SessionResult<T>`) for error propagation
+- **Result types** (`StorageResult<T>`, `ImageResult<T>`) for error propagation

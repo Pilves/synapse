@@ -20,6 +20,11 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 - **Offline queue** — failed syncs are queued with retry controls
 - **Prompt customization** — edit the transcription prompt template in-app
 - **Undo support** — undo last stroke while capturing
+- **Palm rejection** — filters accidental palm touches for stylus/tablet users
+- **Stroke smoothing** — Catmull-Rom splines for cleaner ink paths
+- **Two-pass transcription** — fast first pass with detail refinement for cost optimization
+- **Encrypted API key storage** — keys stored with AES-256-GCM via EncryptedSharedPreferences
+- **Project/notebook organization** — group sessions into projects for structured note management
 
 ## Installation
 
@@ -32,7 +37,13 @@ See [Releases](https://github.com/Pilves/synapse/releases).
 ```bash
 git clone https://github.com/Pilves/synapse.git
 cd synapse
+
+# Linux/macOS
 ./gradlew assembleDebug
+
+# Windows
+gradlew.bat assembleDebug
+
 # APK at app/build/outputs/apk/debug/app-debug.apk
 ```
 
@@ -207,7 +218,7 @@ After tapping Done:
 <details>
 <summary><strong>Does Synapse send my data anywhere?</strong></summary>
 
-Only to the LLM provider you configure, and only when you tap Sync. No analytics, no telemetry, no third-party tracking. If you use Ollama, everything stays on your local network. See [PRIVACY.md](PRIVACY.md).
+Only to the LLM provider you configure, and only when you tap Sync. Synapse also sends crash reports (stack traces, device info) to Google via Firebase Crashlytics to help diagnose issues. There is no other analytics, telemetry, or third-party tracking. If you use Ollama, transcription stays on your local network. See [PRIVACY.md](PRIVACY.md) for full details.
 
 </details>
 
@@ -261,10 +272,13 @@ Capture works fully offline — you can scribble and save chunks without a conne
 |---|---|
 | `SYSTEM_ALERT_WINDOW` | Floating overlay bubble and capture canvas |
 | `FOREGROUND_SERVICE` | Keep capture service alive during sessions |
+| `FOREGROUND_SERVICE_SPECIAL_USE` | Required on Android 14+ for overlay service |
+| `FOREGROUND_SERVICE_MEDIA_PROJECTION` | Required on Android 14+ for screen capture |
 | `POST_NOTIFICATIONS` | Foreground service notification (Android 13+) |
 | `INTERNET` | LLM API calls and sync |
 | `ACCESS_NETWORK_STATE` | Offline detection for sync queue |
 | `VIBRATE` | Haptic feedback on region selection |
+| `WAKE_LOCK` | CPU active during background processing |
 | Accessibility Service | Text extraction from screen regions, auto-context capture |
 | MediaProjection | Screenshot-based region capture (requested on demand) |
 | SAF (document access) | Read/write Obsidian vault and local folders |
@@ -283,7 +297,13 @@ app/src/main/java/com/synapse/
 │   ├── LlmProviderFactory.kt     # Routes to correct provider by task type
 │   ├── QuestionAnswerService.kt   # Q&A via text-based LLM calls
 │   ├── PromptTemplate.kt         # Base transcription prompt
-│   └── PromptTemplateV2.kt       # Intent-aware prompt with context
+│   ├── BaseLlmService.kt         # Base class for LLM services
+│   ├── TwoPassTranscriptionService.kt # Two-pass transcription pipeline
+│   ├── TranscriptionServiceFactory.kt # Factory for TranscriptionService instances
+│   ├── TranscriptionJsonParser.kt # JSON response parser
+│   ├── HttpErrorHandler.kt       # HTTP error classification
+│   ├── RetryHelper.kt            # Retry/backoff logic
+│   └── TranscriptionModels.kt    # TranscribedNote, ProcessedResult, ChunkData
 ├── data/
 │   ├── cost/
 │   │   ├── LlmCostCalculator.kt  # Token pricing per model
@@ -304,8 +324,7 @@ app/src/main/java/com/synapse/
 │   ├── IntentType.kt             # NOTE, TASK, QUESTION, REMINDER + DetectedIntent
 │   ├── LlmConfig.kt              # Multi-provider configuration
 │   ├── QueuedSync.kt             # Offline queue data model
-│   ├── SessionSyncConfig.kt      # Per-session destination selection
-│   └── TranscriptionModels.kt    # TranscribedNote, ProcessedResult, ChunkData
+│   └── SessionSyncConfig.kt      # Per-session destination selection
 ├── service/
 │   ├── OverlayService.kt         # Floating bubble + capture canvas + region mode
 │   ├── CaptureService.kt         # Stroke capture and chunking
@@ -315,7 +334,11 @@ app/src/main/java/com/synapse/
 │   ├── MediaProjectionHolder.kt  # Activity-Service bridge for projection consent
 │   ├── ReminderManager.kt        # Alarm and calendar intent creation
 │   ├── NotificationHelper.kt     # Foreground service notifications
-│   └── NetworkMonitor.kt         # Connectivity state tracking
+│   ├── OverlayUiHost.kt          # Compose UI host for overlay
+│   ├── OverlaySessionManager.kt  # Capture session lifecycle
+│   ├── InputDispatcher.kt        # Touch/stylus input dispatch
+│   ├── SynapseCapabilities.kt    # Device capability detection
+│   └── PermissionHealthMonitor.kt # Permission state monitoring
 ├── ui/
 │   ├── components/
 │   │   ├── ContextCard.kt        # Context display cards in review
@@ -328,13 +351,21 @@ app/src/main/java/com/synapse/
 │   ├── onboarding/               # Welcome, permissions, vault, destination, API key
 │   ├── overlay/
 │   │   ├── CaptureCanvas.kt      # Drawing surface + region gesture detection
-│   │   └── RegionGestureDetector.kt # Hold-drag gesture recognizer
+│   │   ├── RegionGestureDetector.kt # Hold-drag gesture recognizer
+│   │   ├── StrokeManager.kt      # Stroke data management
+│   │   ├── PalmRejectionFilter.kt # Palm rejection for stylus
+│   │   ├── StrokeSmoother.kt     # Stroke path smoothing
+│   │   └── CaptureViewModel.kt   # Capture overlay ViewModel
 │   ├── review/                   # Session list, chunk management, sync
-│   └── settings/                 # Provider config, capture options, projects
+│   ├── settings/                 # Provider config, capture options, projects
+│   └── ProcessTextActivity.kt    # Android ACTION_PROCESS_TEXT handler
 ├── util/
 │   ├── OutputFormatter.kt        # Context-aware markdown formatting
-│   └── PermissionHelper.kt       # Runtime permission utilities
-└── ProcessTextActivity.kt        # Android ACTION_PROCESS_TEXT handler
+│   ├── PermissionHelper.kt       # Runtime permission utilities
+│   ├── NetworkMonitor.kt         # Connectivity state tracking
+│   ├── ApiKeyValidator.kt        # API key format validation
+│   ├── OutputSanitizer.kt        # LLM output sanitization
+│   └── CrashReporter.kt          # Firebase Crashlytics wrapper
 ```
 
 </details>
@@ -351,6 +382,8 @@ app/src/main/java/com/synapse/
 | Storage | DataStore, SAF, WebP |
 | Networking | OkHttp |
 | Images | Coil |
+| Serialization | Kotlinx Serialization JSON |
+| Security | AndroidX Security Crypto (EncryptedSharedPreferences) |
 | Min SDK | API 26 (Android 8.0) |
 | Target SDK | API 35 (Android 15) |
 | JVM | Java 17 |
@@ -376,4 +409,4 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
 
 ## License
 
-GPL License — see [LICENSE](LICENSE).
+GPLv3 License — see [LICENSE](LICENSE).

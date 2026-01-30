@@ -29,6 +29,8 @@ Current state of every feature in the codebase. Each item is marked:
 - Session auto-end after 15 minutes of inactivity (configurable 5-60min)
 - Undo last stroke
 
+**`PalmRejectionFilter`** — Tablet palm rejection for stylus input; detects palm via contact area geometry with configurable thresholds.
+
 **Stroke management**
 - Thread-safe stroke accumulation
 - `toBitmapForOcr()` — crops to bounds, scales to max 800px, white background, 20px padding
@@ -42,16 +44,22 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 
 | Provider | Model | Rate Limits | Notes |
 |----------|-------|-------------|-------|
-| Gemini | `gemini-2.0-flash` | 15 RPM, 1500/day | Free tier available |
-| Claude | `claude-3-5-haiku-20241022` | 50 RPM, 10000/day | |
-| OpenAI | `gpt-4o-mini` | 500 RPM, 10000/day | Requests JSON response format |
+| Gemini | `gemini-2.0-flash` | 15 RPM (code-enforced), ~1500/day (provider limit) | Free tier available |
+| Claude | `claude-3-5-haiku-20241022` | 50 RPM (code-enforced), ~10000/day (provider limit) | |
+| OpenAI | `gpt-4o-mini` | 500 RPM (code-enforced), ~10000/day (provider limit) | Requests JSON response format |
 | Ollama | `llava` (local) | Unlimited | Health check pings `/api/tags` |
+
+> **Note:** Daily rate limits shown above are imposed by the API provider, not enforced in application code. Only RPM limits are enforced client-side.
 
 **Retry logic** — exponential backoff, 3 retries, handles 429/5xx errors per provider.
 
 **Rate limiting** — two modes: Safe (pre-check + backoff for free tiers) and Fast (send immediately, handle 429).
 
 **Service factory** — caches service instances per provider, supports cache invalidation and API key updates.
+
+**`HttpErrorHandler`** — Shared HTTP error classifier (401/403 `ApiKeyInvalid`, 429 `RateLimitError` with Retry-After, 529 `ServiceUnavailable`, 5xx `ServerError`).
+
+**`LlmProviderFactory`** — Supports separate transcription/answering providers with flexible name resolution.
 
 **Prompt template** — V1 prompt active in sync flow. Three-phase process: Transcribe, Group, Format. Supports cleanup mode and advanced formatting (Mermaid diagrams, LaTeX equations, markdown tables). User-editable via settings.
 
@@ -69,6 +77,12 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 **Question answering** — loads context images from disk, combines with chunk images, sends to LLM vision query. Validates image paths against directory traversal. System prompt instructs LLM to reproduce code from images as text blocks.
 
 **File writing** — appends markdown to project files via SAF `DocumentFile` API. Timestamped headers (`## Notes - YYYY-MM-DD HH:mm`) with `---` separators between segments.
+
+**`OutputSanitizer`** — Strips YAML frontmatter, script tags, HTML, Dataview blocks, Templater expressions, and inline JS before vault writes.
+
+**Markdown formatting polish pass** — Sends assembled content through LLM for final markdown cleanup.
+
+**RegionImage vision transcription** — Context-only segments with `RegionImage` sent through vision LLM instead of blockquoted.
 
 **Progress reporting** — granular 0.1 to 1.0 progress during sync.
 
@@ -100,6 +114,10 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 - Persistent JSON queue with PENDING, IN_PROGRESS, FAILED states
 - Atomic writes, duplicate prevention
 - Reset failed items for retry
+
+**`SecureKeyStorage`** — AES256-GCM encrypted API key storage via `EncryptedSharedPreferences` with `MasterKey`; includes migration from plain DataStore.
+
+**`ImageProcessor`** — WebP conversion, thumbnail generation, WebP header validation, chunk stitching (4096px cap, OOM protection), grayscale conversion.
 
 **Settings** (DataStore preferences)
 - All capture, LLM, review, and vault settings persisted as key-value pairs
@@ -216,13 +234,31 @@ Bottom bar navigation with Review and Settings tabs. FAB starts overlay service.
 
 ---
 
+## Infrastructure — Implemented
+
+**`PermissionHealthMonitor`** — Reactive permission monitoring (HEALTHY/DEGRADED/CRITICAL states) via broadcast receiver.
+
+**`SynapseCapabilities`** — Capability detection (FULL/BASIC/MINIMAL) based on permission state.
+
+**`CrashReporter`** — Firebase Crashlytics integration with non-fatal exception logging.
+
+**`NetworkMonitor`** — Reactive network connectivity monitoring via `ConnectivityManager` callbacks (not yet wired to sync retry).
+
+**`LlmSettingsProvider`** — Reads LLM config from DataStore + `SecureKeyStorage`; supports separate transcription/answering providers.
+
+---
+
 ## Partial / Not Wired
 
 These features have real code but are not connected to the active sync flow:
 
 **Multi-destination sync** — `ClipboardDestination`, `ShareIntentDestination`, `LocalFolderDestination`, and `DestinationRepository` are implemented. Destination selection UI exists. However, `SyncRepository.syncSession()` writes only to the selected project file. The destination abstraction is not invoked during sync.
 
-**Sync queue processing** — `SyncStorage` implements a persistent queue with status tracking. Queue operations (add, mark in-progress, mark failed, retry) are functional. However, automatic background queue processing and network-triggered retry are not wired. The queue is used for status display only.
+**Sync queue processing** — `SyncStorage` implements a persistent queue with status tracking. Background queue processing is wired and functional: `queueForSync()`, `processQueue()`, and `retryFailed()` all work. Only network-triggered automatic retry remains unimplemented.
+
+**`TwoPassTranscriptionService`** — Cost-optimization wrapper routing to text-only LLM when accessibility context is sufficient (not yet wired into sync flow).
+
+**`OutputFormatter`** — Formats notes with context metadata (exists but sync flow handles formatting inline).
 
 **Usage tracking** — `UsageTracker` with DataStore persistence exists. Monthly reset logic implemented. Not called from the sync flow — cost is estimated but not recorded after sync completes.
 
@@ -232,6 +268,6 @@ These features have real code but are not connected to the active sync flow:
 
 These are defined as code but the feature is not activated:
 
-**Intent detection** — `IntentType` enum (NOTE, TASK, QUESTION, REMINDER, REACTION), `DetectedIntent`, and `IntentData` sealed classes are defined. `PromptTemplateV2` includes intent detection phases. `IntentDialogs` has confirmation UI for tasks, Q&A, and reminders. `ReminderManager` can create alarms and calendar events. None of this is invoked — the sync flow uses `PromptTemplate` (V1) which does not detect intents.
+**Intent detection** — `IntentType` enum (NOTE, TASK, QUESTION, REMINDER, REACTION), `DetectedIntent`, and `IntentData` sealed classes are defined in `IntentType.kt`. `IntentDialogs.kt` has confirmation UI for tasks, Q&A, and reminders. `ReminderManager` can create alarms and calendar events. No V2 prompt template has been created. None of this is invoked — the sync flow uses `PromptTemplate` (V1) which does not detect intents.
 
 **Notion / Google Docs destinations** — referenced in the original design spec only. No implementation exists.
