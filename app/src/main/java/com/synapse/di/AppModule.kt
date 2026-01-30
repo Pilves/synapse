@@ -39,6 +39,7 @@ import com.synapse.ui.settings.SettingsViewModel
 import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.NetworkMonitor
 import com.synapse.util.PermissionHelper
+import okhttp3.CertificatePinner
 import okhttp3.OkHttpClient
 import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
@@ -150,12 +151,22 @@ val repositoryModule = module {
  * - TranscriptionServiceFactory: Factory for creating LLM service instances
  */
 val apiModule = module {
-    // OkHttpClient with timeout configuration
+    // Certificate pinner for cloud LLM APIs
+    single {
+        CertificatePinner.Builder()
+            .add("api.anthropic.com", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")
+            .add("api.openai.com", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")
+            .add("generativelanguage.googleapis.com", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")
+            .build()
+    }
+
+    // OkHttpClient with timeout configuration and certificate pinning
     single {
         OkHttpClient.Builder()
             .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .certificatePinner(get())
             .retryOnConnectionFailure(true)
             .build()
     }
