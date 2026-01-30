@@ -5,12 +5,9 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import com.synapse.data.repository.ProjectRepository
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.synapse.ui.settings.settingsDataStore
@@ -23,11 +20,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-// DataStore extension for onboarding preferences
-private val Context.onboardingDataStore: DataStore<Preferences> by preferencesDataStore(
-    name = "onboarding_preferences"
-)
 
 /**
  * ViewModel for managing the onboarding flow state and actions.
@@ -52,7 +44,7 @@ class OnboardingViewModel(
     private val context: Context
         get() = getApplication<Application>().applicationContext
 
-    private val dataStore = context.onboardingDataStore
+    private val dataStore = context.settingsDataStore
     private val permissionHelper = PermissionHelper(context)
 
     private val _state = MutableStateFlow(OnboardingState.Initial)
@@ -85,15 +77,12 @@ class OnboardingViewModel(
             val hasOverlay = permissionHelper.hasOverlayPermission()
             val hasNotification = permissionHelper.hasNotificationPermission()
 
-            // Load onboarding-specific state
-            val onboardingPrefs = dataStore.data.first()
-            val isComplete = onboardingPrefs[PreferenceKeys.ONBOARDING_COMPLETE] ?: false
-
-            // Load vault/API key from settings (the app-wide source of truth)
-            val settingsPrefs = context.settingsDataStore.data.first()
-            val vaultPath = settingsPrefs[SettingsKeys.VAULT_LOCATION]
-            val apiKey = settingsPrefs[SettingsKeys.TRANSCRIPTION_API_KEY]
-                ?: settingsPrefs[SettingsKeys.API_KEY]
+            // Load all state from single settings DataStore
+            val prefs = dataStore.data.first()
+            val isComplete = prefs[PreferenceKeys.ONBOARDING_COMPLETE] ?: false
+            val vaultPath = prefs[SettingsKeys.VAULT_LOCATION]
+            val apiKey = prefs[SettingsKeys.TRANSCRIPTION_API_KEY]
+                ?: prefs[SettingsKeys.API_KEY]
 
             _state.update { currentState ->
                 currentState.copy(
@@ -287,12 +276,6 @@ class OnboardingViewModel(
                 prefs[PreferenceKeys.ONBOARDING_COMPLETE] = true
             }
 
-            // Also persist to settingsDataStore so MainActivity can read it
-            val onboardingCompleteKey = booleanPreferencesKey("onboarding_complete")
-            context.settingsDataStore.edit { prefs ->
-                prefs[onboardingCompleteKey] = true
-            }
-
             _state.update { currentState ->
                 currentState.copy(isOnboardingComplete = true)
             }
@@ -319,7 +302,7 @@ class OnboardingViewModel(
     fun resetOnboarding() {
         viewModelScope.launch {
             dataStore.edit { prefs ->
-                prefs.clear()
+                prefs.remove(PreferenceKeys.ONBOARDING_COMPLETE)
             }
 
             _state.value = OnboardingState.Initial.copy(
