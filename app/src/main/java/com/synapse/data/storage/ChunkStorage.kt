@@ -12,7 +12,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Handles chunk file operations for Synapse.
@@ -61,6 +60,9 @@ class ChunkStorage(private val context: Context) {
 
         /** Minimum valid image size in bytes */
         private const val MIN_VALID_IMAGE_SIZE = 100L
+
+        /** Maximum number of per-session mutexes to keep in memory */
+        private const val MAX_MUTEX_ENTRIES = 100
     }
 
     private val validIdRegex = Regex("^[a-zA-Z0-9_-]+$")
@@ -71,17 +73,24 @@ class ChunkStorage(private val context: Context) {
         }
     }
 
-    /** Mutex for ensuring atomic operations per session */
-    private val sessionMutexes = ConcurrentHashMap<String, Mutex>()
+    /** LRU-bounded mutex map to prevent unbounded growth */
+    private val sessionMutexes = object : LinkedHashMap<String, Mutex>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Mutex>): Boolean {
+            return size > MAX_MUTEX_ENTRIES && !eldest.value.isLocked
+        }
+    }
+    private val mutexMapLock = Any()
 
     private val chunksDir: File
         get() = File(context.cacheDir, CHUNKS_DIR).also { it.mkdirs() }
 
     /**
-     * Get or create a mutex for a specific session.
+     * Get or create a mutex for a specific session (LRU-bounded).
      */
     private fun getSessionMutex(sessionId: String): Mutex {
-        return sessionMutexes.getOrPut(sessionId) { Mutex() }
+        synchronized(mutexMapLock) {
+            return sessionMutexes.getOrPut(sessionId) { Mutex() }
+        }
     }
 
     /**
@@ -91,8 +100,11 @@ class ChunkStorage(private val context: Context) {
      * @param sessionId The session ID whose mutex to clean up
      */
     fun cleanupSessionMutex(sessionId: String) {
-        sessionMutexes.compute(sessionId) { _, mutex ->
-            if (mutex != null && !mutex.isLocked) null else mutex
+        synchronized(mutexMapLock) {
+            val mutex = sessionMutexes[sessionId]
+            if (mutex != null && !mutex.isLocked) {
+                sessionMutexes.remove(sessionId)
+            }
         }
     }
 
@@ -585,7 +597,7 @@ class ChunkStorage(private val context: Context) {
                 }
 
                 // Clean up mutex
-                sessionMutexes.remove(sessionId)
+                synchronized(mutexMapLock) { sessionMutexes.remove(sessionId) }
 
                 Log.d(TAG, "Deleted all chunks for session $sessionId")
                 true
