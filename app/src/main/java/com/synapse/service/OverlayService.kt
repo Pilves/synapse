@@ -100,7 +100,9 @@ import android.widget.Toast
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
+import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import com.synapse.ui.settings.settingsDataStore
 
 /**
@@ -149,6 +151,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     // Settings keys
     private val chunkTimeoutKey = floatPreferencesKey("chunk_timeout_seconds")
+    private val bubbleXKey = intPreferencesKey("bubble_position_x")
+    private val bubbleYKey = intPreferencesKey("bubble_position_y")
 
     // Cached settings values (read when overlay opens)
     private var chunkTimeoutMs: Long = 1000L
@@ -665,16 +669,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         Log.d(TAG, "Started foreground service")
         showFloatingBubble()
 
-        // Auto-request screen capture permission so user doesn't get prompted mid-workflow
-        if (!screenshotManager.hasPermission()) {
-            Log.d(TAG, "No screen capture permission, requesting upfront")
-            requestScreenCapturePermission()
-        } else if (screenshotManager.hasPermission() && !ensureProjectionReady()) {
-            // hasPermission() returned true (e.g. stale MediaProjectionHolder) but
-            // actual restoration failed — clear stale state and re-request
-            Log.w(TAG, "Permission flag is stale, projection restore failed — re-requesting")
-            screenshotManager.invalidateProjection()
-            requestScreenCapturePermission()
+        // Try to restore projection silently if we have stored results, but don't
+        // prompt the user — that will happen when they tap the bubble to open capture.
+        if (screenshotManager.hasPermission()) {
+            ensureProjectionReady()
         }
     }
 
@@ -765,6 +763,19 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         Log.d(TAG, "showFloatingBubble called, existing view: ${floatingBubbleView != null}")
         if (floatingBubbleView != null) return
 
+        // Load saved bubble position (or use defaults)
+        var savedX = 100
+        var savedY = 300
+        try {
+            val prefs = kotlinx.coroutines.runBlocking {
+                settingsDataStore.data.first()
+            }
+            savedX = prefs[bubbleXKey] ?: 100
+            savedY = prefs[bubbleYKey] ?: 300
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to load bubble position, using defaults", e)
+        }
+
         try {
         // Get screen height
         val displayMetrics = resources.displayMetrics
@@ -783,8 +794,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 100
-            y = 300
+            x = savedX
+            y = savedY
         }
 
         // Accumulate drag deltas and apply once per vsync frame for smooth movement
@@ -833,6 +844,19 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                                     }
                                 }
                             }
+                        },
+                        onDragEnded = {
+                            // Persist bubble position for next session
+                            serviceScope.launch(Dispatchers.IO) {
+                                try {
+                                    settingsDataStore.edit { prefs ->
+                                        prefs[bubbleXKey] = params.x
+                                        prefs[bubbleYKey] = params.y
+                                    }
+                                } catch (e: IOException) {
+                                    Log.w(TAG, "Failed to save bubble position", e)
+                                }
+                            }
                         }
                     )
                 }
@@ -870,9 +894,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         val vm = captureViewModel ?: return
         isCaptureActive = true
 
-        // Ensure screenshot permission is available
+        // Ensure screenshot permission is available when capture opens
         if (!screenshotManager.hasPermission()) {
             Log.d(TAG, "No screenshot permission on capture show, requesting")
+            requestScreenCapturePermission()
+        } else if (!ensureProjectionReady()) {
+            Log.w(TAG, "Projection stale on capture show, re-requesting")
+            screenshotManager.invalidateProjection()
             requestScreenCapturePermission()
         }
 
@@ -950,6 +978,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         captureOverlayView = overlayView
         windowManager.addView(overlayView, params)
+
+        // Auto-minimize when user navigates away (home/recents)
+        SynapseAccessibilityService.getInstance()?.onWindowChanged = {
+            if (isCaptureActive) {
+                serviceScope.launch(Dispatchers.Main) {
+                    hideCaptureOverlay()
+                }
+            }
+        }
     }
 
     /**
@@ -967,6 +1004,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     private fun hideCaptureOverlay() {
+        // Stop listening for window changes while not capturing
+        SynapseAccessibilityService.getInstance()?.onWindowChanged = null
+
         captureOverlayView?.let {
             try {
                 windowManager.removeViewImmediate(it)
@@ -1224,7 +1264,8 @@ private fun FloatingBubble(
     onClick: () -> Unit,
     onWarningClick: (() -> Unit)? = null,
     onDismiss: () -> Unit,
-    onPositionChanged: (Float, Float) -> Unit
+    onPositionChanged: (Float, Float) -> Unit,
+    onDragEnded: () -> Unit = {}
 ) {
     var isDragging by remember { mutableStateOf(false) }
     var currentY by remember { mutableFloatStateOf(initialY.toFloat()) }
@@ -1250,6 +1291,8 @@ private fun FloatingBubble(
                             isDragging = false
                             if (shouldDismiss) {
                                 onDismiss()
+                            } else {
+                                onDragEnded()
                             }
                         },
                         onDragCancel = {
