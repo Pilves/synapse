@@ -36,11 +36,19 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
+      - name: Get version name
+        id: version
+        run: |
+          VERSION=$(grep 'versionName' app/build.gradle.kts | head -1 | sed 's/.*"\(.*\)".*/\1/')
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
         with:
-          name: debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          tag_name: v${{ steps.version.outputs.name }}-build.${{ github.run_number }}
+          name: Synapse v${{ steps.version.outputs.name }} (Build ${{ github.run_number }})
+          files: app/build/outputs/apk/debug/*.apk
+          generate_release_notes: true
 
       - name: Upload test results
         if: always()
