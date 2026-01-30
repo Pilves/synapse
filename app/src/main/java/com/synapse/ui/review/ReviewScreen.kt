@@ -73,11 +73,6 @@ import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.SyncStatus
 import com.synapse.model.CostEstimate
-import com.synapse.model.Destination
-import com.synapse.ui.components.DestinationSelectionRow
-import com.synapse.ui.components.IntentConfirmationDialog
-import com.synapse.ui.components.QuestionAnswerDialog
-import com.synapse.ui.components.ReminderDialog
 import com.synapse.ui.components.SyncCostBanner
 import com.synapse.ui.components.SyncQueueSummary
 import com.synapse.ui.components.SyncStatusIndicator
@@ -171,13 +166,10 @@ fun ReviewScreen(
                     uiState.sessions.sumOf { it.chunks.size } +
                         uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
                 },
-                availableDestinations = uiState.availableDestinations,
-                selectedDestinations = uiState.selectedDestinations,
                 costEstimate = uiState.costEstimate,
                 onProjectSelected = viewModel::selectProject,
                 onFilenameChanged = viewModel::updateFilename,
-                onSyncAll = viewModel::syncAll,
-                onDestinationsChanged = viewModel::updateSelectedDestinations
+                onSyncAll = viewModel::syncAll
             )
         }
 
@@ -195,36 +187,6 @@ fun ReviewScreen(
             )
         }
 
-        // Pending dialog (only one at a time)
-        when (val dialog = uiState.pendingDialog) {
-            is PendingDialog.IntentConfirmation -> {
-                IntentConfirmationDialog(
-                    noteText = dialog.noteText,
-                    suggestedType = dialog.suggestedType,
-                    onConfirm = viewModel::confirmIntent,
-                    onDismiss = viewModel::dismissIntentConfirmation
-                )
-            }
-            is PendingDialog.QuestionAnswer -> {
-                QuestionAnswerDialog(
-                    question = dialog.question,
-                    answer = dialog.answer,
-                    onSaveBoth = viewModel::saveQuestionAndAnswer,
-                    onSaveQuestionOnly = viewModel::saveQuestionOnly,
-                    onDiscard = viewModel::dismissQuestionAnswer
-                )
-            }
-            is PendingDialog.Reminder -> {
-                ReminderDialog(
-                    reminderText = dialog.reminderText,
-                    timeText = dialog.timeText,
-                    onCreateAlarm = viewModel::dismissReminder,
-                    onCreateCalendarEvent = viewModel::dismissReminder,
-                    onSaveAsNote = viewModel::dismissReminder
-                )
-            }
-            null -> {}
-        }
     }
 }
 
@@ -386,13 +348,10 @@ private fun BottomControls(
     filename: String,
     syncStatus: SyncStatus,
     selectedCount: Int,
-    availableDestinations: List<Destination>,
-    selectedDestinations: List<String>,
     costEstimate: CostEstimate?,
     onProjectSelected: (Project) -> Unit,
     onFilenameChanged: (String) -> Unit,
-    onSyncAll: () -> Unit,
-    onDestinationsChanged: (List<String>) -> Unit
+    onSyncAll: () -> Unit
 ) {
     val isSyncing = syncStatus is SyncStatus.InProgress || syncStatus is SyncStatus.Queued
 
@@ -413,18 +372,6 @@ private fun BottomControls(
                 onProjectSelected = onProjectSelected,
                 modifier = Modifier.fillMaxWidth()
             )
-
-            // Destination selector
-            if (availableDestinations.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(12.dp))
-
-                DestinationSelectionRow(
-                    selectedDestinations = selectedDestinations,
-                    availableDestinations = availableDestinations,
-                    onDestinationChange = onDestinationsChanged,
-                    onAddDestination = { /* TODO: Open destination picker */ }
-                )
-            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
