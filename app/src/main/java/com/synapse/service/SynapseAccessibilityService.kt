@@ -8,12 +8,15 @@ import android.graphics.Rect
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
+import android.view.KeyEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.synapse.model.CapturedContext
 
 class SynapseAccessibilityService : AccessibilityService() {
 
     companion object {
+        private const val MAX_NODE_DEPTH = 50
+
         @Volatile
         private var instance: SynapseAccessibilityService? = null
 
@@ -66,6 +69,12 @@ class SynapseAccessibilityService : AccessibilityService() {
     @Volatile
     private var nodeCache: List<AccessibilityNodeInfo> = emptyList()
 
+    /** Listener notified when a different app window comes to the foreground. */
+    var onWindowChanged: (() -> Unit)? = null
+
+    /** Listener notified when the back button is pressed. Return true to consume the event. */
+    var onBackPressed: (() -> Boolean)? = null
+
     override fun onServiceConnected() {
         instance = this
         broadcastHealthState(true)
@@ -76,7 +85,8 @@ class SynapseAccessibilityService : AccessibilityService() {
                          AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
-                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                    AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                    AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
             notificationTimeout = 100
         }
     }
@@ -95,6 +105,10 @@ class SynapseAccessibilityService : AccessibilityService() {
             }
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 currentSourceApp = event.packageName?.toString()
+                // Notify listener when a different app comes to the foreground
+                if (currentSourceApp != null && currentSourceApp != packageName) {
+                    onWindowChanged?.invoke()
+                }
                 // Clear cached data when switching to an excluded app
                 if (currentSourceApp in excludedPackages) {
                     nodeCache = emptyList()
@@ -144,23 +158,27 @@ class SynapseAccessibilityService : AccessibilityService() {
 
     private fun updateNodeCache() {
         val root = rootInActiveWindow ?: return
-        nodeCache = collectAllTextNodes(root)
+        val result = mutableListOf<AccessibilityNodeInfo>()
+        collectAllTextNodes(root, result, 0)
+        nodeCache = result
     }
 
-    private fun collectAllTextNodes(node: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
-        val nodes = mutableListOf<AccessibilityNodeInfo>()
+    private fun collectAllTextNodes(
+        node: AccessibilityNodeInfo,
+        result: MutableList<AccessibilityNodeInfo>,
+        depth: Int
+    ) {
+        if (depth >= MAX_NODE_DEPTH) return
 
         if (!node.text.isNullOrBlank()) {
-            nodes.add(node)
+            result.add(node)
         }
 
         for (i in 0 until node.childCount) {
             node.getChild(i)?.let { child ->
-                nodes.addAll(collectAllTextNodes(child))
+                collectAllTextNodes(child, result, depth + 1)
             }
         }
-
-        return nodes
     }
 
     // === Public API ===
@@ -233,7 +251,7 @@ class SynapseAccessibilityService : AccessibilityService() {
                 // Skip our own overlay windows
                 if (window.root?.packageName?.toString() == packageName) continue
                 window.root?.let { root ->
-                    allNodes.addAll(collectAllTextNodes(root))
+                    collectAllTextNodes(root, allNodes, 0)
                 }
             }
             if (allNodes.isNotEmpty()) {
@@ -242,7 +260,9 @@ class SynapseAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             // Fallback: try rootInActiveWindow
             val root = rootInActiveWindow ?: return
-            nodeCache = collectAllTextNodes(root)
+            val result = mutableListOf<AccessibilityNodeInfo>()
+            collectAllTextNodes(root, result, 0)
+            nodeCache = result
         }
     }
 
@@ -250,6 +270,14 @@ class SynapseAccessibilityService : AccessibilityService() {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
         return bounds
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && event.action == KeyEvent.ACTION_UP) {
+            val consumed = onBackPressed?.invoke() ?: false
+            if (consumed) return true
+        }
+        return super.onKeyEvent(event)
     }
 
     override fun onInterrupt() {
