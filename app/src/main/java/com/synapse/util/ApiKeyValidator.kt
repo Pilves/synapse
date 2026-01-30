@@ -15,15 +15,19 @@ data class ApiKeyValidationResult(
  */
 object ApiKeyValidator {
 
+    private const val MIN_KEY_LENGTH = 20
+    private const val MIN_ANTHROPIC_KEY_LENGTH = 40
+    private const val MIN_OPENAI_KEY_LENGTH = 40
+
     /**
      * Validates an API key format based on common provider patterns.
      * Does not require a specific provider — detects from key prefix.
      */
     fun validateFormat(apiKey: String): ApiKeyValidationResult {
-        if (apiKey.length < 20) {
+        if (apiKey.length < MIN_KEY_LENGTH) {
             return ApiKeyValidationResult(
                 isValid = false,
-                errorMessage = "API key is too short (minimum 20 characters)"
+                errorMessage = "API key is too short (minimum $MIN_KEY_LENGTH characters)"
             )
         }
 
@@ -36,7 +40,7 @@ object ApiKeyValidator {
 
         return when {
             apiKey.startsWith("sk-ant-") -> {
-                if (apiKey.length >= 40) {
+                if (apiKey.length >= MIN_ANTHROPIC_KEY_LENGTH) {
                     ApiKeyValidationResult(isValid = true)
                 } else {
                     ApiKeyValidationResult(
@@ -46,7 +50,7 @@ object ApiKeyValidator {
                 }
             }
             apiKey.startsWith("sk-") -> {
-                if (apiKey.length >= 40) {
+                if (apiKey.length >= MIN_OPENAI_KEY_LENGTH) {
                     ApiKeyValidationResult(isValid = true)
                 } else {
                     ApiKeyValidationResult(
@@ -55,17 +59,8 @@ object ApiKeyValidator {
                     )
                 }
             }
-            apiKey.length >= 30 && apiKey.all { it.isLetterOrDigit() || it == '-' || it == '_' } -> {
-                ApiKeyValidationResult(isValid = true)
-            }
-            apiKey.length >= 20 -> {
-                ApiKeyValidationResult(isValid = true)
-            }
             else -> {
-                ApiKeyValidationResult(
-                    isValid = false,
-                    errorMessage = "Invalid API key format"
-                )
+                ApiKeyValidationResult(isValid = true)
             }
         }
     }
@@ -87,9 +82,9 @@ object ApiKeyValidator {
         }
 
         val isValid = when (provider) {
-            LlmProvider.GEMINI -> apiKey.length >= 20
-            LlmProvider.CLAUDE -> apiKey.startsWith("sk-ant-")
-            LlmProvider.OPENAI -> apiKey.startsWith("sk-")
+            LlmProvider.GEMINI -> apiKey.length >= MIN_KEY_LENGTH
+            LlmProvider.CLAUDE -> apiKey.startsWith("sk-ant-") && apiKey.length >= MIN_ANTHROPIC_KEY_LENGTH
+            LlmProvider.OPENAI -> apiKey.startsWith("sk-") && apiKey.length >= MIN_OPENAI_KEY_LENGTH
             LlmProvider.OLLAMA -> true
         }
 
