@@ -22,9 +22,7 @@ import com.synapse.data.storage.StorageHelper
 import com.synapse.data.storage.SyncStorage
 import com.synapse.data.storage.VaultManager
 import com.synapse.service.NotificationHelper
-import com.synapse.service.RegionCaptureManager
 import com.synapse.service.ScreenshotManager
-import com.synapse.service.SynapseAccessibilityService
 import com.synapse.service.SynapseCapabilities
 import com.synapse.service.PermissionHealthMonitor
 import com.synapse.ui.onboarding.OnboardingViewModel
@@ -251,7 +249,7 @@ val serviceHelpersModule = module {
  *
  * Provides singleton instances of:
  * - Cost: LlmCostCalculator
- * - Context: RegionCaptureManager, ScreenshotManager
+ * - Context: ScreenshotManager
  * - Q&A: QuestionAnswerService
  * - Network: NetworkMonitor
  * - LLM: LlmProviderFactory
@@ -265,14 +263,6 @@ val v2Module = module {
 
     // Screenshot & region capture
     single { ScreenshotManager(androidContext()) }
-    single {
-        RegionCaptureManager(
-            context = androidContext(),
-            accessibilityServiceProvider = { SynapseAccessibilityService.getInstance() },
-            screenshotManager = get()
-        )
-    }
-
     // LLM routing
     single { LlmProviderFactory(get()) }
     single { QuestionAnswerService(get<LlmProviderFactory>(), androidContext().filesDir) }
