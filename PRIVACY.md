@@ -25,9 +25,16 @@ Synapse is a local-first Android app. Your data stays on your device unless you 
 - Synapse does not continuously record or stream your screen
 
 ### Network Access
-- Used exclusively for LLM API calls (transcription and question answering)
+- Used exclusively for LLM API calls (transcription and question answering) and crash reporting
 - Network connectivity state is monitored to manage the offline sync queue
-- No analytics, telemetry, or tracking requests are made
+- No behavioral analytics or usage telemetry requests are made (see Crash Reporting below)
+
+### Crash Reporting
+- Synapse uses **Firebase Crashlytics** to collect crash reports when the app encounters an error
+- Crash data includes: stack traces, device manufacturer/model, Android API level, and OS version
+- This data is sent to Google servers to help diagnose and fix bugs
+- Crashlytics does not collect usage behavior, screen views, or user interactions
+- You can opt out of crash reporting by disabling Crashlytics in your device's Google settings
 
 ### Storage Access (SAF)
 - Used to read and write files in your chosen Obsidian vault or local folder
@@ -36,9 +43,9 @@ Synapse is a local-first Android app. Your data stays on your device unless you 
 
 ## What Synapse Does NOT Do
 
-- Does not collect analytics or telemetry
+- Does not collect behavioral analytics or usage telemetry
 - Does not display ads
-- Does not share data with third parties (beyond the LLM provider you configure)
+- Does not share data with third parties (beyond the LLM provider you configure and Firebase Crashlytics for crash reporting)
 - Does not access contacts, location, camera, or microphone
 - Does not run in the background when you're not actively using it (beyond the foreground service notification during capture)
 
@@ -48,7 +55,7 @@ When you sync, your handwriting images and any captured context are sent to the 
 
 | Provider | Data sent to |
 |----------|-------------|
-| Gemini | Google AI (api.generativeai.google) |
+| Gemini | Google AI (generativelanguage.googleapis.com) |
 | Claude | Anthropic (api.anthropic.com) |
 | OpenAI | OpenAI (api.openai.com) |
 | Ollama | Your local machine (localhost) |

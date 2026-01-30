@@ -178,13 +178,16 @@ Accessibility permission link.
 
 ## Onboarding — Implemented
 
-Multi-page first-run flow:
+7-page first-run flow:
 1. Welcome screen
 2. Overlay permission request
 3. Accessibility permission with link to system settings
-4. Vault folder selection via SAF picker
-5. API key input with provider-specific validation
-6. Completion flag persisted to DataStore
+4. Screen capture permission (MediaProjection)
+5. Vault folder selection via SAF picker
+6. Destination setup (default sync destinations)
+7. API key input with provider-specific validation
+
+Completion flag persisted to DataStore.
 
 Checks resume on `ON_RESUME` to detect permission grants while in system settings.
 

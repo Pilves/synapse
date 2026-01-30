@@ -5,29 +5,32 @@ All notable changes to Synapse are documented here.
 ## [Unreleased]
 
 ### Added
-- **Multi-destination sync** -- sync to local folders, clipboard, share sheet, or Obsidian vault; choose destinations per session
 - **Context capture** -- select text in any app and share to Synapse via Android text processing; auto-capture active app info via accessibility service
 - **Region capture** -- hold-and-drag gesture to select screen regions; extract text via accessibility or screenshot via MediaProjection
-- **Intent detection** -- LLM classifies notes as plain notes, tasks, questions, or reminders; questions answered inline; reminders create alarms or calendar events
 - **Multi-provider LLM routing** -- configure separate providers for transcription (image-based) vs. question answering (text-based)
-- **Cost tracking** -- token-based cost estimation before sync, cumulative usage statistics stored in DataStore
-- **Offline sync queue** -- failed syncs queued with status tracking (pending, queued, syncing, completed, failed); auto-retry on network restore
+- **Cost tracking** -- token-based cost estimation before sync, cumulative cost display in review screen
 - **Vision query support** -- text-based query endpoint added to all LLM providers (Gemini, Claude, OpenAI, Ollama)
 - **Multi-action sessions** -- process multiple actions within a single capture session
 - **Rate limiting** -- request rate management for LLM API calls
 - **Onboarding improvements** -- accessibility permission step, destination setup step, vault project sync during folder selection
-- **Review screen enhancements** -- context section, cost display, destination selector, sync status indicator, intent confirmation dialogs
+- **Review screen enhancements** -- context section, cost display, destination selector, sync status indicator
 - **Settings screen enhancements** -- LLM settings section for multi-provider configuration
 - **Screen capture permission flow** -- MediaProjection permission request dialog in MainActivity
-- **Context-aware prompts** -- v2 prompt template with intent detection and context integration
 - **Output formatting** -- context-aware markdown formatter with source attribution
+
+### Scaffolded (not yet active)
+- **Multi-destination sync** -- destination code exists (clipboard, share sheet, local folder) but sync flow writes only to project files; destination routing not yet invoked
+- **Intent detection** -- models, V2 prompt template, and confirmation UI defined but sync flow uses V1 prompt; intent classification not invoked
+- **Offline sync queue auto-retry** -- queue with status tracking exists but automatic background processing and network-triggered retry are not wired
+- **Usage tracking** -- `UsageTracker` with DataStore persistence exists but is not called from the sync flow after completion
+- **Context-aware prompts (V2)** -- prompt template with intent detection and context integration defined but not used by sync flow
 
 ### Fixed
 - Stale MediaProjection causing screenshot failures after app restart
 - Screenshot capture reliability
 - Sync progress tracking
 
-## [1.0.0] - 2025
+## [1.0.0] - 2025-01-01
 
 Initial release.
 

@@ -152,6 +152,9 @@ val repositoryModule = module {
  */
 val apiModule = module {
     // Certificate pinner for cloud LLM APIs
+    // TODO: Replace placeholder hashes with real SHA-256 certificate pins.
+    //  Current values are placeholders — certificate pinning is effectively disabled.
+    //  To obtain real pins, use: openssl s_client -connect <host>:443 | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
     single {
         CertificatePinner.Builder()
             .add("api.anthropic.com", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")

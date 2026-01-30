@@ -187,10 +187,10 @@ app/src/main/java/com/synapse/
 | DI | Koin |
 | State | ViewModel + StateFlow |
 | Storage | DataStore, SAF, WebP |
-| Networking | Ktor, OkHttp |
+| Networking | OkHttp |
 | Images | Coil |
 | Min SDK | API 26 (Android 8.0) |
-| Target SDK | Latest stable |
+| Target SDK | API 35 (Android 15) |
 | JVM | Java 17 |
 
 ## Contributing

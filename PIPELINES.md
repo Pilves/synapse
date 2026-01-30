@@ -1,5 +1,7 @@
 # Synapse — Internal Data Pipelines
 
+**Last updated:** January 2026
+
 This document describes every internal data flow pipeline in Synapse: how data originates, transforms, and reaches its destination.
 
 ---

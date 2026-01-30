@@ -179,7 +179,7 @@ Google Play reviews Accessibility Services strictly. Vague descriptions = reject
 | XML config | `accessibility_service_config.xml` | 1-9 | Missing `android:summary`, missing `android:settingsActivity`, missing `android:accessibilityFlags` for `flagReportViewIds\|flagRetrieveInteractiveWindows` |
 | Description string | `strings.xml` | 25 | One-liner: "Synapse uses accessibility to capture text from your screen..." — needs expansion with DO/DON'T list |
 | No basic mode | — | — | App requires accessibility for context; no fallback path |
-| Privacy policy | — | — | No PRIVACY.md or in-app disclosure |
+| Privacy policy | — | — | PRIVACY.md exists; update with accessibility-specific disclosures |
 
 ### Implementation Plan
 
@@ -248,10 +248,10 @@ class SynapseCapabilities(private val context: Context) {
 
 #### Privacy policy
 
-Create `PRIVACY.md` with sections on:
-- Accessibility Service Usage (what we read, when, what we don't)
-- Data Handling (processed on capture only, sent to configured LLM, no permanent screen storage)
-- API Key handling (stored locally in DataStore, never transmitted to our servers in BYOK mode)
+Update `PRIVACY.md` (already exists) to add:
+- Accessibility Service Usage section (what we read, when, what we don't)
+- Data Handling details (processed on capture only, sent to configured LLM, no permanent screen storage)
+- Ensure API Key handling is documented (stored locally in EncryptedSharedPreferences, never transmitted beyond the configured provider)
 
 ### Effort: 0.5 days
 

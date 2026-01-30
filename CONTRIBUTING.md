@@ -71,6 +71,30 @@ These features require a physical device:
 2. **Accessibility** -- enable "Synapse" in Settings > Accessibility
 3. **Screen capture** -- approve the MediaProjection prompt when using region capture
 
+## Testing
+
+Before submitting a PR, run the following locally:
+
+```bash
+# Unit tests
+./gradlew test
+
+# Lint checks
+./gradlew lint
+```
+
+The CI pipeline runs both on every PR. Ensure these pass before requesting review.
+
+For overlay, accessibility, and MediaProjection features, manual testing on a physical device is required — emulators do not support these.
+
+## Code Review
+
+- All PRs require at least one approving review before merge
+- The maintainer will review PRs in the order they are submitted
+- Expect feedback within a few days; complex changes may take longer
+- Address review comments by pushing new commits (don't force-push during review)
+- Once approved, the maintainer will merge the PR
+
 ## Code Style
 
 - Follow [Kotlin coding conventions](https://kotlinlang.org/docs/coding-conventions.html)
