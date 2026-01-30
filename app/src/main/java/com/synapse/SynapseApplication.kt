@@ -17,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import com.synapse.util.CrashReporter
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import org.koin.java.KoinJavaComponent.get
@@ -42,6 +43,7 @@ class SynapseApplication : Application() {
     override fun onCreate() {
         super.onCreate()
 
+        CrashReporter.initialize(this)
         initKoin()
         createNotificationChannels()
         get<com.synapse.service.NotificationHelper>(com.synapse.service.NotificationHelper::class.java).createNotificationChannels()
