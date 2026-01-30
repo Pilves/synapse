@@ -409,7 +409,7 @@ class ReviewViewModelTest {
     }
 
     @Test
-    fun `syncAll deletes session on partial success`() = runTest {
+    fun `syncAll keeps session on partial success for retry`() = runTest {
         val session = createSession("s1", chunks = listOf(createChunk("c1", "s1")))
         every { sessionRepository.observeSessions() } returns flowOf(listOf(session))
         coEvery { syncRepository.syncSession(any(), any(), any()) } returns SyncStatus.PartialSuccess(1, 1)
@@ -421,7 +421,10 @@ class ReviewViewModelTest {
         vm.syncAll()
         advanceUntilIdle()
 
-        coVerify { sessionRepository.deleteSession("s1") }
+        // Session should NOT be deleted on partial success — kept for retry
+        coVerify(exactly = 0) { sessionRepository.deleteSession("s1") }
+        val status = vm.uiState.value.syncStatus
+        assertTrue(status is SyncStatus.PartialSuccess)
     }
 
     // --- Dialog management ---
