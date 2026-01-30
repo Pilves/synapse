@@ -8,6 +8,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -255,12 +257,20 @@ fun CaptureCanvas(
             }
         }
 
+        // GPU-accelerated fade animation driven by Compose
+        val fadeAlpha by animateFloatAsState(
+            targetValue = if (uiState.isFading) 0f else 1f,
+            animationSpec = tween(
+                durationMillis = if (uiState.isFading) CaptureViewModel.FADE_ANIMATION_DURATION_MS.toInt() else 0
+            ),
+            label = "chunkFade"
+        )
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .graphicsLayer {
-                    // Apply fade animation
-                    alpha = uiState.fadeProgress
+                    alpha = fadeAlpha
                 }
         ) {
             // Draw completed strokes using cached paths

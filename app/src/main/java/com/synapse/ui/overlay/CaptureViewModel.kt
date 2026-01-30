@@ -392,23 +392,11 @@ class CaptureViewModel : ViewModel() {
 
     private fun startFadeAnimation() {
         fadeAnimationJob?.cancel()
+        // Set isFading flag — CaptureCanvas drives the actual animation via
+        // animateFloatAsState. After the animation duration, clear strokes.
+        _uiState.update { it.copy(isFading = true) }
         fadeAnimationJob = viewModelScope.launch {
-            _uiState.update { it.copy(isFading = true, fadeProgress = 1f) }
-
-            val startTime = System.currentTimeMillis()
-            val duration = FADE_ANIMATION_DURATION_MS
-
-            while (true) {
-                val elapsed = System.currentTimeMillis() - startTime
-                val progress = 1f - (elapsed.toFloat() / duration).coerceIn(0f, 1f)
-
-                _uiState.update { it.copy(fadeProgress = progress) }
-
-                if (elapsed >= duration) break
-                delay(16) // ~60fps
-            }
-
-            // Clear strokes after fade
+            delay(FADE_ANIMATION_DURATION_MS)
             strokeManager.clear()
             _strokes.value = emptyList()
             _uiState.update { it.copy(
