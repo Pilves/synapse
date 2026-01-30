@@ -541,8 +541,14 @@ class SessionStorage(
                 ?.filter { it.isFile && it.name.endsWith(StorageHelper.JSON_EXTENSION) && !it.name.endsWith(StorageHelper.TEMP_EXTENSION) }
                 ?.mapNotNull { file ->
                     try {
-                        val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
-                        dto.toSession()
+                        val id = file.nameWithoutExtension
+                        // Check LruCache first to avoid redundant JSON parsing
+                        sessionCache.get(id) ?: run {
+                            val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
+                            val session = dto.toSession()
+                            sessionCache.put(id, session)
+                            session
+                        }
                     } catch (e: Exception) {
                         Log.e(TAG, "Failed to parse session file: ${file.name}", e)
                         null
