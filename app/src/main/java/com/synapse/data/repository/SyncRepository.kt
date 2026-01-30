@@ -320,13 +320,18 @@ class SyncRepositoryImpl(
 
                                 if (question.isNotBlank() || sendImages.isNotEmpty()) {
                                     try {
-                                        answerText = questionAnswerService.answerQuestion(
+                                        val rawAnswer = questionAnswerService.answerQuestion(
                                             question = question,
                                             config = llmConfig,
                                             contexts = segment.contexts,
                                             additionalImages = sendImages
                                         )
-                                        Log.d(TAG, "Segment $segIndex Q&A answer: ${answerText.take(80)}")
+                                        if (OutputSanitizer.isLlmErrorContent(rawAnswer)) {
+                                            Log.w(TAG, "Segment $segIndex Q&A returned LLM error content: ${rawAnswer.take(80)}")
+                                        } else {
+                                            answerText = rawAnswer
+                                        }
+                                        Log.d(TAG, "Segment $segIndex Q&A answer: ${(answerText ?: rawAnswer).take(80)}")
                                         // If transcription failed but vision Q&A succeeded,
                                         // don't count those chunks as failed
                                         if (chunkFailedCount > 0 && sendImages.isNotEmpty()) {
@@ -459,8 +464,8 @@ class SyncRepositoryImpl(
                 return null
             }
             val imageBytes = file.readBytes()
-            if (imageBytes.isEmpty()) {
-                Log.w(TAG, "RegionImage file is empty: ${ctx.imagePath}")
+            if (imageBytes.size < 1024) {
+                Log.w(TAG, "RegionImage file too small (${imageBytes.size} bytes), likely corrupt: ${ctx.imagePath}")
                 return null
             }
 
@@ -470,6 +475,10 @@ class SyncRepositoryImpl(
                 "Do not add any commentary — only output the transcribed content."
 
             val result = transcriptionService.visionQuery(prompt, listOf(imageBytes))
+            if (OutputSanitizer.isLlmErrorContent(result)) {
+                Log.w(TAG, "RegionImage transcription returned LLM error content: ${result.take(80)}")
+                return null
+            }
             Log.d(TAG, "RegionImage transcribed: ${result.take(80)}")
             result
         } catch (e: Exception) {

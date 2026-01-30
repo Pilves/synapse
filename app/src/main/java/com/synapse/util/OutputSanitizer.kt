@@ -36,4 +36,39 @@ object OutputSanitizer {
         result = HTML_TAG_REGEX.replace(result, "")
         return result.trim()
     }
+
+    /**
+     * Known LLM error phrases that indicate the model failed to process the image.
+     * Only triggers on short responses (<200 chars) to avoid false positives
+     * on legitimate content that happens to contain these phrases.
+     */
+    private val LLM_ERROR_PHRASES = listOf(
+        "the image couldn't load",
+        "the image could not load",
+        "i cannot view the image",
+        "i can't view the image",
+        "i'm unable to view",
+        "i am unable to view",
+        "i cannot see the image",
+        "i can't see the image",
+        "no image was provided",
+        "image is not available",
+        "unable to process the image",
+        "unable to access the image",
+        "i cannot process this image",
+        "i can't process this image",
+        "there is no image",
+        "image failed to load",
+        "could not process the image"
+    )
+
+    /**
+     * Checks if the given text is an LLM error message rather than real content.
+     * Returns true only for short responses (<200 chars) that match known error phrases.
+     */
+    fun isLlmErrorContent(text: String): Boolean {
+        if (text.length >= 200) return false
+        val lower = text.trim().lowercase()
+        return LLM_ERROR_PHRASES.any { lower.contains(it) }
+    }
 }
