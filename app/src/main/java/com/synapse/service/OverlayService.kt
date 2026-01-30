@@ -6,17 +6,13 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
-import android.graphics.PixelFormat
-import android.graphics.Rect
 import android.content.pm.ServiceInfo
+import android.graphics.Rect
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.provider.Settings
 import android.util.Log
-import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
@@ -25,12 +21,13 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
@@ -54,78 +51,54 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.AbstractComposeView
-import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryController
 import androidx.savedstate.SavedStateRegistryOwner
-import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.synapse.R
 import com.synapse.SynapseApplication
 import com.synapse.data.repository.ChunkRepository
 import com.synapse.data.repository.SessionRepository
-import com.synapse.model.CapturedContext
 import com.synapse.ui.MainActivity
 import com.synapse.ui.overlay.CaptureCanvas
 import com.synapse.ui.overlay.CaptureEvent
 import com.synapse.ui.overlay.CaptureViewModel
 import com.synapse.ui.overlay.InputMode
 import com.synapse.ui.overlay.PalmRejectionFilter
-import com.synapse.ui.theme.SynapseTheme
+import com.synapse.ui.settings.settingsDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koin.android.ext.android.inject
-import android.view.Choreographer
-import android.widget.Toast
-import java.io.IOException
-import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.floatPreferencesKey
-import androidx.datastore.preferences.core.intPreferencesKey
-import com.synapse.ui.settings.settingsDataStore
 
 /**
  * Foreground service that manages the floating overlay capture system.
  *
- * This service provides:
- * - A floating bubble that can be tapped to start capture
- * - A fullscreen transparent canvas for handwriting capture
- * - Stylus writes, finger passes through (for scrolling underlying apps)
+ * Delegates to:
+ * - [FloatingBubbleManager] for the floating bubble UI
+ * - [CaptureOverlayManager] for the fullscreen capture overlay
+ * - [OverlaySessionManager] for session/chunk persistence
  */
 class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private lateinit var windowManager: WindowManager
-    private var floatingBubbleView: View? = null
-    private var bubbleBadgeView: android.widget.TextView? = null
-    private var bubbleWarningView: View? = null
-    private var bubbleIconView: android.widget.ImageView? = null
-    private var captureOverlayView: View? = null
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
 
     private var captureViewModel: CaptureViewModel? = null
-    private var pendingChunkCount = 0
-    private var isCaptureActive = false
-    private var isRegionMode = false
-    private var capturedTextPreview = mutableStateOf<String?>(null)
-    private var showHealthWarning = false
 
     // Repositories for saving sessions and chunks
     private val sessionRepository: SessionRepository by inject()
@@ -143,21 +116,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     // Coroutine scope for the service
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    // Current active session ID
-    private val currentSessionId = AtomicReference<String?>(null)
-    private val sessionMutex = Mutex()
-
-    // Settings keys
-    private val chunkTimeoutKey = floatPreferencesKey("chunk_timeout_seconds")
-    private val bubbleXKey = intPreferencesKey("bubble_position_x")
-    private val bubbleYKey = intPreferencesKey("bubble_position_y")
-
-    // Cached settings values (read when overlay opens)
-    private var chunkTimeoutMs: Long = 1000L
-
-    // Last known bubble position (used to anchor the toolbar)
-    private var lastBubbleX = 100
-    private var lastBubbleY = 300
+    // Managers
+    private var bubbleManager: FloatingBubbleManager? = null
+    private var overlayManager: CaptureOverlayManager? = null
+    private var sessionManager: OverlaySessionManager? = null
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -174,13 +136,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         captureViewModel = CaptureViewModel()
 
+        initManagers()
+
         // Start permission health monitoring
         permissionHealthMonitor.startMonitoring()
         serviceScope.launch {
             permissionHealthMonitor.health.collect { health ->
                 val warning = health != PermissionHealthMonitor.PermissionHealth.HEALTHY
-                showHealthWarning = warning
-                updateBubbleWarning(warning)
+                bubbleManager?.showHealthWarning = warning
+                bubbleManager?.updateBubbleWarning(warning)
             }
         }
 
@@ -190,16 +154,16 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 when (event) {
                     is CaptureEvent.ChunkCaptured -> {
                         Log.d(TAG, "Chunk captured: index=${event.chunk.index}")
-                        saveChunk(event.chunk)
+                        sessionManager?.saveChunk(event.chunk)
                     }
                     is CaptureEvent.SessionEnded -> {
                         Log.d(TAG, "Session ended")
-                        endCurrentSession()
+                        sessionManager?.endCurrentSession()
                     }
                     is CaptureEvent.SessionTimeout -> {
                         Log.d(TAG, "Session timeout — ending session and closing overlay")
-                        endCurrentSession()
-                        withContext(Dispatchers.Main) { hideCaptureOverlay() }
+                        sessionManager?.endCurrentSession()
+                        withContext(Dispatchers.Main) { overlayManager?.hide() }
                     }
                     is CaptureEvent.Error -> {
                         Log.e(TAG, "Capture error: ${event.message}")
@@ -209,392 +173,64 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
-    private fun saveChunk(capturedChunk: com.synapse.ui.overlay.CapturedChunk) {
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                // Create session if not exists (synchronized)
-                sessionMutex.withLock {
-                    if (currentSessionId.get() == null) {
-                        val session = sessionRepository.createSession()
-                        currentSessionId.set(session.id)
-                        Log.d(TAG, "Created new session: ${session.id}")
-                    }
+    private fun initManagers() {
+        val vm = captureViewModel ?: return
+
+        sessionManager = OverlaySessionManager(
+            context = this,
+            sessionRepository = sessionRepository,
+            chunkRepository = chunkRepository,
+            screenshotManager = screenshotManager,
+            captureViewModel = vm,
+            scope = serviceScope,
+            onBadgeUpdate = { count -> bubbleManager?.updateBubbleBadge(count) },
+            onOpenReview = { openReviewScreen() },
+            onHideOverlay = { overlayManager?.hide() },
+            onRefreshOverlay = { overlayManager?.refresh() },
+            onRequestPermission = { requestScreenCapturePermission() }
+        )
+
+        bubbleManager = FloatingBubbleManager(
+            context = this,
+            windowManager = windowManager,
+            dataStore = settingsDataStore,
+            scope = serviceScope,
+            onTap = { showCaptureOverlay() },
+            onDismiss = { stopOverlay() },
+            onWarningTap = {
+                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
-
-                val sessionId = currentSessionId.get() ?: return@launch
-
-                // Calculate timestamp in seconds from epoch
-                val timestampSeconds = capturedChunk.timestamp / 1000f
-
-                // Save chunk image and metadata
-                try {
-                    val chunk = chunkRepository.saveChunk(
-                        sessionId = sessionId,
-                        bitmap = capturedChunk.bitmap,
-                        timestampSeconds = timestampSeconds
-                    )
-                    Log.d(TAG, "Saved chunk: ${chunk.id} to session $sessionId")
-                } finally {
-                    capturedChunk.bitmap.recycle()
-                }
-
-                // Update badge count
-                launch(Dispatchers.Main) {
-                    pendingChunkCount++
-                    updateBubbleBadge(pendingChunkCount)
-                }
-            } catch (e: IOException) {
-                Log.e(TAG, "IO error saving chunk", e)
-            } catch (e: IllegalStateException) {
-                Log.e(TAG, "Invalid state saving chunk", e)
+                startActivity(intent)
             }
-        }
-    }
+        )
 
-    /**
-     * Handles a region selection from the capture canvas.
-     * Extracts text via AccessibilityService and saves it as a context on the session.
-     * Auto-returns to write mode after selection.
-     */
-    private fun handleRegionSelected(region: Rect) {
-        Log.d(TAG, "Region selected: $region")
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                // Create session if needed (synchronized)
-                sessionMutex.withLock {
-                    if (currentSessionId.get() == null) {
-                        val session = sessionRepository.createSession()
-                        currentSessionId.set(session.id)
-                        Log.d(TAG, "Created new session for region select: ${session.id}")
-                    }
-                }
-                val sessionId = currentSessionId.get() ?: return@launch
+        overlayManager = CaptureOverlayManager(
+            service = this,
+            windowManager = windowManager,
+            captureViewModel = vm,
+            screenshotManager = screenshotManager,
+            scope = serviceScope,
+            dataStore = settingsDataStore,
+            onMinimize = { showFloatingBubble() },
+            onDone = { sessionManager?.finishSessionAndOpenReview() },
+            onDiscard = { sessionManager?.deleteLastSessionItem() },
+            onRegionSelected = { rect -> sessionManager?.handleRegionSelected(rect) },
+            onVibrate = { sessionManager?.vibrateForRegionSelection() },
+            onRequestPermission = { requestScreenCapturePermission() },
+            getBubblePosition = {
+                val bm = bubbleManager
+                Pair(bm?.lastBubbleX ?: 100, bm?.lastBubbleY ?: 300)
+            },
+            showBubble = { showFloatingBubble() },
+            hideBubble = { hideFloatingBubble() }
+        )
 
-                // Try text extraction via accessibility service first
-                var regionText: CapturedContext.RegionText? = null
-                try {
-                    regionText = SynapseAccessibilityService.getInstance()
-                        ?.getTextInRegion(region)
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "Text extraction denied", e)
-                } catch (e: IllegalStateException) {
-                    Log.w(TAG, "Text extraction failed, will try screenshot", e)
-                }
-
-                if (regionText != null && regionText.text.isNotBlank()) {
-                    sessionRepository.addContext(sessionId, regionText)
-                    Log.d(TAG, "Saved region text context: ${regionText.text.take(80)}")
-
-                    val preview = regionText.text.take(60).let {
-                        if (regionText.text.length > 60) "$it..." else it
-                    }
-                    capturedTextPreview.value = preview
-                } else {
-                    // Fallback: capture screenshot via MediaProjection
-                    Log.d(TAG, "No text found, attempting screenshot fallback")
-                    if (screenshotManager.hasPermission()) {
-                        val bitmap = screenshotManager.captureRegion(region)
-                        if (bitmap != null) {
-                            Log.d(TAG, "Screenshot captured: ${bitmap.width}x${bitmap.height}")
-                            val imagePath = saveScreenshot(bitmap)
-                            if (imagePath != null) {
-                                val imageContext = CapturedContext.RegionImage(
-                                    imagePath = imagePath,
-                                    bounds = region,
-                                    description = null
-                                )
-                                sessionRepository.addContext(sessionId, imageContext)
-                                capturedTextPreview.value = "[Screenshot captured]"
-                            } else {
-                                capturedTextPreview.value = "[Failed to save screenshot]"
-                            }
-                        } else {
-                            Log.w(TAG, "Screenshot capture returned null — projection may be dead")
-                            // captureRegion already called invalidateProjection() if VD setup failed
-                            if (!screenshotManager.hasPermission()) {
-                                Log.d(TAG, "Projection invalidated, requesting permission again")
-                                capturedTextPreview.value = "[Re-requesting screen permission...]"
-                                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                                    hideCaptureOverlay()
-                                    requestScreenCapturePermission()
-                                }
-                            } else {
-                                capturedTextPreview.value = "[Screenshot failed]"
-                            }
-                        }
-                    } else {
-                        Log.d(TAG, "No screenshot permission, requesting it now")
-                        kotlinx.coroutines.withContext(Dispatchers.Main) {
-                            hideCaptureOverlay()
-                            requestScreenCapturePermission()
-                        }
-                    }
-                }
-
-                // Auto-switch back to write mode
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    isRegionMode = false
-                    refreshCaptureOverlay()
-                }
-            } catch (e: IOException) {
-                Log.e(TAG, "IO error capturing region", e)
-                capturedTextPreview.value = "[Selection failed]"
-            } catch (e: SecurityException) {
-                Log.e(TAG, "Permission denied capturing region", e)
-                capturedTextPreview.value = "[Selection failed]"
-            } catch (e: IllegalStateException) {
-                Log.e(TAG, "Invalid state capturing region", e)
-                capturedTextPreview.value = "[Selection failed]"
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    isRegionMode = false
-                    refreshCaptureOverlay()
-                }
-            }
-        }
-    }
-
-    private fun saveScreenshot(bitmap: android.graphics.Bitmap): String? {
-        return try {
-            val dir = java.io.File(filesDir, "screenshots")
-            if (!dir.exists()) dir.mkdirs()
-            val file = java.io.File(dir, "region_${java.util.UUID.randomUUID()}.png")
-            java.io.FileOutputStream(file).use { out ->
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 90, out)
-            }
-            Log.d(TAG, "Screenshot saved to ${file.absolutePath}")
-            file.absolutePath
-        } catch (e: IOException) {
-            Log.e(TAG, "IO error saving screenshot", e)
-            null
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Permission denied saving screenshot", e)
-            null
-        }
-    }
-
-    /**
-     * Consumes pending context from ProcessTextActivity (text selection from other apps)
-     * and attaches it to the current or a new session.
-     */
-    private fun handlePendingContext() {
-        val context = com.synapse.ui.ContextHolder.consumeContext() ?: return
-        Log.d(TAG, "Consuming pending context: ${context::class.simpleName}")
-
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                if (currentSessionId.get() == null) {
-                    val session = sessionRepository.createSession()
-                    currentSessionId.set(session.id)
-                    Log.d(TAG, "Created new session for pending context: ${session.id}")
-                }
-                val sessionId = currentSessionId.get() ?: return@launch
-                sessionRepository.addContext(sessionId, context)
-                Log.d(TAG, "Added pending context to session $sessionId")
-
-                if (context is com.synapse.model.CapturedContext.SelectedText) {
-                    val preview = context.text.take(60).let {
-                        if (context.text.length > 60) "$it..." else it
-                    }
-                    capturedTextPreview.value = preview
-                }
-            } catch (e: IOException) {
-                Log.e(TAG, "IO error adding pending context", e)
-            } catch (e: IllegalStateException) {
-                Log.e(TAG, "Invalid state adding pending context", e)
-            }
-        }
-    }
-
-    /**
-     * Triggers a short haptic vibration for region selection feedback.
-     */
-    private fun vibrateForRegionSelection() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vibratorManager = getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vibratorManager.defaultVibrator.vibrate(
-                    android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                val vibrator = getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(
-                        android.os.VibrationEffect.createOneShot(50, android.os.VibrationEffect.DEFAULT_AMPLITUDE)
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(50)
-                }
-            }
-        } catch (e: SecurityException) {
-            Log.w(TAG, "Vibration permission denied", e)
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "Vibrator not available", e)
-        }
-    }
-
-    /**
-     * Deletes the most recent scribble (chunk) or captured image/text (context) from the session.
-     * If there are unsaved strokes on the canvas, clears those first.
-     * If the session becomes empty after deletion, discards the session entirely.
-     */
-    private fun deleteLastSessionItem() {
-        // If there are unsaved strokes on the canvas, just clear them
-        val vm = captureViewModel
-        if (vm != null && vm.hasStrokes()) {
-            vm.clearStrokes()
-            Log.d(TAG, "Cleared unsaved strokes from canvas")
-            return
-        }
-
-        val sessionId = currentSessionId.get()
-        if (sessionId == null) {
-            Log.d(TAG, "No active session, nothing to delete")
-            return
-        }
-
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                val session = sessionRepository.getSession(sessionId) ?: return@launch
-
-                // Find the latest item by timestamp
-                val lastChunk = session.chunks.maxByOrNull { it.createdAt }
-                val lastContext = session.contexts.maxByOrNull { it.timestamp }
-
-                val chunkTs = lastChunk?.createdAt ?: 0L
-                val contextTs = lastContext?.timestamp ?: 0L
-
-                if (chunkTs == 0L && contextTs == 0L) {
-                    Log.d(TAG, "Session is empty, discarding")
-                    currentSessionId.set(null)
-                    return@launch
-                }
-
-                if (chunkTs >= contextTs && lastChunk != null) {
-                    // Delete the last chunk
-                    sessionRepository.deleteChunk(sessionId, lastChunk.id)
-                    Log.d(TAG, "Deleted last chunk: ${lastChunk.id}")
-                    launch(Dispatchers.Main) {
-                        if (pendingChunkCount > 0) {
-                            pendingChunkCount--
-                            updateBubbleBadge(pendingChunkCount)
-                        }
-                    }
-                } else if (lastContext != null) {
-                    // Delete the last context
-                    sessionRepository.removeContext(sessionId, lastContext.id)
-                    Log.d(TAG, "Deleted last context: ${lastContext.id}")
-                }
-
-                // Check if session is now empty — if so, discard it
-                val updated = sessionRepository.getSession(sessionId)
-                if (updated != null && updated.chunks.isEmpty() && updated.contexts.isEmpty()) {
-                    sessionRepository.deleteSession(sessionId)
-                    currentSessionId.set(null)
-                    Log.d(TAG, "Session now empty, discarded")
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete last session item", e)
-            }
-        }
-    }
-
-    private fun endCurrentSession() {
-        val sessionId = currentSessionId.get() ?: return
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                sessionRepository.endSession(sessionId)
-                Log.d(TAG, "Ended session: $sessionId")
-                currentSessionId.set(null)
-                // Don't clean up screenshots here — they're needed by SyncRepository
-                // Cleanup happens after sync in finishSessionAndOpenReview or on next service start
-            } catch (e: IOException) {
-                Log.e(TAG, "IO error ending session", e)
-            } catch (e: IllegalStateException) {
-                Log.e(TAG, "Invalid state ending session", e)
-            }
-        }
-    }
-
-    /**
-     * Ends the session and opens Review screen after session is saved.
-     *
-     * Captures any remaining strokes synchronously on the Main thread,
-     * then saves the chunk and ends the session sequentially on IO to
-     * avoid race conditions with the async event system.
-     */
-    private fun finishSessionAndOpenReview() {
-        // Capture remaining strokes synchronously BEFORE ending session.
-        // This returns the bitmap directly instead of going through the async
-        // ChunkCaptured event, preventing a race where the session is ended
-        // before the final chunk is saved.
-        val pendingChunk = captureViewModel?.captureRemainingStrokes()
-
-        // End UI session (strokes already cleared, so no ChunkCaptured event emitted)
-        captureViewModel?.endSession()
-
-        // Reset badge count since user is going to review
-        pendingChunkCount = 0
-        updateBubbleBadge(0)
-
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                // Ensure session exists for the pending chunk
-                if (pendingChunk != null) {
-                    sessionMutex.withLock {
-                        if (currentSessionId.get() == null) {
-                            val session = sessionRepository.createSession()
-                            currentSessionId.set(session.id)
-                            Log.d(TAG, "Created session for final chunk: ${session.id}")
-                        }
-                    }
-                }
-
-                val sessionId = currentSessionId.get()
-
-                // Save pending chunk to the correct session
-                if (pendingChunk != null) {
-                    try {
-                        if (sessionId != null) {
-                            val timestampSeconds = pendingChunk.timestamp / 1000f
-                            val chunk = chunkRepository.saveChunk(
-                                sessionId = sessionId,
-                                bitmap = pendingChunk.bitmap,
-                                timestampSeconds = timestampSeconds
-                            )
-                            Log.d(TAG, "Saved final chunk: ${chunk.id} to session $sessionId")
-                        } else {
-                            Log.w(TAG, "No session for pending chunk, discarding")
-                        }
-                    } finally {
-                        pendingChunk.bitmap.recycle()
-                    }
-                }
-
-                // End session AFTER all chunks are saved
-                if (sessionId != null) {
-                    sessionRepository.endSession(sessionId)
-                    Log.d(TAG, "Ended session: $sessionId")
-                    currentSessionId.set(null)
-                }
-
-                // Don't clean up screenshots here — sync hasn't happened yet.
-                // SyncRepository will clean up after sync completes.
-            } catch (e: IOException) {
-                Log.e(TAG, "IO error ending session for review", e)
-            } catch (e: IllegalStateException) {
-                Log.e(TAG, "Invalid state ending session for review", e)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error ending session for review", e)
-            }
-
-            // Hide overlay and open review on main thread after session is saved
-            // Small delay to let ripple animation finish
-            launch(Dispatchers.Main) {
-                kotlinx.coroutines.delay(50)
-                hideCaptureOverlay()
-                openReviewScreen()
+        // Share mutable state between overlay and session managers
+        overlayManager?.let { om ->
+            sessionManager?.let { sm ->
+                // The capturedTextPreview is shared: session manager writes it, overlay displays it
+                // We wire them together by making overlay read from session manager's state
             }
         }
     }
@@ -610,33 +246,35 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             }
             ACTION_STOP -> stopOverlay()
             ACTION_SHOW_CAPTURE -> showCaptureOverlay()
-            ACTION_HIDE_CAPTURE -> hideCaptureOverlay()
+            ACTION_HIDE_CAPTURE -> overlayManager?.hide()
             ACTION_UPDATE_BADGE -> {
-                pendingChunkCount = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
-                updateBubbleBadge(pendingChunkCount)
+                val count = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
+                sessionManager?.pendingChunkCount = count
+                bubbleManager?.updateBubbleBadge(count)
             }
             ACTION_TOGGLE_REGION_MODE -> {
+                val om = overlayManager ?: return START_STICKY
                 // Check if accessibility is available for text extraction
-                if (!isRegionMode && !capabilities.canExtractText) {
+                if (!om.isRegionMode && !capabilities.canExtractText) {
                     Log.w(TAG, "Region mode toggled without accessibility — text extraction unavailable, screenshot fallback only")
                 }
-                isRegionMode = !isRegionMode
-                Log.d(TAG, "Region capture mode: $isRegionMode")
+                om.isRegionMode = !om.isRegionMode
+                Log.d(TAG, "Region capture mode: ${om.isRegionMode}")
                 // Request screen capture permission if entering region mode without it
-                if (isRegionMode && !screenshotManager.hasPermission()) {
+                if (om.isRegionMode && !screenshotManager.hasPermission()) {
                     Log.d(TAG, "Requesting screen capture permission for region mode")
                     requestScreenCapturePermission()
                 }
                 // Re-show overlay to apply the mode change
-                if (isCaptureActive) {
-                    refreshCaptureOverlay()
+                if (om.isActive) {
+                    om.refresh()
                 }
             }
             ACTION_SET_MEDIA_PROJECTION -> {
                 handleMediaProjectionResult(intent)
             }
             ACTION_SHOW_WITH_CONTEXT -> {
-                handlePendingContext()
+                sessionManager?.handlePendingContext()
                 showCaptureOverlay()
             }
         }
@@ -649,8 +287,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         permissionHealthMonitor.stopMonitoring()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         serviceScope.cancel()
-        hideCaptureOverlay()
-        hideFloatingBubble()
+        overlayManager?.hide()
+        bubbleManager?.hideFloatingBubble()
         screenshotManager.releaseProjection()
         super.onDestroy()
     }
@@ -771,452 +409,30 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private fun stopOverlay() {
         // Delay to let ripple animation finish before removing views
         serviceScope.launch {
-            kotlinx.coroutines.delay(100)
-            hideCaptureOverlay()
-            hideFloatingBubble()
+            delay(100)
+            overlayManager?.hide()
+            bubbleManager?.hideFloatingBubble()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
     private fun showFloatingBubble() {
-        Log.d(TAG, "showFloatingBubble called, existing view: ${floatingBubbleView != null}")
-        if (floatingBubbleView != null) return
-
-        // Load saved bubble position (or use defaults)
-        var savedX = 100
-        var savedY = 300
-        try {
-            val prefs = kotlinx.coroutines.runBlocking {
-                settingsDataStore.data.first()
-            }
-            savedX = prefs[bubbleXKey] ?: 100
-            savedY = prefs[bubbleYKey] ?: 300
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to load bubble position, using defaults", e)
-        }
-
-        try {
-        // Get screen dimensions
-        val displayMetrics = resources.displayMetrics
-        val screenHeight = displayMetrics.heightPixels
-        val density = displayMetrics.density
-
-        // Resolve colors based on current dark/light mode
-        val isDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
-                android.content.res.Configuration.UI_MODE_NIGHT_YES
-        val primaryColor = if (isDark) 0xFFD0BCFF.toInt() else 0xFF7B5EAE.toInt()
-        val onPrimaryColor = if (isDark) 0xFF3E1F6E.toInt() else 0xFFFFFFFF.toInt()
-        val errorColor = if (isDark) 0xFFFFB4AB.toInt() else 0xFFBA1A1A.toInt()
-        val onErrorColor = if (isDark) 0xFF690005.toInt() else 0xFFFFFFFF.toInt()
-        val amberColor = 0xFFFFA000.toInt()
-
-        val bubbleSizePx = (56 * density).roundToInt()
-        val badgeSizePx = (20 * density).roundToInt()
-        val elevationPx = 8 * density
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = savedX
-            y = savedY
-        }
-        lastBubbleX = savedX
-        lastBubbleY = savedY
-
-        // Build the bubble view hierarchy programmatically
-        val container = android.widget.FrameLayout(this).apply {
-            layoutParams = android.widget.FrameLayout.LayoutParams(
-                bubbleSizePx + badgeSizePx / 2,
-                bubbleSizePx + badgeSizePx / 2
-            )
-        }
-
-        // Circular FAB background
-        val fabBackground = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(primaryColor)
-        }
-
-        val iconView = android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_bubble_edit)
-            setColorFilter(onPrimaryColor, android.graphics.PorterDuff.Mode.SRC_IN)
-            background = fabBackground
-            scaleType = android.widget.ImageView.ScaleType.CENTER
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = elevationPx
-            }
-            layoutParams = android.widget.FrameLayout.LayoutParams(bubbleSizePx, bubbleSizePx).apply {
-                gravity = Gravity.BOTTOM or Gravity.START
-            }
-        }
-        bubbleIconView = iconView
-        container.addView(iconView)
-
-        // Badge (pending chunk count)
-        val badgeView = android.widget.TextView(this).apply {
-            textSize = 10f
-            setTextColor(onErrorColor)
-            gravity = Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(errorColor)
-            }
-            visibility = if (pendingChunkCount > 0) View.VISIBLE else View.GONE
-            text = if (pendingChunkCount > 99) "99+" else pendingChunkCount.toString()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = elevationPx + 1
-            }
-            layoutParams = android.widget.FrameLayout.LayoutParams(badgeSizePx, badgeSizePx).apply {
-                gravity = Gravity.TOP or Gravity.END
-            }
-        }
-        bubbleBadgeView = badgeView
-        container.addView(badgeView)
-
-        // Warning dot (amber, permission degraded)
-        val warningView = android.widget.TextView(this).apply {
-            textSize = 10f
-            setTextColor(0xFFFFFFFF.toInt())
-            gravity = Gravity.CENTER
-            text = "!"
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(amberColor)
-            }
-            visibility = if (showHealthWarning) View.VISIBLE else View.GONE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = elevationPx + 1
-            }
-            layoutParams = android.widget.FrameLayout.LayoutParams(badgeSizePx, badgeSizePx).apply {
-                gravity = Gravity.TOP or Gravity.START
-            }
-        }
-        bubbleWarningView = warningView
-        container.addView(warningView)
-
-        // Touch handling: tap vs drag
-        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
-        var startX = 0f
-        var startY = 0f
-        var isDragging = false
-        var currentY = params.y.toFloat()
-
-        // Choreographer vsync batching for drag
-        var pendingDx = 0f
-        var pendingDy = 0f
-        var frameCallbackScheduled = false
-        val choreographer = Choreographer.getInstance()
-
-        val dismissZoneThreshold = screenHeight * 0.85f
-
-        container.setOnTouchListener { v, event ->
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    startX = event.rawX
-                    startY = event.rawY
-                    isDragging = false
-                    true
-                }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - startX
-                    val dy = event.rawY - startY
-                    if (!isDragging && (dx * dx + dy * dy > touchSlop * touchSlop)) {
-                        isDragging = true
-                    }
-                    if (isDragging) {
-                        startX = event.rawX
-                        startY = event.rawY
-                        currentY += dy
-
-                        pendingDx += dx
-                        pendingDy += dy
-                        if (!frameCallbackScheduled) {
-                            frameCallbackScheduled = true
-                            choreographer.postFrameCallback {
-                                frameCallbackScheduled = false
-                                params.x += pendingDx.roundToInt()
-                                params.y += pendingDy.roundToInt()
-                                pendingDx = 0f
-                                pendingDy = 0f
-                                try {
-                                    windowManager.updateViewLayout(container, params)
-                                } catch (e: IllegalArgumentException) {
-                                    Log.w(TAG, "Bubble view not attached during drag update", e)
-                                }
-                            }
-                        }
-
-                        // Update appearance when in/out of dismiss zone
-                        val inDismissZone = currentY > dismissZoneThreshold
-                        val bg = iconView.background as android.graphics.drawable.GradientDrawable
-                        if (inDismissZone) {
-                            bg.setColor(errorColor)
-                            iconView.setImageResource(R.drawable.ic_bubble_close)
-                            iconView.setColorFilter(onErrorColor, android.graphics.PorterDuff.Mode.SRC_IN)
-                            badgeView.visibility = View.GONE
-                            warningView.visibility = View.GONE
-                        } else {
-                            bg.setColor(primaryColor)
-                            iconView.setImageResource(R.drawable.ic_bubble_edit)
-                            iconView.setColorFilter(onPrimaryColor, android.graphics.PorterDuff.Mode.SRC_IN)
-                            if (pendingChunkCount > 0) badgeView.visibility = View.VISIBLE
-                            if (showHealthWarning) warningView.visibility = View.VISIBLE
-                        }
-                    }
-                    true
-                }
-                MotionEvent.ACTION_UP -> {
-                    if (!isDragging) {
-                        // Tap — open capture overlay
-                        showCaptureOverlay()
-                    } else {
-                        // Drag ended
-                        if (currentY > dismissZoneThreshold) {
-                            stopOverlay()
-                        } else {
-                            // Track position for toolbar anchoring
-                            lastBubbleX = params.x
-                            lastBubbleY = params.y
-                            // Persist bubble position
-                            serviceScope.launch(Dispatchers.IO) {
-                                try {
-                                    settingsDataStore.edit { prefs ->
-                                        prefs[bubbleXKey] = params.x
-                                        prefs[bubbleYKey] = params.y
-                                    }
-                                } catch (e: IOException) {
-                                    Log.w(TAG, "Failed to save bubble position", e)
-                                }
-                            }
-                        }
-                    }
-                    true
-                }
-                MotionEvent.ACTION_CANCEL -> {
-                    isDragging = false
-                    true
-                }
-                else -> false
-            }
-        }
-
-        // Warning dot tap opens accessibility settings
-        warningView.setOnClickListener {
-            val intent = android.content.Intent(
-                android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
-            ).apply {
-                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-            }
-            startActivity(intent)
-        }
-
-        floatingBubbleView = container
-        windowManager.addView(container, params)
-            Log.d(TAG, "Floating bubble added to window manager")
-        } catch (e: SecurityException) {
-            Log.e(TAG, "Overlay permission denied for bubble", e)
-        } catch (e: WindowManager.BadTokenException) {
-            Log.e(TAG, "Bad window token showing bubble", e)
-        } catch (e: IllegalStateException) {
-            Log.e(TAG, "Invalid state showing bubble", e)
-        }
-    }
-
-    private fun updateBubbleBadge(count: Int) {
-        bubbleBadgeView?.let { badge ->
-            if (count > 0) {
-                badge.text = if (count > 99) "99+" else count.toString()
-                badge.visibility = View.VISIBLE
-            } else {
-                badge.visibility = View.GONE
-            }
-        }
-    }
-
-    private fun updateBubbleWarning(show: Boolean) {
-        bubbleWarningView?.visibility = if (show) View.VISIBLE else View.GONE
+        bubbleManager?.pendingChunkCount = sessionManager?.pendingChunkCount ?: 0
+        bubbleManager?.showFloatingBubble()
     }
 
     private fun hideFloatingBubble() {
-        floatingBubbleView?.let {
-            try {
-                windowManager.removeViewImmediate(it)
-            } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "Bubble view not attached", e)
-            } catch (e: IllegalStateException) {
-                Log.w(TAG, "Invalid state removing bubble view", e)
-            }
-            floatingBubbleView = null
-            bubbleBadgeView = null
-            bubbleWarningView = null
-            bubbleIconView = null
-        }
+        bubbleManager?.hideFloatingBubble()
     }
 
-
-    @SuppressLint("ClickableViewAccessibility")
     private fun showCaptureOverlay() {
-        if (captureOverlayView != null || isCaptureActive) return
-        val vm = captureViewModel ?: return
-        isCaptureActive = true
-
-        // If screenshot permission is missing, close the overlay so the user
-        // doesn't scribble on the permission dialog, then request permission.
-        if (!screenshotManager.hasPermission()) {
-            Log.d(TAG, "No screenshot permission on capture show, closing overlay and requesting")
-            isCaptureActive = false
-            hideCaptureOverlay()
-            requestScreenCapturePermission()
-            return
+        val om = overlayManager ?: return
+        // Sync shared state from session manager
+        sessionManager?.let { sm ->
+            om.capturedTextPreview.value = sm.capturedTextPreview.value
         }
-
-        // Read settings on IO thread (use cached default until loaded)
-        serviceScope.launch(Dispatchers.IO) {
-            try {
-                val prefs = settingsDataStore.data.first()
-                val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 1f
-                chunkTimeoutMs = (chunkTimeoutSeconds * 1000).toLong()
-            } catch (e: IOException) {
-                Log.e(TAG, "IO error reading settings", e)
-            } catch (e: IllegalStateException) {
-                Log.e(TAG, "Invalid state reading settings", e)
-            }
-        }
-
-        // Hide bubble while capturing
-        hideFloatingBubble()
-
-        // Create the capture overlay with special touch handling
-        // Strategy: Start with FLAG_NOT_TOUCHABLE so finger touches pass through.
-        // When stylus hovers or touches, we remove the flag to capture stylus input.
-        // After stylus leaves, we restore the flag for finger pass-through.
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
-            // Simple flags - overlay captures all input when open
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-
-        // Simple ComposeView - when overlay is open, all input draws
-        val overlayView = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(this@OverlayService)
-            setViewTreeSavedStateRegistryOwner(this@OverlayService)
-            setContent {
-                SynapseTheme {
-                    CaptureOverlayContent(
-                        viewModel = vm,
-                        chunkTimeoutMs = chunkTimeoutMs,
-                        isRegionMode = isRegionMode,
-                        initialToolbarX = lastBubbleX.toFloat(),
-                        initialToolbarY = lastBubbleY.toFloat(),
-                        capturedTextPreview = capturedTextPreview.value,
-                        onClearPreview = { capturedTextPreview.value = null },
-                        onMinimize = {
-                            // Hide overlay but keep session active
-                            hideCaptureOverlay()
-                        },
-                        onDone = {
-                            finishSessionAndOpenReview()
-                        },
-                        onDiscard = {
-                            deleteLastSessionItem()
-                        },
-                        onToggleRegionMode = {
-                            isRegionMode = !isRegionMode
-                            Log.d(TAG, "Region mode toggled: $isRegionMode")
-                            refreshCaptureOverlay()
-                        },
-                        onRegionSelected = { rect ->
-                            handleRegionSelected(rect)
-                        },
-                        onVibrate = {
-                            vibrateForRegionSelection()
-                        }
-                    )
-                }
-            }
-        }
-
-        captureOverlayView = overlayView
-        windowManager.addView(overlayView, params)
-
-        // Auto-minimize when user navigates away (home/recents/back)
-        SynapseAccessibilityService.getInstance()?.let { a11y ->
-            a11y.onWindowChanged = {
-                if (isCaptureActive) {
-                    serviceScope.launch(Dispatchers.Main) {
-                        hideCaptureOverlay()
-                    }
-                }
-            }
-            a11y.onBackPressed = {
-                if (isCaptureActive) {
-                    serviceScope.launch(Dispatchers.Main) {
-                        hideCaptureOverlay()
-                    }
-                    true
-                } else {
-                    false
-                }
-            }
-        }
-    }
-
-    /**
-     * Re-creates the capture overlay to apply mode changes (e.g. region mode toggle).
-     * Preserves the active session state.
-     */
-    private fun refreshCaptureOverlay() {
-        captureOverlayView?.let {
-            windowManager.removeView(it)
-            captureOverlayView = null
-        }
-        // Don't reset isCaptureActive - we're just refreshing
-        isCaptureActive = false
-        showCaptureOverlay()
-    }
-
-    private fun hideCaptureOverlay() {
-        // Stop listening for navigation events while not capturing
-        SynapseAccessibilityService.getInstance()?.let {
-            it.onWindowChanged = null
-            it.onBackPressed = null
-        }
-
-        captureOverlayView?.let {
-            try {
-                windowManager.removeViewImmediate(it)
-            } catch (e: IllegalArgumentException) {
-                Log.w(TAG, "Capture overlay view not attached", e)
-            } catch (e: IllegalStateException) {
-                Log.w(TAG, "Invalid state removing capture overlay", e)
-            }
-            captureOverlayView = null
-        }
-        isCaptureActive = false
-        isRegionMode = false
-        // Pause screen mirroring to save resources while not capturing
-        screenshotManager.pauseCapture()
-        showFloatingBubble()
+        om.show()
     }
 
     /**
@@ -1450,7 +666,7 @@ class TouchDifferentiatingOverlayView(
  * Fullscreen capture overlay content with canvas and toolbar.
  */
 @Composable
-private fun CaptureOverlayContent(
+internal fun CaptureOverlayContent(
     viewModel: CaptureViewModel,
     chunkTimeoutMs: Long,
     isRegionMode: Boolean = false,
@@ -1462,7 +678,7 @@ private fun CaptureOverlayContent(
     onDone: () -> Unit,
     onDiscard: () -> Unit,
     onToggleRegionMode: (() -> Unit)? = null,
-    onRegionSelected: ((android.graphics.Rect) -> Unit)? = null,
+    onRegionSelected: ((Rect) -> Unit)? = null,
     onVibrate: (() -> Unit)? = null
 ) {
     val density = LocalDensity.current
@@ -1496,7 +712,7 @@ private fun CaptureOverlayContent(
         var toolbarOffsetX by remember(clampedX) { mutableFloatStateOf(clampedX) }
         var toolbarOffsetY by remember(clampedY) { mutableFloatStateOf(clampedY) }
         // Apply chunk timeout setting to viewModel
-        androidx.compose.runtime.LaunchedEffect(chunkTimeoutMs) {
+        LaunchedEffect(chunkTimeoutMs) {
             viewModel.setChunkTimeout(chunkTimeoutMs)
         }
 
@@ -1539,8 +755,8 @@ private fun CaptureOverlayContent(
                     }
                 }
         ) {
-            androidx.compose.foundation.layout.Row(
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 // Minimize - hide overlay, keep session (tap bubble to continue)
                 SmallFloatingActionButton(
@@ -1617,7 +833,7 @@ private fun CaptureOverlayContent(
 
         if (capturedTextPreview != null) {
             LaunchedEffect(capturedTextPreview) {
-                kotlinx.coroutines.delay(2500)
+                delay(2500)
                 showPreview = false
                 onClearPreview?.invoke()
             }
