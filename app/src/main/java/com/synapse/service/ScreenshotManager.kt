@@ -166,6 +166,8 @@ class ScreenshotManager(private val context: Context) {
                 synchronized(lock) {
                     mediaProjection = projection
                     permissionGranted = true
+                    // Reset flag — this is a new projection, previous callback is stale
+                    callbackRegistered = false
                     registerCallback(projection)
                     setupVirtualDisplay(projection)
                 }
