@@ -83,6 +83,7 @@ import com.synapse.ui.overlay.CaptureCanvas
 import com.synapse.ui.overlay.CaptureEvent
 import com.synapse.ui.overlay.CaptureViewModel
 import com.synapse.ui.overlay.InputMode
+import com.synapse.ui.overlay.PalmRejectionFilter
 import com.synapse.ui.theme.SynapseTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +94,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koin.android.ext.android.inject
+import android.widget.Toast
 import java.io.IOException
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
@@ -129,6 +131,13 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     // Screenshot manager for media projection handling
     private val screenshotManager: ScreenshotManager by inject()
 
+    // Capability detection
+    private val capabilities: SynapseCapabilities by inject()
+
+    // Permission health monitoring
+    private val permissionHealthMonitor: PermissionHealthMonitor by inject()
+    private var showHealthWarning = mutableStateOf(false)
+
     // Coroutine scope for the service
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -156,6 +165,14 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         captureViewModel = CaptureViewModel()
+
+        // Start permission health monitoring
+        permissionHealthMonitor.startMonitoring()
+        serviceScope.launch {
+            permissionHealthMonitor.health.collect { health ->
+                showHealthWarning.value = health != PermissionHealthMonitor.PermissionHealth.HEALTHY
+            }
+        }
 
         // Collect capture events and save chunks
         serviceScope.launch {
@@ -471,6 +488,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 pendingChunkCount.intValue = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
             }
             ACTION_TOGGLE_REGION_MODE -> {
+                // Check if accessibility is available for text extraction
+                if (!isRegionMode && !capabilities.canExtractText) {
+                    Log.w(TAG, "Region mode toggled without accessibility — text extraction unavailable, screenshot fallback only")
+                }
                 isRegionMode = !isRegionMode
                 Log.d(TAG, "Region capture mode: $isRegionMode")
                 // Request screen capture permission if entering region mode without it
@@ -497,6 +518,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
+        permissionHealthMonitor.stopMonitoring()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         serviceScope.cancel()
         hideCaptureOverlay()
@@ -657,9 +679,19 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 SynapseTheme {
                     FloatingBubble(
                         pendingCount = pendingChunkCount.intValue,
+                        showWarning = showHealthWarning.value,
                         screenHeight = screenHeight,
                         initialY = params.y,
                         onClick = { showCaptureOverlay() },
+                        onWarningClick = {
+                            // Open accessibility settings for recovery
+                            val intent = android.content.Intent(
+                                android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
+                            ).apply {
+                                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+                            }
+                            startActivity(intent)
+                        },
                         onDismiss = { stopOverlay() },
                         onPositionChanged = { dx, dy ->
                             params.x += dx.roundToInt()
@@ -938,6 +970,7 @@ class TouchDifferentiatingOverlayView(
     private var windowManager: WindowManager? = null
     private var isTouchable = true  // Window now starts touchable
     private var pendingPassThroughRunnable: Runnable? = null
+    private val palmFilter = PalmRejectionFilter()
 
     fun setWindowManager(wm: WindowManager) {
         windowManager = wm
@@ -968,6 +1001,11 @@ class TouchDifferentiatingOverlayView(
     }
 
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        // Palm rejection: filter large-area touches before any processing
+        if (palmFilter.filterEvent(event) == PalmRejectionFilter.FilterResult.REJECT) {
+            return true // consume the event so it doesn't reach the canvas
+        }
+
         val toolType = event.getToolType(0)
         val isStylus = toolType == MotionEvent.TOOL_TYPE_STYLUS ||
                        toolType == MotionEvent.TOOL_TYPE_ERASER
@@ -1047,9 +1085,11 @@ class TouchDifferentiatingOverlayView(
 @Composable
 private fun FloatingBubble(
     pendingCount: Int,
+    showWarning: Boolean = false,
     screenHeight: Int,
     initialY: Int,
     onClick: () -> Unit,
+    onWarningClick: (() -> Unit)? = null,
     onDismiss: () -> Unit,
     onPositionChanged: (Float, Float) -> Unit
 ) {
@@ -1120,6 +1160,29 @@ private fun FloatingBubble(
                 Text(
                     text = if (pendingCount > 99) "99+" else pendingCount.toString(),
                     color = MaterialTheme.colorScheme.onError,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+
+        // Amber warning badge when permissions are degraded
+        if (showWarning && !isInDismissZone) {
+            Box(
+                modifier = Modifier
+                    .offset(x = (-4).dp, y = (-4).dp)
+                    .size(20.dp)
+                    .background(
+                        color = Color(0xFFFFA000), // Amber
+                        shape = CircleShape
+                    )
+                    .pointerInput(Unit) {
+                        detectTapGestures { onWarningClick?.invoke() }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "!",
+                    color = Color.White,
                     style = MaterialTheme.typography.labelSmall
                 )
             }

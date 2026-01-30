@@ -80,6 +80,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Accessibility Settings Activity (required by settingsActivity attribute) -->
+        <activity
+            android:name=".ui.settings.AccessibilitySettingsActivity"
+            android:exported="true"
+            android:label="@string/accessibility_settings_title"
+            android:theme="@style/Theme.Synapse" />
+
         <!-- Accessibility Service for context capture -->
         <service
             android:name=".service.SynapseAccessibilityService"

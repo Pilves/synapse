@@ -22,7 +22,15 @@
     <string name="permission_notification_message">Allow notifications to see capture status and results.</string>
 
     <!-- Accessibility Service -->
-    <string name="accessibility_description">Synapse uses accessibility to capture text from your screen to provide context for your handwritten notes. No data is stored or sent unless you explicitly capture it.</string>
+    <string name="accessibility_summary">Provides context for handwritten notes by reading on-screen text</string>
+    <string name="accessibility_description">Synapse uses the Accessibility Service to read text visible on your screen so it can provide context for your handwritten notes.\n\nWHAT THIS SERVICE DOES:\n• Reads text from the currently visible app window when you select a screen region\n• Detects the source app name and URL (in supported browsers) to add context to your notes\n• Monitors text selection events to allow sharing selected text with Synapse\n\nWHAT THIS SERVICE DOES NOT DO:\n• Does NOT read or store passwords, credit card numbers, or other credentials\n• Does NOT record keystrokes or monitor text input fields\n• Does NOT send any data unless you explicitly capture a region or share text\n• Does NOT run in the background when the Synapse overlay is closed\n• Does NOT access data from banking, password manager, payment, or authenticator apps (these are explicitly excluded)\n\nAll captured text is processed on-device or sent only to the LLM provider you configure in Settings. No data is shared with Synapse servers or any third party.</string>
+
+    <!-- Accessibility Settings Activity -->
+    <string name="accessibility_settings_title">Accessibility Service Settings</string>
+    <string name="accessibility_settings_explanation">Synapse uses Android\'s Accessibility Service to read on-screen text when you select a region. This provides context for your handwritten notes.</string>
+    <string name="accessibility_settings_what_we_access">What we access: Visible text in non-sensitive apps, browser URLs, text selections.</string>
+    <string name="accessibility_settings_what_we_skip">What we skip: Banking apps, password managers, payment apps, and authenticators are always excluded.</string>
+    <string name="accessibility_settings_data_handling">Data handling: Captured text stays on-device unless you sync to your configured LLM provider. No data is sent to Synapse servers.</string>
 
     <!-- Common Actions -->
     <string name="action_cancel">Cancel</string>

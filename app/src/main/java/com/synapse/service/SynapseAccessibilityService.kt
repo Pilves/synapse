@@ -67,6 +67,7 @@ class SynapseAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+        broadcastHealthState(true)
 
         serviceInfo = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED or
@@ -256,6 +257,19 @@ class SynapseAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        broadcastHealthState(false)
         super.onDestroy()
+    }
+
+    private fun broadcastHealthState(connected: Boolean) {
+        try {
+            val intent = Intent(PermissionHealthMonitor.ACTION_ACCESSIBILITY_STATE_CHANGED).apply {
+                setPackage(packageName)
+                putExtra(PermissionHealthMonitor.EXTRA_IS_CONNECTED, connected)
+            }
+            sendBroadcast(intent)
+        } catch (e: Exception) {
+            // Ignore broadcast failures
+        }
     }
 }

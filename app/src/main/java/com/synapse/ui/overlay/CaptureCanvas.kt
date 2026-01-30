@@ -103,6 +103,7 @@ fun CaptureCanvas(
     modifier: Modifier = Modifier,
     strokeConfig: StrokeConfig = StrokeConfig(),
     inputMode: InputMode = InputMode.STYLUS_WRITE_FINGER_SCROLL,
+    palmRejectionEnabled: Boolean = true,
     onInputTypeChanged: ((InputType) -> Unit)? = null,
     onFingerTouchPassThrough: (() -> Unit)? = null,
     regionSelectionEnabled: Boolean = false,
@@ -196,7 +197,12 @@ fun CaptureCanvas(
                                 onInputTypeChanged?.invoke(inputType)
                             }
 
-                            viewModel.onDrawStart(down.position)
+                            val startPoint = StrokePoint(
+                                position = down.position,
+                                pressure = down.pressure,
+                                timestamp = System.currentTimeMillis()
+                            )
+                            viewModel.onDrawStart(startPoint)
                             down.consume()
 
                             var lastPosition = down.position
@@ -214,7 +220,12 @@ fun CaptureCanvas(
                                 val distance = (currentPos - lastPosition).getDistance()
 
                                 if (distance > 1f) {
-                                    viewModel.onDrawMove(currentPos)
+                                    val movePoint = StrokePoint(
+                                        position = currentPos,
+                                        pressure = change.pressure,
+                                        timestamp = System.currentTimeMillis()
+                                    )
+                                    viewModel.onDrawMove(movePoint)
                                     lastPosition = currentPos
                                 }
 
@@ -225,10 +236,13 @@ fun CaptureCanvas(
                 }
             )
     ) {
-        // Cache Path objects for completed strokes to avoid recreating on every frame
+        // Cache Path objects and widths for completed strokes to avoid recreating on every frame
         val cachedPaths = remember(strokes) {
             strokes.map { stroke ->
-                if (stroke.points.size >= 2) createSmoothPath(stroke.points) else null
+                if (stroke.points.size >= 2) {
+                    StrokeSmoother.createSmoothPath(stroke.points) to
+                        StrokeSmoother.calculateWidths(stroke.points, stroke.strokeWidth).average().toFloat()
+                } else null
             }
         }
 
@@ -242,21 +256,21 @@ fun CaptureCanvas(
         ) {
             // Draw completed strokes using cached paths
             for ((index, stroke) in strokes.withIndex()) {
-                val path = cachedPaths.getOrNull(index) ?: continue
+                val (path, avgWidth) = cachedPaths.getOrNull(index) ?: continue
                 drawPathWithOutline(
                     path = path,
-                    strokeWidth = stroke.strokeWidth,
+                    strokeWidth = avgWidth,
                     strokeColor = strokeConfig.strokeColor,
                     outlineColor = strokeConfig.outlineColor,
                     outlineWidth = strokeConfig.outlineWidth
                 )
             }
 
-            // Draw current stroke being drawn
+            // Draw current stroke being drawn (with smooth path)
             if (currentStroke.isNotEmpty()) {
-                drawStrokeWithOutline(
+                drawStrokePointsWithOutline(
                     points = currentStroke,
-                    strokeWidth = strokeConfig.strokeWidth,
+                    baseStrokeWidth = strokeConfig.strokeWidth,
                     strokeColor = strokeConfig.strokeColor,
                     outlineColor = strokeConfig.outlineColor,
                     outlineWidth = strokeConfig.outlineWidth
@@ -284,36 +298,35 @@ private fun getInputType(change: PointerInputChange): InputType {
 }
 
 /**
- * Draws a stroke with an outline for visibility on any background.
+ * Draws a stroke from StrokePoints with an outline, using smoothing and velocity-based width.
  */
-private fun DrawScope.drawStrokeWithOutline(
-    points: List<Offset>,
-    strokeWidth: Float,
+private fun DrawScope.drawStrokePointsWithOutline(
+    points: List<StrokePoint>,
+    baseStrokeWidth: Float,
     strokeColor: Color,
     outlineColor: Color,
     outlineWidth: Float
 ) {
     if (points.size < 2) return
 
-    val path = createSmoothPath(points)
+    val path = StrokeSmoother.createSmoothPath(points)
+    val avgWidth = StrokeSmoother.calculateWidths(points, baseStrokeWidth).average().toFloat()
 
-    // Draw outline first (thicker, behind the main stroke)
     drawPath(
         path = path,
         color = outlineColor,
         style = Stroke(
-            width = strokeWidth + outlineWidth * 2,
+            width = avgWidth + outlineWidth * 2,
             cap = StrokeCap.Round,
             join = StrokeJoin.Round
         )
     )
 
-    // Draw main stroke on top
     drawPath(
         path = path,
         color = strokeColor,
         style = Stroke(
-            width = strokeWidth,
+            width = avgWidth,
             cap = StrokeCap.Round,
             join = StrokeJoin.Round
         )
@@ -354,46 +367,7 @@ private fun DrawScope.drawPathWithOutline(
     )
 }
 
-/**
- * Creates a smooth path from a list of points using quadratic bezier curves.
- */
-private fun createSmoothPath(points: List<Offset>): Path {
-    val path = Path()
-
-    if (points.isEmpty()) return path
-
-    path.moveTo(points[0].x, points[0].y)
-
-    if (points.size == 1) {
-        // Single point - draw a small line to make it visible
-        path.lineTo(points[0].x + 0.1f, points[0].y + 0.1f)
-        return path
-    }
-
-    if (points.size == 2) {
-        // Two points - draw a straight line
-        path.lineTo(points[1].x, points[1].y)
-        return path
-    }
-
-    // Use quadratic bezier curves for smooth interpolation
-    for (i in 1 until points.size) {
-        val prev = points[i - 1]
-        val current = points[i]
-
-        // Calculate midpoint for smoother curves
-        val midX = (prev.x + current.x) / 2
-        val midY = (prev.y + current.y) / 2
-
-        path.quadraticBezierTo(prev.x, prev.y, midX, midY)
-    }
-
-    // Ensure we end at the last point
-    val lastPoint = points.last()
-    path.lineTo(lastPoint.x, lastPoint.y)
-
-    return path
-}
+// Smooth path creation is now handled by StrokeSmoother
 
 /**
  * Draws a dashed selection rectangle with a semi-transparent fill

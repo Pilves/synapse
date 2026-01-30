@@ -19,6 +19,8 @@ class UsageTracker(
         private val MONTHLY_COST_KEY = doublePreferencesKey("usage_monthly_cost")
         private val MONTHLY_SYNCS_KEY = intPreferencesKey("usage_monthly_syncs")
         private val MONTH_KEY = intPreferencesKey("usage_current_month")
+        private val COST_SAVED_KEY = doublePreferencesKey("usage_cost_saved")
+        private val CHUNKS_SAVED_KEY = intPreferencesKey("usage_chunks_saved")
     }
 
     val usageStats: Flow<UsageStats> = dataStore.data.map { prefs ->
@@ -81,5 +83,27 @@ class UsageTracker(
             prefs[MONTHLY_SYNCS_KEY] = 0
             prefs[MONTH_KEY] = Calendar.getInstance(TimeZone.getTimeZone("UTC")).get(Calendar.MONTH)
         }
+    }
+
+    /**
+     * Records vision API calls avoided by using text-only transcription.
+     *
+     * @param chunksSaved Number of chunks that were transcribed via text-only instead of vision
+     * @param estimatedCostPerChunk Estimated cost per vision API call (varies by provider)
+     */
+    suspend fun recordCostSaved(chunksSaved: Int, estimatedCostPerChunk: Double = 0.003) {
+        dataStore.edit { prefs ->
+            prefs[CHUNKS_SAVED_KEY] = (prefs[CHUNKS_SAVED_KEY] ?: 0) + chunksSaved
+            prefs[COST_SAVED_KEY] = (prefs[COST_SAVED_KEY] ?: 0.0) + (chunksSaved * estimatedCostPerChunk)
+        }
+    }
+
+    /**
+     * Returns the total estimated cost saved by text-only transcription.
+     */
+    val costSavedStats: Flow<Pair<Int, Double>> = dataStore.data.map { prefs ->
+        val chunks = prefs[CHUNKS_SAVED_KEY] ?: 0
+        val cost = prefs[COST_SAVED_KEY] ?: 0.0
+        chunks to cost
     }
 }

@@ -9,13 +9,16 @@ import androidx.compose.ui.geometry.Offset
 /**
  * Represents a single stroke drawn by the user.
  *
- * @param points The list of points that make up the stroke
- * @param strokeWidth The width of the stroke in pixels
+ * @param points The list of points that make up the stroke (with pressure and timestamp)
+ * @param strokeWidth The base width of the stroke in pixels
  */
 data class Stroke(
-    val points: List<Offset>,
+    val points: List<StrokePoint>,
     val strokeWidth: Float = 4f
-)
+) {
+    /** Convenience accessor for Offset positions (backward-compatible). */
+    val offsets: List<Offset> get() = points.map { it.position }
+}
 
 /**
  * Manages stroke data for the capture canvas.
@@ -44,10 +47,10 @@ class StrokeManager {
             if (stroke.points.isNotEmpty()) {
                 strokes.add(stroke)
                 for (point in stroke.points) {
-                    boundsMinX = minOf(boundsMinX, point.x)
-                    boundsMinY = minOf(boundsMinY, point.y)
-                    boundsMaxX = maxOf(boundsMaxX, point.x)
-                    boundsMaxY = maxOf(boundsMaxY, point.y)
+                    boundsMinX = minOf(boundsMinX, point.position.x)
+                    boundsMinY = minOf(boundsMinY, point.position.y)
+                    boundsMaxX = maxOf(boundsMaxX, point.position.x)
+                    boundsMaxY = maxOf(boundsMaxY, point.position.y)
                 }
             }
         }
@@ -123,10 +126,10 @@ class StrokeManager {
         boundsMaxY = Float.MIN_VALUE
         for (stroke in strokes) {
             for (point in stroke.points) {
-                boundsMinX = minOf(boundsMinX, point.x)
-                boundsMinY = minOf(boundsMinY, point.y)
-                boundsMaxX = maxOf(boundsMaxX, point.x)
-                boundsMaxY = maxOf(boundsMaxY, point.y)
+                boundsMinX = minOf(boundsMinX, point.position.x)
+                boundsMinY = minOf(boundsMinY, point.position.y)
+                boundsMaxX = maxOf(boundsMaxX, point.position.x)
+                boundsMaxY = maxOf(boundsMaxY, point.position.y)
             }
         }
     }
@@ -149,7 +152,7 @@ class StrokeManager {
             style = Paint.Style.STROKE
             strokeCap = Paint.Cap.ROUND
             strokeJoin = Paint.Join.ROUND
-            color = android.graphics.Color.argb(200, 40, 40, 40) // Dark gray with slight transparency
+            color = android.graphics.Color.argb(200, 40, 40, 40)
         }
 
         // Paint for the white stroke (drawn on top)
@@ -165,24 +168,16 @@ class StrokeManager {
             for (stroke in strokes) {
                 if (stroke.points.size < 2) continue
 
-                val path = Path()
-                path.moveTo(stroke.points[0].x, stroke.points[0].y)
+                val path = buildAndroidPath(stroke.points)
 
-                // Use quadratic bezier curves for smooth lines
-                for (i in 1 until stroke.points.size) {
-                    val prev = stroke.points[i - 1]
-                    val current = stroke.points[i]
-                    val midX = (prev.x + current.x) / 2
-                    val midY = (prev.y + current.y) / 2
-                    path.quadTo(prev.x, prev.y, midX, midY)
-                }
+                // Use average velocity-based width for bitmap rendering
+                val widths = StrokeSmoother.calculateWidths(stroke.points, stroke.strokeWidth)
+                val avgWidth = widths.average().toFloat()
 
-                // Draw outline first (thicker)
-                outlinePaint.strokeWidth = stroke.strokeWidth + 2f
+                outlinePaint.strokeWidth = avgWidth + 2f
                 canvas.drawPath(path, outlinePaint)
 
-                // Draw white stroke on top
-                strokePaint.strokeWidth = stroke.strokeWidth
+                strokePaint.strokeWidth = avgWidth
                 canvas.drawPath(path, strokePaint)
             }
         }
@@ -256,22 +251,50 @@ class StrokeManager {
             for (stroke in strokes) {
                 if (stroke.points.size < 2) continue
 
-                val path = Path()
-                path.moveTo(stroke.points[0].x, stroke.points[0].y)
-
-                for (i in 1 until stroke.points.size) {
-                    val prev = stroke.points[i - 1]
-                    val current = stroke.points[i]
-                    val midX = (prev.x + current.x) / 2
-                    val midY = (prev.y + current.y) / 2
-                    path.quadTo(prev.x, prev.y, midX, midY)
-                }
-
-                strokePaint.strokeWidth = stroke.strokeWidth
+                val path = buildAndroidPath(stroke.points)
+                val widths = StrokeSmoother.calculateWidths(stroke.points, stroke.strokeWidth)
+                strokePaint.strokeWidth = widths.average().toFloat()
                 canvas.drawPath(path, strokePaint)
             }
 
             return bitmap
         }
+    }
+
+    /**
+     * Builds an Android [Path] from [StrokePoint]s using Catmull-Rom spline interpolation.
+     */
+    private fun buildAndroidPath(points: List<StrokePoint>): Path {
+        val path = Path()
+        if (points.isEmpty()) return path
+
+        path.moveTo(points[0].x, points[0].y)
+
+        if (points.size == 1) {
+            path.lineTo(points[0].x + 0.1f, points[0].y + 0.1f)
+            return path
+        }
+
+        if (points.size == 2) {
+            path.lineTo(points[1].x, points[1].y)
+            return path
+        }
+
+        val tension = 0.5f
+        for (i in 0 until points.size - 1) {
+            val p0 = points[maxOf(0, i - 1)]
+            val p1 = points[i]
+            val p2 = points[minOf(points.size - 1, i + 1)]
+            val p3 = points[minOf(points.size - 1, i + 2)]
+
+            val cp1x = p1.x + (p2.x - p0.x) * tension / 3f
+            val cp1y = p1.y + (p2.y - p0.y) * tension / 3f
+            val cp2x = p2.x - (p3.x - p1.x) * tension / 3f
+            val cp2y = p2.y - (p3.y - p1.y) * tension / 3f
+
+            path.cubicTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+        }
+
+        return path
     }
 }

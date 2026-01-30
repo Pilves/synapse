@@ -2,7 +2,10 @@
 <accessibility-service
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/accessibility_description"
+    android:summary="@string/accessibility_summary"
+    android:settingsActivity="com.synapse.ui.settings.AccessibilitySettingsActivity"
     android:accessibilityEventTypes="typeViewTextSelectionChanged|typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:notificationTimeout="100"
     android:canRetrieveWindowContent="true" />

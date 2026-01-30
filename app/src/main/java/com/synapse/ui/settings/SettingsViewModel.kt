@@ -70,6 +70,9 @@ class SettingsViewModel(
         // Vault settings
         val VAULT_LOCATION = stringPreferencesKey("vault_location")
         val DEFAULT_PROJECT_ID = stringPreferencesKey("default_project_id")
+
+        // Cost optimization settings (Phase 2.1)
+        val PREFER_TEXT_ONLY = booleanPreferencesKey("prefer_text_only")
     }
 
     // Default values
@@ -84,6 +87,7 @@ class SettingsViewModel(
         const val ADVANCED_FORMATTING = false
         const val RATE_LIMITING_SAFE = true
         const val VAULT_LOCATION = ""
+        const val PREFER_TEXT_ONLY = true
     }
 
     // UI State
@@ -141,6 +145,10 @@ class SettingsViewModel(
     val rateLimitingSafe: StateFlow<Boolean> = dataStore.data
         .map { it[PreferenceKeys.RATE_LIMITING_SAFE] ?: Defaults.RATE_LIMITING_SAFE }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Defaults.RATE_LIMITING_SAFE)
+
+    val preferTextOnly: StateFlow<Boolean> = dataStore.data
+        .map { it[PreferenceKeys.PREFER_TEXT_ONLY] ?: Defaults.PREFER_TEXT_ONLY }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Defaults.PREFER_TEXT_ONLY)
 
     val customPromptTemplate: StateFlow<String?> = dataStore.data
         .map { it[PreferenceKeys.CUSTOM_PROMPT_TEMPLATE] }
@@ -268,6 +276,12 @@ class SettingsViewModel(
     fun setRateLimitingSafe(safe: Boolean) {
         viewModelScope.launch {
             dataStore.edit { it[PreferenceKeys.RATE_LIMITING_SAFE] = safe }
+        }
+    }
+
+    fun setPreferTextOnly(enabled: Boolean) {
+        viewModelScope.launch {
+            dataStore.edit { it[PreferenceKeys.PREFER_TEXT_ONLY] = enabled }
         }
     }
 

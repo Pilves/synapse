@@ -4,12 +4,12 @@
 
 | Metric | Value |
 |--------|-------|
-| Source files | ~101 Kotlin files, ~21k LOC |
+| Source files | ~110 Kotlin files, ~23k LOC |
 | Architecture | Single-module, MVVM, Koin DI, Jetpack Compose |
 | Packages | `api`, `data`, `model`, `service`, `ui`, `util`, `di` |
-| Completeness | ~95% — full capture → LLM → vault pipeline working |
+| Completeness | ~97% — full pipeline working, UX hardening done, cost optimization done |
 
-### What's already production-ready
+### What's production-ready
 
 - Handwriting capture with overlay service
 - Region selection (accessibility text + screenshot fallback)
@@ -17,59 +17,18 @@
 - Vault sync pipeline (transcribe → write to Obsidian/local)
 - Settings, onboarding, cost tracking
 - Firebase Crashlytics, CI/CD with auto-release
+- SSL certificate pinning with backup pins (Anthropic, OpenAI, Google)
+- Accessibility service Play Store compliance (detailed DO/DON'T description, settingsActivity, capability mode detection)
+- Permission health monitoring with self-healing UI (broadcast-based, not polling)
+- Palm rejection filter (touch area geometry + stylus-active finger suppression)
+- Ink smoothing with Catmull-Rom splines and pressure-sensitive variable-width strokes
+- Two-pass LLM cost optimization (text-only bypass when accessibility context is sufficient)
+- Grayscale preprocessing for handwriting images (~60% payload reduction)
+- Unit tests for StrokeSmoother, PalmRejectionFilter, TwoPassTranscriptionService
 
 ---
 
-# PHASE 0: SHIP BLOCKERS
-
-Cannot publish without these. Zero new features — just making what exists safe and compliant.
-
----
-
-## 0.1 SSL Certificate Pinning
-
-### Problem
-
-Certificate pinning in `AppModule.kt:155-162` uses placeholder hashes. API keys sent over HTTPS are vulnerable to MITM with a compromised CA.
-
-### Changes
-
-| File | Change |
-|------|--------|
-| `AppModule.kt:155-162` | Replace `"sha256/BBB..."` placeholders with real SHA-256 pins for `api.anthropic.com`, `api.openai.com`, `generativelanguage.googleapis.com` |
-
-Obtain pins via: `openssl s_client -connect api.anthropic.com:443 | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64`
-
-### Effort: 0.25 days
-
----
-
-## 0.2 Accessibility Service Play Store Compliance
-
-### Problem
-
-Google Play rejects vague accessibility service descriptions. Current config is minimal, missing required fields.
-
-### Current State
-
-| Component | File | Issue |
-|-----------|------|-------|
-| XML config | `accessibility_service_config.xml` | Missing `summary`, `settingsActivity`, proper `accessibilityFlags` |
-| Description | `strings.xml:25` | One-liner — needs DO/DON'T list per Google policy |
-| Fallback | — | No degraded mode when accessibility is off |
-
-### Changes
-
-| File | Change |
-|------|--------|
-| `accessibility_service_config.xml` | Add `summary`, `settingsActivity`, `flagReportViewIds\|flagRetrieveInteractiveWindows` |
-| `strings.xml` | Replace description with detailed DO/DON'T text |
-| New: `service/SynapseCapabilities.kt` | Mode detection (FULL/BASIC/MINIMAL) based on available permissions |
-| New: `ui/settings/AccessibilitySettingsActivity.kt` | Explanation screen (required by `settingsActivity` attribute) |
-| `AndroidManifest.xml` | Register `AccessibilitySettingsActivity` |
-| `OverlayService.kt:1148-1150` | Check capabilities before enabling region features |
-
-### Effort: 0.5 days
+# PHASE 0: SHIP BLOCKERS (remaining)
 
 ---
 
@@ -87,148 +46,6 @@ Missing standard requirements for publishing.
 | Release signing | Generate proper release keystore, secure in CI via secrets |
 | Data safety form | Prepare responses (local storage, API key in EncryptedSharedPreferences, image data sent to user-chosen LLM) |
 | App listing | Screenshots, description, feature graphic |
-
-### Effort: 0.5 days
-
----
-
-# PHASE 1: UX HARDENING
-
-Table-stakes quality that users expect. Ship with v1.0.
-
----
-
-## 1.1 Permission Recovery (Self-Healing)
-
-### Problem
-
-When Android kills the Accessibility Service or MediaProjection token (battery optimization, memory pressure), features break silently. User thinks app is broken.
-
-### Current State
-
-| Component | File | Line | Behavior |
-|-----------|------|------|----------|
-| Accessibility singleton | `SynapseAccessibilityService.kt` | 17-19 | `instance` set to `null` in `onDestroy()`, no recovery signal |
-| Overlay permission | `OverlayService.kt` | 493 | Checked once at `startOverlay()` |
-| MediaProjection | `OverlayService.kt` | 512-521 | Stale flag detected only on start |
-| Region capture failure | `OverlayService.kt` | 280-282 | Returns null, logs warning, shows "[Screenshot failed]" |
-| Permission helper | `PermissionHelper.kt` | 192-197 | Accessibility not included in `checkAllPermissions()` |
-| Bubble UI | `OverlayService.kt` | 1026-1107 | No health state, no warning badge |
-
-### Changes
-
-| File | Change |
-|------|--------|
-| New: `service/PermissionHealthMonitor.kt` | Polls permission state every 5s, exposes `StateFlow<PermissionHealth>` |
-| `OverlayService.kt:110-131` | Add `permissionHealthMonitor` field |
-| `OverlayService.kt:151-182` | Start monitoring in `onCreate()`, collect health state |
-| `OverlayService.kt:1026-1107` | Add `showWarning: Boolean` + amber badge to `FloatingBubble` |
-| `OverlayService.kt:628-654` | Pass health state to bubble, wire warning click to recovery dialog |
-| `PermissionHelper.kt:192-197` | Add accessibility to `checkAllPermissions()` |
-| `PermissionHelper.kt` | Add `hasAccessibilityPermission()`, `getAccessibilitySettingsIntent()` |
-| `SynapseAccessibilityService.kt:40-51` | Broadcast health state on connect |
-| `SynapseAccessibilityService.kt:217-219` | Broadcast on disconnect |
-| `AppModule.kt:220-260` | Register `PermissionHealthMonitor` |
-| New composable: `PermissionRecoveryDialog` | AlertDialog with "Context capture was disabled. Tap Fix to re-enable." |
-| `OverlayService.kt:1198-1214` | Gray out region button when no permissions, show tooltip |
-
-### Effort: 0.5 days
-
----
-
-## 1.2 Palm Rejection
-
-### Problem
-
-Palm rests on tablet while writing → garbage strokes. `BOTH_WRITE` mode has zero palm filtering.
-
-### Current State
-
-| Component | File | Line | Behavior |
-|-----------|------|------|----------|
-| Input differentiation | `CaptureCanvas.kt` | 170-224 | Binary stylus/touch check, no geometry |
-| Touch dispatch | `OverlayService.kt` | 953-975 | Checks `TOOL_TYPE_STYLUS` vs finger, no area check |
-| Input mode | `CaptureCanvas.kt` | 175-185 | `BOTH_WRITE` accepts any stylus or finger — palm accepted |
-
-### Changes
-
-| File | Change |
-|------|--------|
-| New: `ui/overlay/PalmRejectionFilter.kt` | Filter by touch major/minor area (>100f/60f = palm), reject finger while stylus active, manufacturer-specific tuning (Samsung S Pen, Huawei M-Pencil) |
-| `CaptureCanvas.kt:133-226` | Add `pointerInteropFilter` before `pointerInput` to intercept raw `MotionEvent` |
-| `CaptureCanvas.kt:101-111` | Add `palmRejectionEnabled: Boolean = true` parameter |
-| `OverlayService.kt:909-920` | Add `PalmRejectionFilter` field to `TouchDifferentiatingOverlayView` |
-| `OverlayService.kt:953-975` | Run through `palmFilter.filterEvent()` before `super.dispatchTouchEvent()` |
-
-### Effort: 0.5 days
-
----
-
-## 1.3 Ink Smoothing & Pressure Sensitivity
-
-### Problem
-
-Fixed-width strokes with basic quadratic bezier feel cheap. No pressure sensitivity.
-
-### Current State
-
-| Component | File | Line | Behavior |
-|-----------|------|------|----------|
-| Stroke model | `StrokeManager.kt` | 15-18 | `List<Offset>`, fixed width |
-| Path creation | `CaptureCanvas.kt` | 318-354 | Quadratic bezier, uniform width |
-| Rendering | `CaptureCanvas.kt` | 281-313 | Single `drawPath()`, no per-point width |
-| Point capture | `CaptureCanvas.kt` | 199-221 | Only `Offset` (x,y) — no pressure, no timestamp |
-| ViewModel | `CaptureViewModel.kt` | 188-242 | Accepts `Offset` only |
-
-### Changes
-
-| File | Change |
-|------|--------|
-| New: `ui/overlay/StrokeSmoother.kt` | Catmull-Rom spline interpolation, velocity-based width variation (fast=thin, slow=thick) |
-| New: `StrokePoint` data class | `position: Offset`, `pressure: Float`, `timestamp: Long` |
-| `StrokeManager.kt:15-18` | `points: List<Offset>` → `points: List<StrokePoint>` |
-| `CaptureViewModel.kt:92-93` | `MutableStateFlow<List<Offset>>` → `MutableStateFlow<List<StrokePoint>>` |
-| `CaptureViewModel.kt:188-242` | Accept `StrokePoint` in `onDrawStart()`, `onDrawMove()`, `onDrawEnd()` |
-| `CaptureCanvas.kt:199-221` | Extract `pressure` from `PointerInputChange`, create `StrokePoint` |
-| `CaptureCanvas.kt:281-354` | Replace rendering with `drawSmoothStroke()` using `StrokeSmoother` + variable width |
-| `StrokeManager.kt:110-253` | Update `toBitmap()` and `toBitmapForOcr()` to use smoothed paths |
-
-### Effort: 1 day
-
----
-
-# PHASE 2: COST & PERFORMANCE
-
-Reduce LLM costs and improve efficiency. Ship with v1.1.
-
----
-
-## 2.1 Two-Pass LLM Logic (Cost Optimization)
-
-### Problem
-
-Vision API calls are expensive. Sending every chunk to Claude Vision when accessibility text is already available wastes money.
-
-### Current State
-
-| Component | File | Behavior |
-|-----------|------|----------|
-| Transcription flow | `SyncRepositoryImpl` | Always sends chunks as images to vision model |
-| Context availability | `OverlayService.kt:244-260` | Region text and auto-context ARE captured and stored |
-| Prompt template | `PromptTemplateV2.kt:5-83` | Includes context in prompt — but always paired with vision |
-
-### Changes
-
-| File | Change |
-|------|--------|
-| New: `api/TwoPassTranscriptionService.kt` | Decision logic: use text-only when context available, vision only when needed (blank context or complex drawings) |
-| `LlmProviderFactory.kt` | Option to create `TwoPassTranscriptionService` wrapping cheap text + expensive vision provider |
-| `AppModule.kt:220-260` | Wire when cost optimization enabled |
-| `ImageProcessor.kt` | Add `toGrayscale()` before encoding — handwriting is monochrome, saves ~60% payload |
-| Settings DataStore | Add `prefer_text_only: Boolean`, `vision_threshold: Float` |
-| `UsageTracker` | Track `costSaved` metric |
-
-### Effort: 1 day
 
 ---
 
@@ -254,15 +71,22 @@ Draw a circle around screen content → app detects intent → executes action.
 | URL | OPEN | Open browser |
 | Unknown | SEARCH | Web search |
 
+### Circle Detection Algorithm
+
+- **Angular accumulation:** sum signed angle changes between consecutive stroke segments; >270° total = circle
+- **Closure test:** distance between first and last point < 15% of bounding box diagonal
+- **Minimum requirements:** ≥12 points, bounding box diagonal ≥50px
+- **Scribble rejection:** require smooth curvature — standard deviation of segment angles < threshold (e.g., 0.5 radians)
+
 ### Existing Code to Reuse
 
 | Component | File | Reuse |
 |-----------|------|-------|
 | Region gesture | `RegionGestureDetector.kt` | Extend to detect closed shapes |
-| Region capture | `OverlayService.kt:229-316` | `handleRegionSelected()` text extraction |
+| Region capture | `OverlayService.kt` | `handleRegionSelected()` text extraction |
 | Intent types | `IntentType.kt` | Extend enum |
 | Calendar | `ReminderManager.kt` | `createCalendarEvent()` |
-| Accessibility text | `SynapseAccessibilityService.kt:147-179` | `getTextInRegion()` |
+| Accessibility text | `SynapseAccessibilityService.kt` | `getTextInRegion()` |
 
 ### New Files
 
@@ -279,12 +103,11 @@ Draw a circle around screen content → app detects intent → executes action.
 
 | File | Change |
 |------|--------|
-| `CaptureCanvas.kt:140-167` | Add `CIRCLE_ACTION` mode |
+| `CaptureCanvas.kt` | Add `CIRCLE_ACTION` mode |
 | `RegionGestureDetector.kt` | Extend with `DetectedShape` sealed class |
-| `OverlayService.kt:1198-1214` | Add circle mode toggle |
-| `OverlayService.kt:760-762` | Route to `CircleActionManager` in circle mode |
-| `IntentType.kt:3-9` | Add CALENDAR, CALCULATE, TRANSLATE, CALL, MAPS, OPEN, SEARCH |
-| `AppModule.kt:220-260` | Register new managers |
+| `OverlayService.kt` | Add circle mode toggle, route to `CircleActionManager` |
+| `IntentType.kt` | Add CALENDAR, CALCULATE, TRANSLATE, CALL, MAPS, OPEN, SEARCH |
+| `AppModule.kt` | Register new managers |
 
 ### Dependencies
 
@@ -292,7 +115,11 @@ Draw a circle around screen content → app detects intent → executes action.
 implementation("net.objecthunter:exp4j:0.4.8")  // Math evaluation
 ```
 
-### Effort: 4-5 days
+### Testing
+
+- Unit tests for `ShapeGestureDetector` (circle vs rectangle vs stroke vs scribble)
+- Unit tests for `IntentClassifier` (regex patterns for each PII type)
+- Instrumented tests for gesture detection with synthetic `MotionEvent` sequences
 
 ---
 
@@ -306,11 +133,11 @@ Bubble pulses when long content detected on screen. Tap → instant summary bott
 
 | Component | File | Reuse |
 |-----------|------|-------|
-| Text extraction | `SynapseAccessibilityService.kt:103-121` | `collectAllTextNodes()` |
-| Window events | `SynapseAccessibilityService.kt:66-68` | `TYPE_WINDOW_CONTENT_CHANGED` |
+| Text extraction | `SynapseAccessibilityService.kt` | `collectAllTextNodes()` |
+| Window events | `SynapseAccessibilityService.kt` | `TYPE_WINDOW_CONTENT_CHANGED` |
 | LLM | `LlmProviderFactory.kt` | Route to configured cheap provider |
 | Text query | `TranscriptionService.kt` | `textQuery()` |
-| Bubble | `OverlayService.kt:1026-1107` | Extend with pulse animation |
+| Bubble | `OverlayService.kt` | Extend with pulse animation |
 
 ### New Files
 
@@ -323,12 +150,13 @@ Bubble pulses when long content detected on screen. Tap → instant summary bott
 
 | File | Change |
 |------|--------|
-| `SynapseAccessibilityService.kt:66-68` | Add word count check, broadcast when >500 words |
-| `SynapseAccessibilityService.kt` | Add `extractAllText()` public method |
-| `OverlayService.kt:1026-1107` | Add pulse animation to bubble when `hasLongContent == true` |
-| `OverlayService.kt:151-182` | Register broadcast receiver for long content |
+| `SynapseAccessibilityService.kt` | Add word count check, broadcast when >500 words; add `extractAllText()` public method |
+| `OverlayService.kt` | Add pulse animation to bubble when `hasLongContent == true`; register broadcast receiver |
 
-### Effort: 2 days
+### Testing
+
+- Unit tests for word count threshold and broadcast logic
+- UI test for summary sheet display
 
 ---
 
@@ -346,6 +174,8 @@ Auto-detect and blur sensitive information before sharing/saving screenshots.
 | API keys | Regex (`sk-`, `pk-`, `api-`, `token-` + 20+ chars) |
 | SSN | Regex |
 
+**Note:** Regex-based PII detection has high false positive rates. This should be **opt-in** rather than default-on.
+
 ### New Files
 
 | File | Purpose |
@@ -358,8 +188,8 @@ Auto-detect and blur sensitive information before sharing/saving screenshots.
 | File | Change |
 |------|--------|
 | `ImageProcessor.kt` | Optional PII scan + blur pass before save/share |
-| `OverlayService.kt:318-332` | Run `PiiDetector` on extracted text, apply blur |
-| Settings DataStore | Add `auto_blur_pii: Boolean` |
+| `OverlayService.kt` | Run `PiiDetector` on extracted text, apply blur |
+| Settings DataStore | Add `auto_blur_pii: Boolean` (default: false) |
 
 ### Optional dependency
 
@@ -367,30 +197,53 @@ Auto-detect and blur sensitive information before sharing/saving screenshots.
 implementation("com.google.mlkit:text-recognition:16.0.0")  // More accurate than regex
 ```
 
-### Effort: 2.5 days
+### Testing
+
+- Unit tests for `PiiDetector` (each regex pattern, false positive rates)
+
+---
+
+# REMAINING ITEMS (not in a phase)
+
+## Persistent Retry/Sync Queue
+
+`RetryHelper.kt` handles transient HTTP failures with exponential backoff, but if the process dies mid-sync, work is lost.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| New or extend `SyncStorage` | Persistent work queue (Room or WorkManager) for failed sync operations |
+| `SyncRepositoryImpl` | Retry on next app launch or connectivity change |
+| `NetworkMonitor` | Trigger queue processing on connectivity restored |
+
+## Error Recovery UI
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `FloatingBubble` | Add red badge for sync failure (distinct from amber permission warning) |
+| `ReviewScreen.kt` | Add retry action for failed syncs |
+
+## Destination Picker
+
+`ReviewScreen.kt` has `onAddDestination = { /* TODO: Open destination picker */ }` — needs implementation.
 
 ---
 
 # Implementation Order
 
 ```
-PHASE 0 — Ship Blockers (1.25 days)
-├── 0.1 SSL Certificate Pinning
-├── 0.2 Accessibility Compliance
+PHASE 0 — Ship Blockers (remaining)
 └── 0.3 Play Store Requirements
          │
-PHASE 1 — UX Hardening (2 days)          ──→ v1.0 Launch
-├── 1.1 Permission Recovery
-├── 1.2 Palm Rejection
-└── 1.3 Ink Smoothing
-         │
-PHASE 2 — Cost & Performance (1 day)     ──→ v1.1
-└── 2.1 Two-Pass LLM
+         ──→ v1.0 Launch
          │
 PHASE 3 — Differentiating Features       ──→ v1.2+
-├── 3.1 Circle to Do (4-5 days)
-├── 3.2 TL;DR Overlay (2 days)
-└── 3.3 Privacy Shield (2.5 days)
+├── 3.1 Circle to Do
+├── 3.2 TL;DR Overlay
+└── 3.3 Privacy Shield
 ```
 
 ## Dependencies

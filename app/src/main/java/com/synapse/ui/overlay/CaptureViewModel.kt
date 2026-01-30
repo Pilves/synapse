@@ -1,7 +1,6 @@
 package com.synapse.ui.overlay
 
 import android.graphics.Bitmap
-import androidx.compose.ui.geometry.Offset
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
@@ -89,8 +88,8 @@ class CaptureViewModel : ViewModel() {
     val strokes: StateFlow<List<Stroke>> = _strokes.asStateFlow()
 
     // Current stroke being drawn
-    private val _currentStroke = MutableStateFlow<List<Offset>>(emptyList())
-    val currentStroke: StateFlow<List<Offset>> = _currentStroke.asStateFlow()
+    private val _currentStroke = MutableStateFlow<List<StrokePoint>>(emptyList())
+    val currentStroke: StateFlow<List<StrokePoint>> = _currentStroke.asStateFlow()
 
     // Configuration
     var chunkTimeoutMs: Long = DEFAULT_CHUNK_TIMEOUT_MS
@@ -183,9 +182,9 @@ class CaptureViewModel : ViewModel() {
     /**
      * Called when the user starts drawing (pen/finger down).
      *
-     * @param offset The starting position of the stroke
+     * @param point The starting point of the stroke (with pressure and timestamp)
      */
-    fun onDrawStart(offset: Offset) {
+    fun onDrawStart(point: StrokePoint) {
         if (!_uiState.value.isSessionActive) {
             startSession()
         }
@@ -201,25 +200,25 @@ class CaptureViewModel : ViewModel() {
         cancelFadeAnimation()
 
         // Start new stroke
-        _currentStroke.value = listOf(offset)
+        _currentStroke.value = listOf(point)
         _uiState.update { it.copy(isDrawing = true) }
     }
 
     /**
      * Called when the user continues drawing (pen/finger move).
      *
-     * @param offset The current position of the stroke
+     * @param point The current point of the stroke (with pressure and timestamp)
      */
-    fun onDrawMove(offset: Offset) {
+    fun onDrawMove(point: StrokePoint) {
         if (!_uiState.value.isDrawing) return
 
-        _currentStroke.value = _currentStroke.value + offset
+        _currentStroke.value = _currentStroke.value + point
     }
 
     /**
      * Called when the user stops drawing (pen/finger up).
      *
-     * @param strokeWidth The width of the completed stroke
+     * @param strokeWidth The base width of the completed stroke
      */
     fun onDrawEnd(strokeWidth: Float = 4f) {
         if (!_uiState.value.isDrawing) return

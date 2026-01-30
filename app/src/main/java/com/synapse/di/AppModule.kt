@@ -32,6 +32,8 @@ import com.synapse.service.RegionCaptureManager
 import com.synapse.service.ReminderManager
 import com.synapse.service.ScreenshotManager
 import com.synapse.service.SynapseAccessibilityService
+import com.synapse.service.SynapseCapabilities
+import com.synapse.service.PermissionHealthMonitor
 import com.synapse.ui.onboarding.OnboardingViewModel
 import com.synapse.ui.overlay.CaptureViewModel
 import com.synapse.ui.review.ReviewViewModel
@@ -151,15 +153,30 @@ val repositoryModule = module {
  * - TranscriptionServiceFactory: Factory for creating LLM service instances
  */
 val apiModule = module {
-    // Certificate pinner for cloud LLM APIs
-    // TODO: Replace placeholder hashes with real SHA-256 certificate pins.
-    //  Current values are placeholders — certificate pinning is effectively disabled.
-    //  To obtain real pins, use: openssl s_client -connect <host>:443 | openssl x509 -pubkey -noout | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
+    // Certificate pinner for cloud LLM APIs.
+    // Each host has two pins: the leaf certificate pin and an intermediate CA backup pin.
+    // If a provider rotates their leaf certificate (common every 90 days–1 year),
+    // the intermediate CA pin keeps connections working until the app is updated.
+    //
+    // PIN ROTATION: When a pin mismatch occurs, OkHttp throws SSLPeerUnverifiedException.
+    // To update pins, run:
+    //   openssl s_client -connect <host>:443 | openssl x509 -pubkey -noout \
+    //     | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
+    // Then ship an app update. Intermediate CA pins change rarely (years).
     single {
         CertificatePinner.Builder()
-            .add("api.anthropic.com", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")
-            .add("api.openai.com", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")
-            .add("generativelanguage.googleapis.com", "sha256/BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=")
+            // Anthropic — leaf + intermediate CA backup
+            .add("api.anthropic.com",
+                "sha256/60QDDZy98CjK1XTBTlPbInyzJzi+817KvW+usCk6r+o=",
+                "sha256/kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=")
+            // OpenAI — leaf + intermediate CA backup
+            .add("api.openai.com",
+                "sha256/y5npFVdBuoqCSOdQa42qiUSPqwMpoei7NK0rQWGUaSU=",
+                "sha256/kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=")
+            // Google Gemini — leaf + intermediate CA backup
+            .add("generativelanguage.googleapis.com",
+                "sha256/ePd8DjIPDZVBxKmWbWHXy+wZjO75a6PEiRzXE7mbzZ0=",
+                "sha256/YPtHaftLw6/0vnc2BnNKGF54xiCA28WFcccjkA4ypCM=")
             .build()
     }
 
@@ -222,6 +239,12 @@ val serviceHelpersModule = module {
 
     // PermissionHelper - requires Context
     single { PermissionHelper(androidContext()) }
+
+    // SynapseCapabilities - capability mode detection
+    single { SynapseCapabilities(androidContext()) }
+
+    // PermissionHealthMonitor - reactive permission state monitoring
+    single { PermissionHealthMonitor(androidContext()) }
 }
 
 /**

@@ -193,8 +193,25 @@ class PermissionHelper(private val context: Context) {
         return mapOf(
             "overlay" to hasOverlayPermission(),
             "notification" to hasNotificationPermission(),
-            "storage" to hasStoragePermission()
+            "storage" to hasStoragePermission(),
+            "accessibility" to hasAccessibilityPermission()
         )
+    }
+
+    /**
+     * Checks if the accessibility service is enabled.
+     */
+    fun hasAccessibilityPermission(): Boolean {
+        return com.synapse.service.SynapseAccessibilityService.isEnabled(context)
+    }
+
+    /**
+     * Creates an Intent to open the accessibility settings page.
+     */
+    fun getAccessibilitySettingsIntent(): Intent {
+        return Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
     }
 
     /**
