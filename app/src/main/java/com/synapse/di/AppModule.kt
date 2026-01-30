@@ -5,11 +5,6 @@ import com.synapse.api.LlmProviderFactory
 import com.synapse.api.QuestionAnswerService
 
 import com.synapse.data.cost.LlmCostCalculator
-import com.synapse.data.cost.UsageTracker
-import com.synapse.data.destination.ClipboardDestination
-import com.synapse.data.destination.DestinationRepository
-import com.synapse.data.destination.LocalFolderDestination
-import com.synapse.data.destination.ShareIntentDestination
 import com.synapse.data.repository.ChunkRepository
 import com.synapse.data.repository.ChunkRepositoryImpl
 import com.synapse.data.repository.ProjectRepository
@@ -26,10 +21,8 @@ import com.synapse.data.storage.SessionStorage
 import com.synapse.data.storage.StorageHelper
 import com.synapse.data.storage.SyncStorage
 import com.synapse.data.storage.VaultManager
-import com.synapse.model.Destination
 import com.synapse.service.NotificationHelper
 import com.synapse.service.RegionCaptureManager
-import com.synapse.service.ReminderManager
 import com.synapse.service.ScreenshotManager
 import com.synapse.service.SynapseAccessibilityService
 import com.synapse.service.SynapseCapabilities
@@ -254,36 +247,18 @@ val serviceHelpersModule = module {
 }
 
 /**
- * V2 features module - Destination, cost, context, intent services
+ * V2 features module - Cost, context, Q&A, and LLM services
  *
- * Provides singleton instances of all v2 feature classes:
- * - Destinations: Clipboard, Share, LocalFolder + DestinationRepository
- * - Cost: LlmCostCalculator, UsageTracker
+ * Provides singleton instances of:
+ * - Cost: LlmCostCalculator
  * - Context: RegionCaptureManager, ScreenshotManager
- * - Intent: ReminderManager, QuestionAnswerService
+ * - Q&A: QuestionAnswerService
  * - Network: NetworkMonitor
  * - LLM: LlmProviderFactory
  */
 val v2Module = module {
-    // Destinations
-    single { ClipboardDestination(androidContext()) }
-    single { ShareIntentDestination(androidContext()) }
-    single { LocalFolderDestination(androidContext()) }
-    single {
-        val destinations = mapOf<String, Destination>(
-            "clipboard" to get<ClipboardDestination>(),
-            "share" to get<ShareIntentDestination>(),
-            "local_folder" to get<LocalFolderDestination>()
-        )
-        DestinationRepository(
-            dataStore = androidContext().settingsDataStore,
-            destinations = destinations
-        )
-    }
-
     // Cost tracking
     single { LlmCostCalculator }
-    single { UsageTracker(androidContext().settingsDataStore) }
 
     // Network
     single { NetworkMonitor(androidContext()) }
@@ -297,9 +272,6 @@ val v2Module = module {
             screenshotManager = get()
         )
     }
-
-    // Intent services
-    single { ReminderManager(androidContext()) }
 
     // LLM routing
     single { LlmProviderFactory(get()) }
