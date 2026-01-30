@@ -34,6 +34,10 @@ class ProjectStorage(private val context: Context) {
     private val mutex = Mutex()
     private val _projectsFlow = MutableStateFlow<List<Project>>(emptyList())
 
+    /** In-memory cache of projects, invalidated on write operations. */
+    @Volatile
+    private var cachedProjects: List<Project>? = null
+
     private val projectsDir: File
         get() = File(context.filesDir, PROJECTS_DIR).also { it.mkdirs() }
 
@@ -160,17 +164,24 @@ class ProjectStorage(private val context: Context) {
     }
 
     private fun loadProjectsFromDisk(): List<Project> {
+        cachedProjects?.let { return it }
+
         return try {
             if (!projectsFile.exists()) {
-                return emptyList()
+                val empty = emptyList<Project>()
+                cachedProjects = empty
+                return empty
             }
 
             val content = projectsFile.readText()
             val dto = StorageJson.instance.decodeFromString<ProjectsDto>(content)
-            dto.projects.map { it.toProject() }
+            val projects = dto.projects.map { it.toProject() }
+            cachedProjects = projects
+            projects
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load projects", e)
-            emptyList()
+            // Return cached data if available before falling back to empty list
+            cachedProjects ?: emptyList()
         }
     }
 
@@ -180,6 +191,7 @@ class ProjectStorage(private val context: Context) {
                 projects = projects.map { ProjectDto.fromProject(it) }
             )
             StorageHelper.atomicWriteText(projectsFile, StorageJson.instance.encodeToString(dto))
+            cachedProjects = projects
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save projects", e)
         }
