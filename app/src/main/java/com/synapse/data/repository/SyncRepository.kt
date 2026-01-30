@@ -17,8 +17,6 @@ import com.synapse.data.storage.StorageResult
 import com.synapse.data.storage.SyncStorage
 import com.synapse.model.Chunk
 import com.synapse.model.SyncStatus
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -213,20 +211,13 @@ class SyncRepositoryImpl(
                         // Load chunk image bytes for sending directly to the vision LLM (with size cap)
                         val chunkImageBytes = mutableListOf<ByteArray>()
                         if (hasImageContext) {
-                            val loadedImageBytes = coroutineScope {
-                                segment.chunks.filter { !it.isCorrupted }.map { chunk ->
-                                    async {
-                                        chunkStorage.loadChunkBytes(sessionId, chunk.id)
-                                    }
-                                }.map { it.await() }
-                            }
                             var cumulativeSize = 0L
-                            for (bytes in loadedImageBytes) {
-                                if (bytes == null) continue
+                            for (chunk in segment.chunks.filter { !it.isCorrupted }) {
                                 if (cumulativeSize >= MAX_BATCH_BYTES) {
                                     Log.w(TAG, "Chunk image batch size cap reached ($cumulativeSize bytes), skipping remaining")
                                     break
                                 }
+                                val bytes = chunkStorage.loadChunkBytes(sessionId, chunk.id) ?: continue
                                 cumulativeSize += bytes.size
                                 chunkImageBytes.add(bytes)
                             }
@@ -501,24 +492,22 @@ class SyncRepositoryImpl(
         val chunkDataList = mutableListOf<ChunkData>()
         val validChunks = chunks.filter { !it.isCorrupted }
 
-        val loadedChunks = coroutineScope {
-            validChunks.mapIndexed { index, chunk ->
-                async {
-                    val imageBytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
-                    if (imageBytes != null) {
-                        ChunkData(
-                            image = imageBytes,
-                            timestampSeconds = chunk.timestampSeconds,
-                            index = index
-                        )
-                    } else {
-                        Log.w(TAG, "Failed to load chunk image: ${chunk.id}")
-                        null
-                    }
-                }
-            }.mapNotNull { it.await() }
+        // Load sequentially — local disk I/O doesn't benefit from parallelism
+        // and sequential loading reduces peak memory allocation
+        for ((index, chunk) in validChunks.withIndex()) {
+            val imageBytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
+            if (imageBytes != null) {
+                chunkDataList.add(
+                    ChunkData(
+                        image = imageBytes,
+                        timestampSeconds = chunk.timestampSeconds,
+                        index = index
+                    )
+                )
+            } else {
+                Log.w(TAG, "Failed to load chunk image: ${chunk.id}")
+            }
         }
-        chunkDataList.addAll(loadedChunks)
 
         if (chunkDataList.isEmpty()) {
             Log.e(TAG, "All ${chunks.size} chunk images failed to load from disk")
