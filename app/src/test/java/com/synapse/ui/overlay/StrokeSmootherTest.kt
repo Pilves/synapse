@@ -3,12 +3,19 @@ package com.synapse.ui.overlay
 import androidx.compose.ui.geometry.Offset
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koin.core.context.stopKoin
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class StrokeSmootherTest {
+
+    @Before
+    fun setup() {
+        stopKoin()
+    }
 
     @Test
     fun `calculateWidths returns one width per point`() {

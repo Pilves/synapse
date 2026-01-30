@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koin.core.context.stopKoin
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
@@ -14,6 +15,7 @@ class PalmRejectionFilterTest {
 
     @Before
     fun setup() {
+        stopKoin()
         filter = PalmRejectionFilter(
             palmMajorThreshold = 100f,
             palmMinorThreshold = 60f
