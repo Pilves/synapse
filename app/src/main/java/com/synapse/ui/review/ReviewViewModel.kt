@@ -112,33 +112,6 @@ class ReviewViewModel(
     }
 
     /**
-     * Load pending sessions that haven't been synced yet
-     */
-    fun loadPendingSessions() {
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
-            try {
-                val sessions = sessionRepository.getPendingSessions()
-                val allContexts = sessions.flatMap { it.contexts }
-                _uiState.update {
-                    it.copy(
-                        sessions = sessions,
-                        contexts = allContexts,
-                        isLoading = false
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = "Failed to load sessions: ${e.message}"
-                    )
-                }
-            }
-        }
-    }
-
-    /**
      * Observe projects for the dropdown - updates when projects change
      */
     private fun loadProjects() {
@@ -402,8 +375,7 @@ class ReviewViewModel(
                 progressJob.cancel()
                 _uiState.update { it.copy(syncStatus = finalStatus) }
 
-                // Refresh the session list (removes deleted sessions, keeps partial failures)
-                loadPendingSessions()
+                // Session list auto-refreshes via observeSessions() flow
             } catch (e: Exception) {
                 progressJob.cancel()
                 _uiState.update {
