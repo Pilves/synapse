@@ -1,7 +1,9 @@
 package com.synapse.data.repository
 
 import com.synapse.data.storage.ChunkStorage
+import com.synapse.data.storage.ErrorType
 import com.synapse.data.storage.SessionStorage
+import com.synapse.data.storage.StorageResult
 import com.synapse.model.CapturedContext
 import com.synapse.model.Chunk
 import com.synapse.model.Session
@@ -53,7 +55,7 @@ class SessionRepositoryImplTest {
     @Test
     fun `createSession creates new when no active session`() = runTest {
         coEvery { sessionStorage.getActiveSession() } returns null
-        coEvery { sessionStorage.createSession() } returns testSession
+        coEvery { sessionStorage.createSession() } returns StorageResult.Success(testSession)
 
         val result = repo.createSession()
         assertEquals("s1", result.id)
@@ -64,7 +66,7 @@ class SessionRepositoryImplTest {
 
     @Test
     fun `endSession calls storage when session is active`() = runTest {
-        coEvery { sessionStorage.getSession("s1") } returns testSession
+        coEvery { sessionStorage.getSession("s1") } returns StorageResult.Success(testSession)
 
         repo.endSession("s1")
         coVerify { sessionStorage.endSession("s1") }
@@ -72,7 +74,7 @@ class SessionRepositoryImplTest {
 
     @Test
     fun `endSession is noop when session already ended`() = runTest {
-        coEvery { sessionStorage.getSession("s1") } returns endedSession
+        coEvery { sessionStorage.getSession("s1") } returns StorageResult.Success(endedSession)
 
         repo.endSession("s1")
         coVerify(exactly = 0) { sessionStorage.endSession(any()) }
@@ -80,7 +82,7 @@ class SessionRepositoryImplTest {
 
     @Test(expected = IllegalArgumentException::class)
     fun `endSession throws when session not found`() = runTest {
-        coEvery { sessionStorage.getSession("missing") } returns null
+        coEvery { sessionStorage.getSession("missing") } returns StorageResult.Error(ErrorType.NOT_FOUND, "Session not found")
 
         repo.endSession("missing")
     }
@@ -89,7 +91,7 @@ class SessionRepositoryImplTest {
 
     @Test
     fun `getSession delegates to storage`() = runTest {
-        coEvery { sessionStorage.getSession("s1") } returns testSession
+        coEvery { sessionStorage.getSession("s1") } returns StorageResult.Success(testSession)
 
         val result = repo.getSession("s1")
         assertNotNull(result)
@@ -98,7 +100,7 @@ class SessionRepositoryImplTest {
 
     @Test
     fun `getSession returns null when not found`() = runTest {
-        coEvery { sessionStorage.getSession("missing") } returns null
+        coEvery { sessionStorage.getSession("missing") } returns StorageResult.Error(ErrorType.NOT_FOUND, "Session not found")
 
         assertNull(repo.getSession("missing"))
     }

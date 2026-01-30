@@ -13,6 +13,7 @@ import com.synapse.model.LlmConfig
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.ProjectStorage
 import com.synapse.data.storage.SessionStorage
+import com.synapse.data.storage.StorageResult
 import com.synapse.data.storage.SyncStorage
 import com.synapse.model.Chunk
 import com.synapse.model.SyncStatus
@@ -174,12 +175,14 @@ class SyncRepositoryImpl(
 
         try {
             // Get session and validate
-            val session = sessionStorage.getSession(sessionId)
-            if (session == null) {
-                Log.e(TAG, "Session not found: $sessionId")
-                val error = SyncStatus.Error("Session not found")
-                _syncStatus.value = error
-                return@withContext error
+            val session = when (val result = sessionStorage.getSession(sessionId)) {
+                is StorageResult.Success -> result.data
+                is StorageResult.Error -> {
+                    Log.e(TAG, "Session not found: $sessionId")
+                    val error = SyncStatus.Error("Session not found")
+                    _syncStatus.value = error
+                    return@withContext error
+                }
             }
 
             if (session.chunks.isEmpty() && session.contexts.isEmpty()) {
@@ -643,7 +646,7 @@ The output should read as if the user wrote it themselves.
                 append("\n\n---\n\n## Notes - $timestamp\n\n")
                 segmentResults.forEachIndexed { index, segmentContent ->
                     if (segmentResults.size > 1 && index > 0) {
-                        append("---\n\n")
+                        append("\n---\n\n")
                     }
                     append(segmentContent)
                 }

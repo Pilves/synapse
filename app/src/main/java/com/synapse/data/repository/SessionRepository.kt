@@ -2,6 +2,7 @@ package com.synapse.data.repository
 
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.SessionStorage
+import com.synapse.data.storage.StorageResult
 import com.synapse.model.CapturedContext
 import com.synapse.model.Session
 import kotlinx.coroutines.flow.Flow
@@ -116,12 +117,17 @@ class SessionRepositoryImpl(
             return activeSession
         }
 
-        return sessionStorage.createSession()
+        return when (val result = sessionStorage.createSession()) {
+            is StorageResult.Success -> result.data
+            is StorageResult.Error -> throw RuntimeException(result.message)
+        }
     }
 
     override suspend fun endSession(sessionId: String) {
-        val session = sessionStorage.getSession(sessionId)
-            ?: throw IllegalArgumentException("Session not found: $sessionId")
+        val session = when (val result = sessionStorage.getSession(sessionId)) {
+            is StorageResult.Success -> result.data
+            is StorageResult.Error -> throw IllegalArgumentException("Session not found: $sessionId")
+        }
 
         if (session.endedAt != null) {
             // Session already ended, no-op
@@ -132,7 +138,10 @@ class SessionRepositoryImpl(
     }
 
     override suspend fun getSession(sessionId: String): Session? {
-        return sessionStorage.getSession(sessionId)
+        return when (val result = sessionStorage.getSession(sessionId)) {
+            is StorageResult.Success -> result.data
+            is StorageResult.Error -> null
+        }
     }
 
     override suspend fun getPendingSessions(): List<Session> {

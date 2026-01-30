@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.util.LruCache
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.SessionStorage
+import com.synapse.data.storage.StorageResult
 import com.synapse.model.Chunk
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -94,8 +95,10 @@ class ChunkRepositoryImpl(
 
     override suspend fun saveChunk(sessionId: String, bitmap: Bitmap, timestampSeconds: Float): Chunk {
         // Validate session exists
-        sessionStorage.getSession(sessionId)
-            ?: throw IllegalArgumentException("Session not found: $sessionId")
+        when (sessionStorage.getSession(sessionId)) {
+            is StorageResult.Success -> {} // session exists
+            is StorageResult.Error -> throw IllegalArgumentException("Session not found: $sessionId")
+        }
 
         // Use single authoritative source for chunk index
         val nextIndex = sessionStorage.getNextChunkIndex(sessionId)
@@ -120,13 +123,19 @@ class ChunkRepositoryImpl(
         )
 
         // Add chunk to session
-        sessionStorage.addChunk(sessionId, chunk)
+        when (val addResult = sessionStorage.addChunk(sessionId, chunk)) {
+            is StorageResult.Success -> {} // chunk added
+            is StorageResult.Error -> throw RuntimeException("Failed to add chunk to session: ${addResult.message}")
+        }
 
         return chunk
     }
 
     override suspend fun getChunksForSession(sessionId: String): List<Chunk> {
-        val session = sessionStorage.getSession(sessionId) ?: return emptyList()
+        val session = when (val result = sessionStorage.getSession(sessionId)) {
+            is StorageResult.Success -> result.data
+            is StorageResult.Error -> return emptyList()
+        }
         return session.chunks.sortedBy { it.index }
     }
 
