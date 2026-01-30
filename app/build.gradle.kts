@@ -21,6 +21,15 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getenv("SYNAPSE_KEYSTORE_PATH") ?: "release.keystore")
+            storePassword = System.getenv("SYNAPSE_KEYSTORE_PASSWORD") ?: ""
+            keyAlias = System.getenv("SYNAPSE_KEY_ALIAS") ?: ""
+            keyPassword = System.getenv("SYNAPSE_KEY_PASSWORD") ?: ""
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -30,6 +39,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
