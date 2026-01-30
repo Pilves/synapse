@@ -25,24 +25,19 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.FloatingActionButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
@@ -51,7 +46,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -59,6 +53,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.IntOffset
@@ -77,7 +73,6 @@ import com.synapse.SynapseApplication
 import com.synapse.data.repository.ChunkRepository
 import com.synapse.data.repository.SessionRepository
 import com.synapse.model.CapturedContext
-import com.synapse.model.Chunk
 import com.synapse.ui.MainActivity
 import com.synapse.ui.overlay.CaptureCanvas
 import com.synapse.ui.overlay.CaptureEvent
@@ -116,17 +111,21 @@ import com.synapse.ui.settings.settingsDataStore
 class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     private lateinit var windowManager: WindowManager
-    private var floatingBubbleView: ComposeView? = null
+    private var floatingBubbleView: View? = null
+    private var bubbleBadgeView: android.widget.TextView? = null
+    private var bubbleWarningView: View? = null
+    private var bubbleIconView: android.widget.ImageView? = null
     private var captureOverlayView: View? = null
 
     private val lifecycleRegistry = LifecycleRegistry(this)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
 
     private var captureViewModel: CaptureViewModel? = null
-    private val pendingChunkCount = mutableIntStateOf(0)
+    private var pendingChunkCount = 0
     private var isCaptureActive = false
     private var isRegionMode = false
     private var capturedTextPreview = mutableStateOf<String?>(null)
+    private var showHealthWarning = false
 
     // Repositories for saving sessions and chunks
     private val sessionRepository: SessionRepository by inject()
@@ -140,7 +139,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     // Permission health monitoring
     private val permissionHealthMonitor: PermissionHealthMonitor by inject()
-    private var showHealthWarning = mutableStateOf(false)
 
     // Coroutine scope for the service
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -156,6 +154,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     // Cached settings values (read when overlay opens)
     private var chunkTimeoutMs: Long = 1000L
+
+    // Last known bubble position (used to anchor the toolbar)
+    private var lastBubbleX = 100
+    private var lastBubbleY = 300
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -176,7 +178,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         permissionHealthMonitor.startMonitoring()
         serviceScope.launch {
             permissionHealthMonitor.health.collect { health ->
-                showHealthWarning.value = health != PermissionHealthMonitor.PermissionHealth.HEALTHY
+                val warning = health != PermissionHealthMonitor.PermissionHealth.HEALTHY
+                showHealthWarning = warning
+                updateBubbleWarning(warning)
             }
         }
 
@@ -234,9 +238,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     capturedChunk.bitmap.recycle()
                 }
 
-                // Update badge count (Compose observes this state directly)
+                // Update badge count
                 launch(Dispatchers.Main) {
-                    pendingChunkCount.intValue++
+                    pendingChunkCount++
+                    updateBubbleBadge(pendingChunkCount)
                 }
             } catch (e: IOException) {
                 Log.e(TAG, "IO error saving chunk", e)
@@ -471,8 +476,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     sessionRepository.deleteChunk(sessionId, lastChunk.id)
                     Log.d(TAG, "Deleted last chunk: ${lastChunk.id}")
                     launch(Dispatchers.Main) {
-                        if (pendingChunkCount.intValue > 0) {
-                            pendingChunkCount.intValue--
+                        if (pendingChunkCount > 0) {
+                            pendingChunkCount--
+                            updateBubbleBadge(pendingChunkCount)
                         }
                     }
                 } else if (lastContext != null) {
@@ -529,7 +535,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         captureViewModel?.endSession()
 
         // Reset badge count since user is going to review
-        pendingChunkCount.intValue = 0
+        pendingChunkCount = 0
+        updateBubbleBadge(0)
 
         serviceScope.launch(Dispatchers.IO) {
             try {
@@ -605,7 +612,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             ACTION_SHOW_CAPTURE -> showCaptureOverlay()
             ACTION_HIDE_CAPTURE -> hideCaptureOverlay()
             ACTION_UPDATE_BADGE -> {
-                pendingChunkCount.intValue = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
+                pendingChunkCount = intent.getIntExtra(EXTRA_CHUNK_COUNT, 0)
+                updateBubbleBadge(pendingChunkCount)
             }
             ACTION_TOGGLE_REGION_MODE -> {
                 // Check if accessibility is available for text extraction
@@ -771,6 +779,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun showFloatingBubble() {
         Log.d(TAG, "showFloatingBubble called, existing view: ${floatingBubbleView != null}")
         if (floatingBubbleView != null) return
@@ -789,9 +798,23 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         }
 
         try {
-        // Get screen height
+        // Get screen dimensions
         val displayMetrics = resources.displayMetrics
         val screenHeight = displayMetrics.heightPixels
+        val density = displayMetrics.density
+
+        // Resolve colors based on current dark/light mode
+        val isDark = (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) ==
+                android.content.res.Configuration.UI_MODE_NIGHT_YES
+        val primaryColor = if (isDark) 0xFFD0BCFF.toInt() else 0xFF7B5EAE.toInt()
+        val onPrimaryColor = if (isDark) 0xFF3E1F6E.toInt() else 0xFFFFFFFF.toInt()
+        val errorColor = if (isDark) 0xFFFFB4AB.toInt() else 0xFFBA1A1A.toInt()
+        val onErrorColor = if (isDark) 0xFF690005.toInt() else 0xFFFFFFFF.toInt()
+        val amberColor = 0xFFFFA000.toInt()
+
+        val bubbleSizePx = (56 * density).roundToInt()
+        val badgeSizePx = (20 * density).roundToInt()
+        val elevationPx = 8 * density
 
         val params = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -809,56 +832,164 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             x = savedX
             y = savedY
         }
+        lastBubbleX = savedX
+        lastBubbleY = savedY
 
-        // Accumulate drag deltas and apply once per vsync frame for smooth movement
+        // Build the bubble view hierarchy programmatically
+        val container = android.widget.FrameLayout(this).apply {
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                bubbleSizePx + badgeSizePx / 2,
+                bubbleSizePx + badgeSizePx / 2
+            )
+        }
+
+        // Circular FAB background
+        val fabBackground = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(primaryColor)
+        }
+
+        val iconView = android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_bubble_edit)
+            setColorFilter(onPrimaryColor, android.graphics.PorterDuff.Mode.SRC_IN)
+            background = fabBackground
+            scaleType = android.widget.ImageView.ScaleType.CENTER
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                elevation = elevationPx
+            }
+            layoutParams = android.widget.FrameLayout.LayoutParams(bubbleSizePx, bubbleSizePx).apply {
+                gravity = Gravity.BOTTOM or Gravity.START
+            }
+        }
+        bubbleIconView = iconView
+        container.addView(iconView)
+
+        // Badge (pending chunk count)
+        val badgeView = android.widget.TextView(this).apply {
+            textSize = 10f
+            setTextColor(onErrorColor)
+            gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(errorColor)
+            }
+            visibility = if (pendingChunkCount > 0) View.VISIBLE else View.GONE
+            text = if (pendingChunkCount > 99) "99+" else pendingChunkCount.toString()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                elevation = elevationPx + 1
+            }
+            layoutParams = android.widget.FrameLayout.LayoutParams(badgeSizePx, badgeSizePx).apply {
+                gravity = Gravity.TOP or Gravity.END
+            }
+        }
+        bubbleBadgeView = badgeView
+        container.addView(badgeView)
+
+        // Warning dot (amber, permission degraded)
+        val warningView = android.widget.TextView(this).apply {
+            textSize = 10f
+            setTextColor(0xFFFFFFFF.toInt())
+            gravity = Gravity.CENTER
+            text = "!"
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(amberColor)
+            }
+            visibility = if (showHealthWarning) View.VISIBLE else View.GONE
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                elevation = elevationPx + 1
+            }
+            layoutParams = android.widget.FrameLayout.LayoutParams(badgeSizePx, badgeSizePx).apply {
+                gravity = Gravity.TOP or Gravity.START
+            }
+        }
+        bubbleWarningView = warningView
+        container.addView(warningView)
+
+        // Touch handling: tap vs drag
+        val touchSlop = android.view.ViewConfiguration.get(this).scaledTouchSlop
+        var startX = 0f
+        var startY = 0f
+        var isDragging = false
+        var currentY = params.y.toFloat()
+
+        // Choreographer vsync batching for drag
         var pendingDx = 0f
         var pendingDy = 0f
         var frameCallbackScheduled = false
         val choreographer = Choreographer.getInstance()
 
-        floatingBubbleView = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(this@OverlayService)
-            setViewTreeSavedStateRegistryOwner(this@OverlayService)
+        val dismissZoneThreshold = screenHeight * 0.85f
 
-            setContent {
-                SynapseTheme {
-                    FloatingBubble(
-                        pendingCount = pendingChunkCount.intValue,
-                        showWarning = showHealthWarning.value,
-                        screenHeight = screenHeight,
-                        initialY = params.y,
-                        onClick = { showCaptureOverlay() },
-                        onWarningClick = {
-                            // Open accessibility settings for recovery
-                            val intent = android.content.Intent(
-                                android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
-                            ).apply {
-                                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
-                            }
-                            startActivity(intent)
-                        },
-                        onDismiss = { stopOverlay() },
-                        onPositionChanged = { dx, dy ->
-                            pendingDx += dx
-                            pendingDy += dy
-                            if (!frameCallbackScheduled) {
-                                frameCallbackScheduled = true
-                                choreographer.postFrameCallback {
-                                    frameCallbackScheduled = false
-                                    params.x += pendingDx.roundToInt()
-                                    params.y += pendingDy.roundToInt()
-                                    pendingDx = 0f
-                                    pendingDy = 0f
-                                    try {
-                                        windowManager.updateViewLayout(this, params)
-                                    } catch (e: IllegalArgumentException) {
-                                        Log.w(TAG, "Bubble view not attached during drag update", e)
-                                    }
+        container.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    startX = event.rawX
+                    startY = event.rawY
+                    isDragging = false
+                    true
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - startX
+                    val dy = event.rawY - startY
+                    if (!isDragging && (dx * dx + dy * dy > touchSlop * touchSlop)) {
+                        isDragging = true
+                    }
+                    if (isDragging) {
+                        startX = event.rawX
+                        startY = event.rawY
+                        currentY += dy
+
+                        pendingDx += dx
+                        pendingDy += dy
+                        if (!frameCallbackScheduled) {
+                            frameCallbackScheduled = true
+                            choreographer.postFrameCallback {
+                                frameCallbackScheduled = false
+                                params.x += pendingDx.roundToInt()
+                                params.y += pendingDy.roundToInt()
+                                pendingDx = 0f
+                                pendingDy = 0f
+                                try {
+                                    windowManager.updateViewLayout(container, params)
+                                } catch (e: IllegalArgumentException) {
+                                    Log.w(TAG, "Bubble view not attached during drag update", e)
                                 }
                             }
-                        },
-                        onDragEnded = {
-                            // Persist bubble position for next session
+                        }
+
+                        // Update appearance when in/out of dismiss zone
+                        val inDismissZone = currentY > dismissZoneThreshold
+                        val bg = iconView.background as android.graphics.drawable.GradientDrawable
+                        if (inDismissZone) {
+                            bg.setColor(errorColor)
+                            iconView.setImageResource(R.drawable.ic_bubble_close)
+                            iconView.setColorFilter(onErrorColor, android.graphics.PorterDuff.Mode.SRC_IN)
+                            badgeView.visibility = View.GONE
+                            warningView.visibility = View.GONE
+                        } else {
+                            bg.setColor(primaryColor)
+                            iconView.setImageResource(R.drawable.ic_bubble_edit)
+                            iconView.setColorFilter(onPrimaryColor, android.graphics.PorterDuff.Mode.SRC_IN)
+                            if (pendingChunkCount > 0) badgeView.visibility = View.VISIBLE
+                            if (showHealthWarning) warningView.visibility = View.VISIBLE
+                        }
+                    }
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (!isDragging) {
+                        // Tap — open capture overlay
+                        showCaptureOverlay()
+                    } else {
+                        // Drag ended
+                        if (currentY > dismissZoneThreshold) {
+                            stopOverlay()
+                        } else {
+                            // Track position for toolbar anchoring
+                            lastBubbleX = params.x
+                            lastBubbleY = params.y
+                            // Persist bubble position
                             serviceScope.launch(Dispatchers.IO) {
                                 try {
                                     settingsDataStore.edit { prefs ->
@@ -870,12 +1001,29 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                                 }
                             }
                         }
-                    )
+                    }
+                    true
                 }
+                MotionEvent.ACTION_CANCEL -> {
+                    isDragging = false
+                    true
+                }
+                else -> false
             }
         }
 
-        windowManager.addView(floatingBubbleView, params)
+        // Warning dot tap opens accessibility settings
+        warningView.setOnClickListener {
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
+            ).apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(intent)
+        }
+
+        floatingBubbleView = container
+        windowManager.addView(container, params)
             Log.d(TAG, "Floating bubble added to window manager")
         } catch (e: SecurityException) {
             Log.e(TAG, "Overlay permission denied for bubble", e)
@@ -884,6 +1032,21 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         } catch (e: IllegalStateException) {
             Log.e(TAG, "Invalid state showing bubble", e)
         }
+    }
+
+    private fun updateBubbleBadge(count: Int) {
+        bubbleBadgeView?.let { badge ->
+            if (count > 0) {
+                badge.text = if (count > 99) "99+" else count.toString()
+                badge.visibility = View.VISIBLE
+            } else {
+                badge.visibility = View.GONE
+            }
+        }
+    }
+
+    private fun updateBubbleWarning(show: Boolean) {
+        bubbleWarningView?.visibility = if (show) View.VISIBLE else View.GONE
     }
 
     private fun hideFloatingBubble() {
@@ -896,6 +1059,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 Log.w(TAG, "Invalid state removing bubble view", e)
             }
             floatingBubbleView = null
+            bubbleBadgeView = null
+            bubbleWarningView = null
+            bubbleIconView = null
         }
     }
 
@@ -960,6 +1126,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                         viewModel = vm,
                         chunkTimeoutMs = chunkTimeoutMs,
                         isRegionMode = isRegionMode,
+                        initialToolbarX = lastBubbleX.toFloat(),
+                        initialToolbarY = lastBubbleY.toFloat(),
                         capturedTextPreview = capturedTextPreview.value,
                         onClearPreview = { capturedTextPreview.value = null },
                         onMinimize = {
@@ -991,11 +1159,23 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         captureOverlayView = overlayView
         windowManager.addView(overlayView, params)
 
-        // Auto-minimize when user navigates away (home/recents)
-        SynapseAccessibilityService.getInstance()?.onWindowChanged = {
-            if (isCaptureActive) {
-                serviceScope.launch(Dispatchers.Main) {
-                    hideCaptureOverlay()
+        // Auto-minimize when user navigates away (home/recents/back)
+        SynapseAccessibilityService.getInstance()?.let { a11y ->
+            a11y.onWindowChanged = {
+                if (isCaptureActive) {
+                    serviceScope.launch(Dispatchers.Main) {
+                        hideCaptureOverlay()
+                    }
+                }
+            }
+            a11y.onBackPressed = {
+                if (isCaptureActive) {
+                    serviceScope.launch(Dispatchers.Main) {
+                        hideCaptureOverlay()
+                    }
+                    true
+                } else {
+                    false
                 }
             }
         }
@@ -1016,8 +1196,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     }
 
     private fun hideCaptureOverlay() {
-        // Stop listening for window changes while not capturing
-        SynapseAccessibilityService.getInstance()?.onWindowChanged = null
+        // Stop listening for navigation events while not capturing
+        SynapseAccessibilityService.getInstance()?.let {
+            it.onWindowChanged = null
+            it.onBackPressed = null
+        }
 
         captureOverlayView?.let {
             try {
@@ -1264,121 +1447,6 @@ class TouchDifferentiatingOverlayView(
 }
 
 /**
- * Floating bubble composable with drag support and badge.
- * Tap to open capture, drag to bottom X to close.
- */
-@Composable
-private fun FloatingBubble(
-    pendingCount: Int,
-    showWarning: Boolean = false,
-    screenHeight: Int,
-    initialY: Int,
-    onClick: () -> Unit,
-    onWarningClick: (() -> Unit)? = null,
-    onDismiss: () -> Unit,
-    onPositionChanged: (Float, Float) -> Unit,
-    onDragEnded: () -> Unit = {}
-) {
-    var isDragging by remember { mutableStateOf(false) }
-    var currentY by remember { mutableFloatStateOf(initialY.toFloat()) }
-
-    // Check if bubble is in dismiss zone (bottom 15% of screen)
-    val dismissZoneThreshold = screenHeight * 0.85f
-    val isInDismissZone = currentY > dismissZoneThreshold && isDragging
-
-    Box(
-        contentAlignment = Alignment.TopEnd
-    ) {
-        FloatingActionButton(
-            onClick = onClick,
-            modifier = Modifier
-                .size(56.dp)
-                .pointerInput(Unit) {
-                    detectDragGestures(
-                        onDragStart = {
-                            isDragging = true
-                        },
-                        onDragEnd = {
-                            val shouldDismiss = currentY > dismissZoneThreshold
-                            isDragging = false
-                            if (shouldDismiss) {
-                                onDismiss()
-                            } else {
-                                onDragEnded()
-                            }
-                        },
-                        onDragCancel = {
-                            isDragging = false
-                        },
-                        onDrag = { change, dragAmount ->
-                            change.consume()
-                            currentY += dragAmount.y
-                            onPositionChanged(dragAmount.x, dragAmount.y)
-                        }
-                    )
-                },
-            containerColor = if (isInDismissZone)
-                MaterialTheme.colorScheme.error
-            else
-                MaterialTheme.colorScheme.primary,
-            elevation = FloatingActionButtonDefaults.elevation(8.dp)
-        ) {
-            Icon(
-                imageVector = if (isInDismissZone) Icons.Default.Close else Icons.Default.Edit,
-                contentDescription = "Start capture (drag to bottom to close)",
-                tint = if (isInDismissZone)
-                    MaterialTheme.colorScheme.onError
-                else
-                    MaterialTheme.colorScheme.onPrimary
-            )
-        }
-
-        // Badge showing pending chunk count
-        if (pendingCount > 0 && !isInDismissZone) {
-            Box(
-                modifier = Modifier
-                    .offset(x = 4.dp, y = (-4).dp)
-                    .size(20.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.error,
-                        shape = CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = if (pendingCount > 99) "99+" else pendingCount.toString(),
-                    color = MaterialTheme.colorScheme.onError,
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-        }
-
-        // Amber warning badge when permissions are degraded
-        if (showWarning && !isInDismissZone) {
-            Box(
-                modifier = Modifier
-                    .offset(x = (-4).dp, y = (-4).dp)
-                    .size(20.dp)
-                    .background(
-                        color = Color(0xFFFFA000), // Amber
-                        shape = CircleShape
-                    )
-                    .pointerInput(Unit) {
-                        detectTapGestures { onWarningClick?.invoke() }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "!",
-                    color = Color.White,
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
-        }
-    }
-}
-
-/**
  * Fullscreen capture overlay content with canvas and toolbar.
  */
 @Composable
@@ -1386,6 +1454,8 @@ private fun CaptureOverlayContent(
     viewModel: CaptureViewModel,
     chunkTimeoutMs: Long,
     isRegionMode: Boolean = false,
+    initialToolbarX: Float = 0f,
+    initialToolbarY: Float = 100f,
     capturedTextPreview: String? = null,
     onClearPreview: (() -> Unit)? = null,
     onMinimize: () -> Unit,
@@ -1395,13 +1465,36 @@ private fun CaptureOverlayContent(
     onRegionSelected: ((android.graphics.Rect) -> Unit)? = null,
     onVibrate: (() -> Unit)? = null
 ) {
-    var toolbarOffsetX by remember { mutableFloatStateOf(0f) }
-    var toolbarOffsetY by remember { mutableFloatStateOf(100f) }
+    val density = LocalDensity.current
+    var toolbarWidth by remember { mutableFloatStateOf(0f) }
+    var toolbarHeight by remember { mutableFloatStateOf(0f) }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .background(Color.Transparent)
     ) {
+        val screenWidthPx = constraints.maxWidth.toFloat()
+        val screenHeightPx = constraints.maxHeight.toFloat()
+
+        // Clamp initial position: if toolbar would go off-screen, flip to opposite side
+        val clampedX = remember(initialToolbarX, toolbarWidth, screenWidthPx) {
+            if (toolbarWidth > 0f && initialToolbarX + toolbarWidth > screenWidthPx) {
+                // Flip to left side of bubble position
+                (initialToolbarX - toolbarWidth).coerceAtLeast(0f)
+            } else {
+                initialToolbarX.coerceAtLeast(0f)
+            }
+        }
+        val clampedY = remember(initialToolbarY, toolbarHeight, screenHeightPx) {
+            if (toolbarHeight > 0f && initialToolbarY + toolbarHeight > screenHeightPx) {
+                (screenHeightPx - toolbarHeight).coerceAtLeast(0f)
+            } else {
+                initialToolbarY.coerceAtLeast(0f)
+            }
+        }
+
+        var toolbarOffsetX by remember(clampedX) { mutableFloatStateOf(clampedX) }
+        var toolbarOffsetY by remember(clampedY) { mutableFloatStateOf(clampedY) }
         // Apply chunk timeout setting to viewModel
         androidx.compose.runtime.LaunchedEffect(chunkTimeoutMs) {
             viewModel.setChunkTimeout(chunkTimeoutMs)
@@ -1426,6 +1519,10 @@ private fun CaptureOverlayContent(
         Box(
             modifier = Modifier
                 .offset { IntOffset(toolbarOffsetX.roundToInt(), toolbarOffsetY.roundToInt()) }
+                .onGloballyPositioned { coords ->
+                    toolbarWidth = coords.size.width.toFloat()
+                    toolbarHeight = coords.size.height.toFloat()
+                }
                 .padding(16.dp)
                 .background(
                     color = Color.Black.copy(alpha = 0.6f),
@@ -1435,8 +1532,10 @@ private fun CaptureOverlayContent(
                 .pointerInput(Unit) {
                     detectDragGestures { change, dragAmount ->
                         change.consume()
-                        toolbarOffsetX += dragAmount.x
-                        toolbarOffsetY += dragAmount.y
+                        toolbarOffsetX = (toolbarOffsetX + dragAmount.x)
+                            .coerceIn(0f, (screenWidthPx - toolbarWidth).coerceAtLeast(0f))
+                        toolbarOffsetY = (toolbarOffsetY + dragAmount.y)
+                            .coerceIn(0f, (screenHeightPx - toolbarHeight).coerceAtLeast(0f))
                     }
                 }
         ) {
