@@ -89,35 +89,10 @@ class SessionStorage(
     /**
      * Creates a new session.
      *
-     * @param sessionId Optional custom session ID (defaults to timestamp)
-     * @return The newly created session
-     */
-    suspend fun createSession(sessionId: String? = null): Session = mutex.withLock {
-        val id = sessionId ?: generateSessionId()
-        validateId(id)
-        val startTime = System.currentTimeMillis()
-
-        val session = Session(
-            id = id,
-            startedAt = startTime,
-            endedAt = null,
-            chunks = emptyList()
-        )
-
-        saveSessionInternal(session)
-        refreshSessionInMemory(session)
-
-        Log.d(TAG, "Created session ${session.id}")
-        session
-    }
-
-    /**
-     * Creates a new session with result type for better error handling.
-     *
      * @param sessionId Optional custom session ID
      * @return StorageResult with the created Session
      */
-    suspend fun createSessionWithResult(sessionId: String? = null): StorageResult<Session> = mutex.withLock {
+    suspend fun createSession(sessionId: String? = null): StorageResult<Session> = mutex.withLock {
         try {
             val id = sessionId ?: generateSessionId()
             val startTime = System.currentTimeMillis()
@@ -156,35 +131,9 @@ class SessionStorage(
      * Gets a session by ID.
      *
      * @param sessionId The session ID
-     * @return The session, or null if not found
-     */
-    suspend fun getSession(sessionId: String): Session? = withContext(Dispatchers.IO) {
-        try {
-            if (!validIdRegex.matches(sessionId)) return@withContext null
-
-            // Check cache first
-            sessionCache.get(sessionId)?.let { return@withContext it }
-
-            val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
-            if (!file.exists()) return@withContext null
-
-            val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
-            val session = dto.toSession()
-            sessionCache.put(sessionId, session)
-            session
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to load session $sessionId", e)
-            null
-        }
-    }
-
-    /**
-     * Gets a session by ID with result type for error handling.
-     *
-     * @param sessionId The session ID
      * @return StorageResult with the Session
      */
-    suspend fun getSessionWithResult(sessionId: String): StorageResult<Session> = withContext(Dispatchers.IO) {
+    suspend fun getSession(sessionId: String): StorageResult<Session> = withContext(Dispatchers.IO) {
         try {
             val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
             if (!file.exists()) {
@@ -202,6 +151,17 @@ class SessionStorage(
                 "Failed to read session: ${e.message}",
                 e
             )
+        }
+    }
+
+    /**
+     * Internal helper that unwraps StorageResult to a nullable Session.
+     * Used by methods that need a session reference internally (addContext, removeChunk, etc.).
+     */
+    private suspend fun getSessionInternal(sessionId: String): Session? {
+        return when (val result = getSession(sessionId)) {
+            is StorageResult.Success -> result.data
+            is StorageResult.Error -> null
         }
     }
 
@@ -263,27 +223,10 @@ class SessionStorage(
      * Ends a session by setting its end timestamp.
      *
      * @param sessionId The session ID
-     * @return The updated session, or null if not found
-     */
-    suspend fun endSession(sessionId: String): Session? = mutex.withLock {
-        val session = getSession(sessionId) ?: return@withLock null
-
-        val updatedSession = session.copy(endedAt = System.currentTimeMillis())
-        saveSessionInternal(updatedSession)
-        refreshSessionInMemory(updatedSession)
-
-        Log.d(TAG, "Ended session $sessionId")
-        updatedSession
-    }
-
-    /**
-     * Ends a session with result type for better error handling.
-     *
-     * @param sessionId The session ID
      * @return StorageResult with the ended Session
      */
-    suspend fun endSessionWithResult(sessionId: String): StorageResult<Session> = mutex.withLock {
-        val session = getSession(sessionId)
+    suspend fun endSession(sessionId: String): StorageResult<Session> = mutex.withLock {
+        val session = getSessionInternal(sessionId)
             ?: return@withLock StorageResult.Error(
                 ErrorType.NOT_FOUND,
                 "Session not found: $sessionId"
@@ -306,32 +249,6 @@ class SessionStorage(
     }
 
     /**
-     * Adds a chunk to a session.
-     *
-     * @param sessionId The session ID
-     * @param chunk The chunk to add
-     * @return The updated session, or null if session not found
-     */
-    suspend fun addChunk(sessionId: String, chunk: Chunk): Session? = mutex.withLock {
-        val session = getSession(sessionId) ?: return@withLock null
-
-        // Deduplicate: skip if a chunk with this ID already exists
-        if (session.chunks.any { it.id == chunk.id }) {
-            Log.w(TAG, "Chunk ${chunk.id} already exists in session $sessionId, skipping")
-            return@withLock session
-        }
-
-        val updatedSession = session.copy(
-            chunks = session.chunks + chunk
-        )
-        saveSessionInternal(updatedSession)
-        refreshSessionInMemory(updatedSession)
-
-        Log.d(TAG, "Added chunk ${chunk.id} to session $sessionId")
-        updatedSession
-    }
-
-    /**
      * Adds a captured context to a session.
      *
      * @param sessionId The session ID
@@ -339,7 +256,7 @@ class SessionStorage(
      * @return The updated session, or null if session not found
      */
     suspend fun addContext(sessionId: String, context: CapturedContext): Session? = mutex.withLock {
-        val session = getSession(sessionId) ?: return@withLock null
+        val session = getSessionInternal(sessionId) ?: return@withLock null
 
         val updatedSession = session.copy(
             contexts = session.contexts + context
@@ -352,14 +269,14 @@ class SessionStorage(
     }
 
     /**
-     * Adds a chunk to a session with result type.
+     * Adds a chunk to a session.
      *
      * @param sessionId The session ID
      * @param chunk The chunk to add
      * @return StorageResult with the updated Session
      */
-    suspend fun addChunkWithResult(sessionId: String, chunk: Chunk): StorageResult<Session> = mutex.withLock {
-        val session = getSession(sessionId)
+    suspend fun addChunk(sessionId: String, chunk: Chunk): StorageResult<Session> = mutex.withLock {
+        val session = getSessionInternal(sessionId)
             ?: return@withLock StorageResult.Error(
                 ErrorType.NOT_FOUND,
                 "Session not found: $sessionId"
@@ -397,7 +314,7 @@ class SessionStorage(
      * @return The updated session, or null if session not found
      */
     suspend fun updateChunk(sessionId: String, chunk: Chunk): Session? = mutex.withLock {
-        val session = getSession(sessionId) ?: return@withLock null
+        val session = getSessionInternal(sessionId) ?: return@withLock null
 
         val updatedChunks = session.chunks.map {
             if (it.id == chunk.id) chunk else it
@@ -418,7 +335,7 @@ class SessionStorage(
      * @return The updated session, or null if session not found
      */
     suspend fun removeChunk(sessionId: String, chunkId: String): Session? = mutex.withLock {
-        val session = getSession(sessionId) ?: return@withLock null
+        val session = getSessionInternal(sessionId) ?: return@withLock null
 
         val updatedSession = session.copy(
             chunks = session.chunks.filter { it.id != chunkId }
@@ -434,7 +351,7 @@ class SessionStorage(
      * Removes a context from a session by its context ID.
      */
     suspend fun removeContext(sessionId: String, contextId: String): Session? = mutex.withLock {
-        val session = getSession(sessionId) ?: return@withLock null
+        val session = getSessionInternal(sessionId) ?: return@withLock null
 
         val updatedSession = session.copy(
             contexts = session.contexts.filter { it.id != contextId }
@@ -536,7 +453,7 @@ class SessionStorage(
      * @return The next available chunk index
      */
     suspend fun getNextChunkIndex(sessionId: String): Int = withContext(Dispatchers.IO) {
-        val session = getSession(sessionId) ?: return@withContext 0
+        val session = getSessionInternal(sessionId) ?: return@withContext 0
         (session.chunks.maxOfOrNull { it.index } ?: -1) + 1
     }
 
