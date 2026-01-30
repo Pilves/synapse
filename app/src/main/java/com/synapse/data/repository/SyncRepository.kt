@@ -18,10 +18,13 @@ import com.synapse.model.Chunk
 import com.synapse.model.SyncStatus
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -97,6 +100,7 @@ class SyncRepositoryImpl(
         private const val MAX_BATCH_BYTES = 50L * 1024 * 1024 // 50MB
     }
 
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
 
     /**
@@ -345,10 +349,22 @@ class SyncRepositoryImpl(
                 return@withContext error
             }
 
+            // Polish formatting via LLM (best-effort)
+            val polishedResults = if (transcriptionService != null) {
+                try {
+                    polishMarkdownFormatting(segmentResults, transcriptionService)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Formatting polish failed, using raw content", e)
+                    segmentResults
+                }
+            } else {
+                segmentResults
+            }
+
             // Write all segments to file under one header
             _syncStatus.value = SyncStatus.InProgress(0.9f)
             val writeSuccess = writeSegmentsToProjectFile(
-                project.pathUri, filename, segmentResults
+                project.pathUri, filename, polishedResults
             )
 
             if (!writeSuccess) {
@@ -396,6 +412,26 @@ class SyncRepositoryImpl(
             if (ctx.pageTitle != null) append(" - ${ctx.pageTitle}")
         }
         is CapturedContext.RegionImage -> ctx.description ?: "(image)"
+    }
+
+    /**
+     * Sends assembled markdown through the LLM to clean up formatting for Obsidian.
+     * Returns a single-element list with the polished content.
+     */
+    private suspend fun polishMarkdownFormatting(
+        rawSegments: List<String>,
+        transcriptionService: TranscriptionService
+    ): List<String> {
+        val rawContent = rawSegments.joinToString("\n---\n\n")
+
+        val systemPrompt = """You are a markdown formatting assistant for Obsidian notes.
+You will receive raw markdown content. Your job is to clean up the formatting so it
+renders nicely in Obsidian. Fix spacing issues, ensure headers/lists/code blocks are
+properly formatted, and improve readability. Do NOT change the actual content or meaning —
+only fix formatting. Return ONLY the cleaned markdown, nothing else."""
+
+        val polished = transcriptionService.textQuery(rawContent, systemPrompt)
+        return listOf(polished)
     }
 
     /**
@@ -510,6 +546,8 @@ class SyncRepositoryImpl(
     override suspend fun queueForSync(sessionId: String, projectId: String, filename: String) {
         syncStorage.addToQueue(sessionId, projectId, filename)
         _syncStatus.value = SyncStatus.Queued
+        // Kick off background processing
+        scope.launch { processQueue() }
     }
 
     override suspend fun retryFailed() {
