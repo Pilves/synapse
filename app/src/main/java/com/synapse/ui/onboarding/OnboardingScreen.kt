@@ -213,11 +213,11 @@ fun OnboardingScreen(
                         onSkip = goToNextPage,
                         onContinue = goToNextPage
                     )
-                    4 -> DestinationSetupScreen(
+                    3 -> DestinationSetupScreen(
                         onComplete = { _ -> goToNextPage() },
                         onSkip = goToNextPage
                     )
-                    5 -> ApiKeyPage(
+                    4 -> ApiKeyPage(
                         hasApiKey = state.hasApiKey,
                         isValidating = state.isValidatingApiKey,
                         onSaveApiKey = { key ->
