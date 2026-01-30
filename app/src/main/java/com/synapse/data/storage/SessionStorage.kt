@@ -18,6 +18,7 @@ import kotlinx.serialization.encodeToString
 import java.io.File
 import java.io.IOException
 import java.util.UUID
+import android.util.LruCache
 
 /**
  * Handles persistent storage for session and chunk metadata.
@@ -44,9 +45,11 @@ class SessionStorage(
     companion object {
         private const val TAG = "SessionStorage"
         private const val SESSIONS_DIR = "sessions"
+        private const val SESSION_CACHE_SIZE = 50
     }
 
     private val mutex = Mutex()
+    private val sessionCache = LruCache<String, Session>(SESSION_CACHE_SIZE)
     private val _sessionsFlow = MutableStateFlow<List<Session>>(emptyList())
 
     private val sessionsDir: File
@@ -158,11 +161,17 @@ class SessionStorage(
     suspend fun getSession(sessionId: String): Session? = withContext(Dispatchers.IO) {
         try {
             if (!validIdRegex.matches(sessionId)) return@withContext null
+
+            // Check cache first
+            sessionCache.get(sessionId)?.let { return@withContext it }
+
             val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
             if (!file.exists()) return@withContext null
 
             val dto = StorageJson.instance.decodeFromString<SessionDto>(file.readText())
-            dto.toSession()
+            val session = dto.toSession()
+            sessionCache.put(sessionId, session)
+            session
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load session $sessionId", e)
             null
@@ -434,7 +443,10 @@ class SessionStorage(
                 tempFile.delete()
             }
 
-            if (deleted) removeSessionInMemory(sessionId)
+            if (deleted) {
+                sessionCache.remove(sessionId)
+                removeSessionInMemory(sessionId)
+            }
 
             Log.d(TAG, "Deleted session $sessionId: $deleted")
             deleted
@@ -550,6 +562,7 @@ class SessionStorage(
         val file = File(sessionsDir, "${session.id}${StorageHelper.JSON_EXTENSION}")
         val dto = SessionDto.fromSession(session)
         StorageHelper.atomicWriteText(file, StorageJson.instance.encodeToString(dto))
+        sessionCache.put(session.id, session)
     }
 
     private suspend fun loadAllSessions() {
