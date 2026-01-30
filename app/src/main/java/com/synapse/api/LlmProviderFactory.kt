@@ -9,7 +9,7 @@ import com.synapse.model.LlmConfig
  * to mix providers (e.g., Gemini for transcription, Claude for answering).
  */
 class LlmProviderFactory(
-    private val transcriptionServiceFactory: TranscriptionServiceFactory
+    private val transcriptionServiceFactory: DefaultTranscriptionServiceFactory
 ) {
     /**
      * Creates a TranscriptionService configured for transcription based on the LlmConfig.

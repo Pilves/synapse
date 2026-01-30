@@ -8,7 +8,7 @@ package com.synapse.api
  */
 class DefaultTranscriptionServiceFactory(
     private val httpClient: okhttp3.OkHttpClient? = null
-) : TranscriptionServiceFactory {
+) {
 
     private val serviceCache = java.util.concurrent.ConcurrentHashMap<LlmProvider, TranscriptionService>()
     private var lastRateLimitingSafe: Boolean = true
@@ -20,7 +20,7 @@ class DefaultTranscriptionServiceFactory(
      * @param apiKey Optional API key (required for Gemini, Claude, OpenAI)
      * @return Configured TranscriptionService instance
      */
-    override fun create(provider: LlmProvider, apiKey: String?, rateLimitingSafe: Boolean): TranscriptionService {
+    fun create(provider: LlmProvider, apiKey: String?, rateLimitingSafe: Boolean): TranscriptionService {
         synchronized(serviceCache) {
             // Invalidate cache when rateLimitingSafe changes since it's a constructor param
             if (rateLimitingSafe != lastRateLimitingSafe) {

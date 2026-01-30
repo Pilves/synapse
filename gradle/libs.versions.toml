@@ -7,7 +7,6 @@ compileSdk = "35"
 # Core
 agp = "9.0.0"
 kotlin = "2.2.10"
-ksp = "1.9.22-1.0.17"
 
 # Compose
 composeBom = "2024.06.00"
@@ -17,8 +16,6 @@ navigationCompose = "2.7.7"
 
 # AndroidX
 coreKtx = "1.13.1"
-appcompat = "1.7.0"
-material = "1.12.0"
 lifecycleRuntimeKtx = "2.8.4"
 
 # Dependency Injection
@@ -31,7 +28,6 @@ okhttp = "4.12.0"
 # Data
 datastorePreferences = "1.0.0"
 documentfile = "1.0.1"
-roomRuntime = "2.6.1"
 securityCrypto = "1.1.0-alpha06"
 
 # Image Loading
@@ -54,8 +50,6 @@ uiTestJunit4 = "1.6.2"
 [libraries]
 # Core
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
-androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "appcompat" }
-material = { group = "com.google.android.material", name = "material", version.ref = "material" }
 
 # Lifecycle
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
@@ -80,9 +74,7 @@ koin-android = { group = "io.insert-koin", name = "koin-android", version.ref = 
 koin-androidx-compose = { group = "io.insert-koin", name = "koin-androidx-compose", version.ref = "koinCompose" }
 koin-core = { group = "io.insert-koin", name = "koin-core", version.ref = "koin" }
 
-# Ktor
-
-# OkHttp (optional, for fallback)
+# OkHttp
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-logging-interceptor = { group = "com.squareup.okhttp3", name = "logging-interceptor", version.ref = "okhttp" }
 
@@ -95,11 +87,6 @@ androidx-documentfile = { group = "androidx.documentfile", name = "documentfile"
 # Security
 androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 
-# Room (optional, for local database)
-androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "roomRuntime" }
-androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "roomRuntime" }
-androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "roomRuntime" }
-
 # Coil for Image Loading
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 
@@ -109,7 +96,6 @@ kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-
 # Firebase
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-crashlytics = { group = "com.google.firebase", name = "firebase-crashlytics" }
-firebase-analytics = { group = "com.google.firebase", name = "firebase-analytics" }
 
 # Testing
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -118,10 +104,7 @@ androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-co
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
-android-library = { id = "com.android.library", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlyticsPlugin" }

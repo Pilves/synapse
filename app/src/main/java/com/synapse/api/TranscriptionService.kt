@@ -122,19 +122,3 @@ interface TranscriptionService {
         return textQuery(prompt, systemPrompt)
     }
 }
-
-/**
- * Factory interface for creating TranscriptionService instances.
- */
-interface TranscriptionServiceFactory {
-    /**
-     * Creates a TranscriptionService for the specified provider.
-     *
-     * @param provider The LLM provider to use
-     * @param apiKey Optional API key (required for some providers)
-     * @param rateLimitingSafe If true, enforce internal rate-limit pre-checks (safe/free-tier mode).
-     *                        If false, skip pre-checks and rely on API 429 + retry (fast/paid mode).
-     * @return Configured TranscriptionService instance
-     */
-    fun create(provider: LlmProvider, apiKey: String? = null, rateLimitingSafe: Boolean = true): TranscriptionService
-}

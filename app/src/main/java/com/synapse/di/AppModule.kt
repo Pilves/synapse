@@ -3,7 +3,7 @@ package com.synapse.di
 import com.synapse.api.DefaultTranscriptionServiceFactory
 import com.synapse.api.LlmProviderFactory
 import com.synapse.api.QuestionAnswerService
-import com.synapse.api.TranscriptionServiceFactory
+
 import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.data.cost.UsageTracker
 import com.synapse.data.destination.ClipboardDestination
@@ -129,9 +129,9 @@ val repositoryModule = module {
     // LlmSettingsProvider - reads LLM settings from DataStore + SecureKeyStorage
     single { com.synapse.data.LlmSettingsProvider(get(), get()) }
 
-    // SyncRepository - requires Context, storage classes, and TranscriptionServiceFactory
+    // SyncRepository - requires Context, storage classes, and DefaultTranscriptionServiceFactory
     single<SyncRepository> {
-        val factory: TranscriptionServiceFactory = get()
+        val factory: DefaultTranscriptionServiceFactory = get()
         val settings: com.synapse.data.LlmSettingsProvider = get()
 
         SyncRepositoryImpl(
@@ -155,7 +155,7 @@ val repositoryModule = module {
  *
  * Provides singleton instances of:
  * - OkHttpClient: Configured HTTP client with timeouts
- * - TranscriptionServiceFactory: Factory for creating LLM service instances
+ * - DefaultTranscriptionServiceFactory: Factory for creating LLM service instances
  */
 val apiModule = module {
     // Certificate pinner for cloud LLM APIs.
@@ -196,8 +196,8 @@ val apiModule = module {
             .build()
     }
 
-    // TranscriptionServiceFactory - singleton instance, shares OkHttpClient
-    single<TranscriptionServiceFactory> {
+    // DefaultTranscriptionServiceFactory - singleton instance, shares OkHttpClient
+    single<DefaultTranscriptionServiceFactory> {
         DefaultTranscriptionServiceFactory(get())
     }
 }
@@ -220,15 +220,16 @@ val viewModelModule = module {
         ReviewViewModel(
             sessionRepository = get(),
             projectRepository = get(),
-            syncRepository = get()
+            syncRepository = get(),
+            llmSettingsProvider = get()
         )
     }
 
     // SettingsViewModel - requires DataStore, ProjectRepository, and SecureKeyStorage
     viewModel { SettingsViewModel(androidContext().settingsDataStore, get(), get()) }
 
-    // OnboardingViewModel - requires Application and ProjectRepository for AndroidViewModel
-    viewModel { OnboardingViewModel(androidApplication(), get()) }
+    // OnboardingViewModel - requires Application, ProjectRepository, and SecureKeyStorage
+    viewModel { OnboardingViewModel(androidApplication(), get(), get()) }
 }
 
 /**
