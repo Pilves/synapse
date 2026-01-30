@@ -48,7 +48,13 @@ class SynapseApplication : Application() {
         createNotificationChannels()
         get<com.synapse.service.NotificationHelper>(com.synapse.service.NotificationHelper::class.java).createNotificationChannels()
 
-        // Migrate API keys from plain DataStore to encrypted storage
+        // Initialize storage and migrate API keys asynchronously
+        appScope.launch {
+            // Initialize SessionStorage from disk (was previously blocking startup)
+            get<com.synapse.data.storage.SessionStorage>(
+                com.synapse.data.storage.SessionStorage::class.java
+            ).initialize()
+        }
         appScope.launch {
             val secureKeyStorage = get<com.synapse.data.storage.SecureKeyStorage>(
                 com.synapse.data.storage.SecureKeyStorage::class.java
