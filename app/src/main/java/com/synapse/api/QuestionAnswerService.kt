@@ -118,6 +118,8 @@ Rules:
                 appendLine("The user's handwritten instruction is in the attached image(s). Apply it to the context above.")
             } else if (question.isNotBlank()) {
                 appendLine("User instruction: $question")
+            } else if (contextImages.isNotEmpty()) {
+                appendLine("Process the attached screenshot image(s). Transcribe all visible text and content into clean markdown suitable for Obsidian notes.")
             }
         }
 
