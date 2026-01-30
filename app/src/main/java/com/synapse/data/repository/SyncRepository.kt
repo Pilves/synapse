@@ -115,7 +115,7 @@ class SyncRepositoryImpl(
 
     /**
      * A segment is a logical grouping of session items separated by context boundaries.
-     * - Context-only segments: written as markdown quotes (no LLM call)
+     * - Context-only segments: formatted via LLM when available, otherwise blockquotes
      * - Chunk-only segments: transcribed and written
      * - Context + chunk segments: Q&A flow (context is the reference, chunks are the question)
      */
@@ -198,19 +198,16 @@ class SyncRepositoryImpl(
                 return@withContext error
             }
 
-            // Get transcription service (needed if any segment has chunks or RegionImage contexts)
+            // Get transcription service (used for chunks, images, and context formatting)
+            val transcriptionService = transcriptionServiceProvider()?.takeIf { it.isConfigured() }
             val hasImages = session.contexts.any { it is CapturedContext.RegionImage }
             val needsLlm = session.chunks.isNotEmpty() || hasImages
-            val transcriptionService = if (needsLlm) {
-                val service = transcriptionServiceProvider()
-                if (service == null || !service.isConfigured()) {
-                    Log.e(TAG, "Transcription service not configured")
-                    val error = SyncStatus.Error("LLM service not configured")
-                    _syncStatus.value = error
-                    return@withContext error
-                }
-                service
-            } else null
+            if (needsLlm && transcriptionService == null) {
+                Log.e(TAG, "Transcription service not configured")
+                val error = SyncStatus.Error("LLM service not configured")
+                _syncStatus.value = error
+                return@withContext error
+            }
 
             // Segment the session by timestamp
             val segments = segmentSession(session.chunks, session.contexts)
@@ -242,7 +239,13 @@ class SyncRepositoryImpl(
                                 }
                             } else {
                                 val text = contextToText(ctx)
-                                sb.append("> $text\n\n")
+                                if (transcriptionService != null) {
+                                    val formatted = formatContextText(text, transcriptionService)
+                                    sb.append(formatted)
+                                    sb.append("\n\n")
+                                } else {
+                                    sb.append("> $text\n\n")
+                                }
                             }
                         }
                         segmentResults.add(sb.toString())
@@ -472,6 +475,28 @@ class SyncRepositoryImpl(
         } catch (e: Exception) {
             Log.e(TAG, "Failed to transcribe RegionImage: ${ctx.imagePath}", e)
             null
+        }
+    }
+
+    /**
+     * Sends raw captured text through the LLM to format it as clean markdown.
+     * Falls back to a blockquote if the LLM call fails.
+     */
+    private suspend fun formatContextText(
+        rawText: String,
+        transcriptionService: TranscriptionService
+    ): String {
+        return try {
+            val systemPrompt = """You are a note formatter for Obsidian. You receive raw captured text and must:
+1. Format it as clean, readable markdown (headings, lists, bold where appropriate).
+2. Fix obvious spelling/grammar issues.
+3. Do NOT add commentary, preamble, or extra content.
+4. If the text is already well-formatted, return it as-is.
+5. Return ONLY the formatted markdown, nothing else."""
+            transcriptionService.textQuery(rawText, systemPrompt)
+        } catch (e: Exception) {
+            Log.w(TAG, "Context text formatting failed, using raw", e)
+            "> $rawText"
         }
     }
 
