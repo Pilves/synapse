@@ -595,11 +595,11 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: action=${intent?.action}")
         when (intent?.action) {
-            ACTION_START -> startOverlay()
+            ACTION_START -> startOverlay(userInitiated = true)
             null -> {
                 // Service restarted by system (START_STICKY) — re-initialize
                 Log.d(TAG, "Service restarted by system, re-initializing overlay")
-                startOverlay()
+                startOverlay(userInitiated = false)
             }
             ACTION_STOP -> stopOverlay()
             ACTION_SHOW_CAPTURE -> showCaptureOverlay()
@@ -647,8 +647,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         super.onDestroy()
     }
 
-    private fun startOverlay() {
-        Log.d(TAG, "startOverlay called")
+    private fun startOverlay(userInitiated: Boolean = false) {
+        Log.d(TAG, "startOverlay called (userInitiated=$userInitiated)")
 
         // Check overlay permission
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
@@ -669,10 +669,22 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         Log.d(TAG, "Started foreground service")
         showFloatingBubble()
 
-        // Try to restore projection silently if we have stored results, but don't
-        // prompt the user — that will happen when they tap the bubble to open capture.
-        if (screenshotManager.hasPermission()) {
-            ensureProjectionReady()
+        // Request screen capture permission when user explicitly starts the overlay
+        // (e.g. from Review screen), but not on system restarts
+        if (userInitiated) {
+            if (!screenshotManager.hasPermission()) {
+                Log.d(TAG, "No screen capture permission, requesting on user-initiated start")
+                requestScreenCapturePermission()
+            } else if (!ensureProjectionReady()) {
+                Log.w(TAG, "Projection stale, re-requesting on user-initiated start")
+                screenshotManager.invalidateProjection()
+                requestScreenCapturePermission()
+            }
+        } else {
+            // System restart: silently try to restore, don't prompt
+            if (screenshotManager.hasPermission()) {
+                ensureProjectionReady()
+            }
         }
     }
 

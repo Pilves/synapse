@@ -93,6 +93,8 @@ class MainActivity : ComponentActivity() {
                 startService(serviceIntent)
             }
             Log.d(TAG, "MediaProjection result forwarded to OverlayService")
+            // Return to whatever was on screen before the permission prompt
+            moveTaskToBack(true)
         } else {
             Log.w(TAG, "MediaProjection permission denied")
             Toast.makeText(
