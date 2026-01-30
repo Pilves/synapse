@@ -7,6 +7,7 @@ import com.synapse.data.storage.SessionStorage
 import com.synapse.data.storage.StorageResult
 import com.synapse.model.Chunk
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 /**
@@ -198,6 +199,6 @@ class ChunkRepositoryImpl(
         return sessionStorage.observeSessions().map { sessions ->
             sessions.flatMap { it.chunks }
                 .sortedByDescending { it.createdAt }
-        }
+        }.distinctUntilChanged()
     }
 }
