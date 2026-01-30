@@ -30,7 +30,7 @@ class ApiKeyValidatorTest {
 
     @Test
     fun `validateFormat rejects short Claude key`() {
-        val result = ApiKeyValidator.validateFormat("sk-ant-api03-short")
+        val result = ApiKeyValidator.validateFormat("sk-ant-api03-shortkey")
         assertFalse(result.isValid)
         assertTrue(result.errorMessage!!.contains("incomplete"))
     }
