@@ -443,20 +443,40 @@ class SyncRepositoryImpl(
     }
 
     /**
-     * Sends each segment through the LLM individually to clean up formatting for Obsidian.
-     * Segments are polished independently to prevent content bleeding between them.
+     * Sends all segments in a single LLM call to clean up formatting for Obsidian.
+     * Uses a delimiter to split the response back into individual segments.
+     * Falls back to raw segments if the LLM call fails or returns unexpected output.
      */
     private suspend fun polishMarkdownFormatting(
         rawSegments: List<String>,
         transcriptionService: TranscriptionService
     ): List<String> {
-        return rawSegments.map { segment ->
-            try {
-                transcriptionService.textQuery(segment, SyncPrompts.POLISH_MARKDOWN_SYSTEM_PROMPT)
+        if (rawSegments.size == 1) {
+            return try {
+                listOf(transcriptionService.textQuery(rawSegments[0], SyncPrompts.POLISH_MARKDOWN_SYSTEM_PROMPT))
             } catch (e: Exception) {
                 Log.w(TAG, "Segment polish failed, using raw", e)
-                segment
+                rawSegments
             }
+        }
+
+        // Batch all segments into a single call with delimiters
+        val delimiter = "---SEGMENT_BREAK---"
+        val combined = rawSegments.joinToString("\n$delimiter\n")
+        val batchPrompt = "${SyncPrompts.POLISH_MARKDOWN_SYSTEM_PROMPT}\n\nIMPORTANT: The input contains multiple segments separated by '$delimiter'. Polish each segment independently and keep the '$delimiter' separators in your output."
+
+        return try {
+            val result = transcriptionService.textQuery(combined, batchPrompt)
+            val polished = result.split(delimiter).map { it.trim() }
+            if (polished.size == rawSegments.size) {
+                polished
+            } else {
+                Log.w(TAG, "Polish returned ${polished.size} segments, expected ${rawSegments.size}, using raw")
+                rawSegments
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Batch polish failed, using raw", e)
+            rawSegments
         }
     }
 
