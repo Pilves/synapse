@@ -28,6 +28,11 @@ abstract class BaseLlmService(
     @Volatile protected var _apiKey: String? = apiKey
     @Volatile protected var _customPrompt: String? = customPrompt
 
+    companion object {
+        /** Maximum response body size (5MB) to prevent OOM on malformed responses. */
+        private const val MAX_RESPONSE_BODY_BYTES = 5L * 1024L * 1024L
+    }
+
     // ── Abstract properties ─────────────────────────────────────────────
     protected abstract val tag: String
     protected abstract val timeoutSeconds: Long
@@ -262,7 +267,7 @@ abstract class BaseLlmService(
         rateLimitState.recordRequest()
 
         httpClient.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string() ?: ""
+            val responseBody = readResponseBody(response)
             Log.d(tag, "Transcribe response code: ${response.code}")
 
             if (!response.isSuccessful) {
@@ -280,7 +285,7 @@ abstract class BaseLlmService(
         rateLimitState.recordRequest()
 
         httpClient.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string() ?: ""
+            val responseBody = readResponseBody(response)
             Log.d(tag, "Text query response code: ${response.code}")
 
             if (!response.isSuccessful) {
@@ -302,7 +307,7 @@ abstract class BaseLlmService(
         rateLimitState.recordRequest()
 
         httpClient.newCall(request).execute().use { response ->
-            val responseBody = response.body?.string() ?: ""
+            val responseBody = readResponseBody(response)
             Log.d(tag, "Vision query response code: ${response.code}")
 
             if (!response.isSuccessful) {
@@ -311,6 +316,22 @@ abstract class BaseLlmService(
 
             return parseQueryContent(responseBody)
         }
+    }
+
+    /**
+     * Reads the response body with a size limit to prevent OOM on malformed responses.
+     */
+    private fun readResponseBody(response: okhttp3.Response): String {
+        val body = response.body ?: return ""
+        val source = body.source()
+        source.request(MAX_RESPONSE_BODY_BYTES)
+        val buffer = source.buffer
+        if (buffer.size > MAX_RESPONSE_BODY_BYTES) {
+            Log.w(tag, "Response body exceeds ${MAX_RESPONSE_BODY_BYTES / 1024 / 1024}MB limit, truncating")
+        }
+        return buffer.clone().readString(
+            body.contentType()?.charset() ?: Charsets.UTF_8
+        )
     }
 
     private fun buildRequest(url: String, body: JSONObject): Request {
