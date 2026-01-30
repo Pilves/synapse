@@ -63,8 +63,8 @@ class CaptureViewModel : ViewModel() {
         /** Default timeout after pen lift before creating a chunk (in milliseconds) */
         const val DEFAULT_CHUNK_TIMEOUT_MS = 1000L
 
-        /** Default session timeout for inactivity (in milliseconds) - 15 minutes */
-        const val DEFAULT_SESSION_TIMEOUT_MS = 15 * 60 * 1000L
+        /** Default session timeout for inactivity (in milliseconds) - 10 minutes */
+        const val DEFAULT_SESSION_TIMEOUT_MS = 10 * 60 * 1000L
 
         /** Duration of the fade animation after chunk creation (in milliseconds) */
         const val FADE_ANIMATION_DURATION_MS = 200L
