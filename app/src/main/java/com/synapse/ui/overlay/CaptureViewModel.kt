@@ -87,7 +87,9 @@ class CaptureViewModel : ViewModel() {
     private val _strokes = MutableStateFlow<List<Stroke>>(emptyList())
     val strokes: StateFlow<List<Stroke>> = _strokes.asStateFlow()
 
-    // Current stroke being drawn
+    // Current stroke being drawn — backed by a mutable buffer to avoid
+    // allocating a new list on every touch event (60-120Hz).
+    private val _currentStrokeBuffer = mutableListOf<StrokePoint>()
     private val _currentStroke = MutableStateFlow<List<StrokePoint>>(emptyList())
     val currentStroke: StateFlow<List<StrokePoint>> = _currentStroke.asStateFlow()
 
@@ -230,7 +232,9 @@ class CaptureViewModel : ViewModel() {
         cancelFadeAnimation()
 
         // Start new stroke
-        _currentStroke.value = listOf(point)
+        _currentStrokeBuffer.clear()
+        _currentStrokeBuffer.add(point)
+        _currentStroke.value = _currentStrokeBuffer.toList()
         _uiState.update { it.copy(isDrawing = true) }
     }
 
@@ -242,7 +246,8 @@ class CaptureViewModel : ViewModel() {
     fun onDrawMove(point: StrokePoint) {
         if (!_uiState.value.isDrawing) return
 
-        _currentStroke.value = _currentStroke.value + point
+        _currentStrokeBuffer.add(point)
+        _currentStroke.value = _currentStrokeBuffer.toList()
     }
 
     /**
@@ -253,13 +258,14 @@ class CaptureViewModel : ViewModel() {
     fun onDrawEnd(strokeWidth: Float = 4f) {
         if (!_uiState.value.isDrawing) return
 
-        val points = _currentStroke.value
+        val points = _currentStrokeBuffer.toList()
         if (points.size >= 2) {
             val stroke = Stroke(points = points, strokeWidth = strokeWidth)
             strokeManager.addStroke(stroke)
             _strokes.value = strokeManager.getStrokes()
         }
 
+        _currentStrokeBuffer.clear()
         _currentStroke.value = emptyList()
         _uiState.update { it.copy(
             isDrawing = false,
@@ -274,6 +280,7 @@ class CaptureViewModel : ViewModel() {
      * Cancels the current stroke without adding it.
      */
     fun cancelCurrentStroke() {
+        _currentStrokeBuffer.clear()
         _currentStroke.value = emptyList()
         _uiState.update { it.copy(isDrawing = false) }
     }
@@ -308,6 +315,7 @@ class CaptureViewModel : ViewModel() {
     fun clearStrokes() {
         strokeManager.clear()
         _strokes.value = emptyList()
+        _currentStrokeBuffer.clear()
         _currentStroke.value = emptyList()
         _uiState.update { it.copy(
             strokeCount = 0,
