@@ -26,6 +26,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.synapse.util.OutputSanitizer
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -361,10 +362,13 @@ class SyncRepositoryImpl(
                 segmentResults
             }
 
+            // Sanitize all content before writing to vault
+            val sanitizedResults = polishedResults.map { OutputSanitizer.sanitize(it) }
+
             // Write all segments to file under one header
             _syncStatus.value = SyncStatus.InProgress(0.9f)
             val writeSuccess = writeSegmentsToProjectFile(
-                project.pathUri, filename, polishedResults
+                project.pathUri, filename, sanitizedResults
             )
 
             if (!writeSuccess) {

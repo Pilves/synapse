@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
+import com.synapse.util.OutputSanitizer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -196,9 +197,10 @@ class VaultManager(private val context: Context) {
                 Log.d(TAG, "Created new file: $filename")
             }
 
-            // Append content directly
+            // Sanitize and append content
+            val sanitizedContent = OutputSanitizer.sanitize(content)
             context.contentResolver.openOutputStream(fileDoc.uri, "wa")?.use { outputStream ->
-                outputStream.write(content.toByteArray(Charsets.UTF_8))
+                outputStream.write(sanitizedContent.toByteArray(Charsets.UTF_8))
                 outputStream.flush()
             } ?: return@withContext WriteResult.Error("Failed to open file for writing")
 
