@@ -100,9 +100,13 @@ class ChunkRepositoryImpl(
         // Use single authoritative source for chunk index
         val nextIndex = sessionStorage.getNextChunkIndex(sessionId)
 
-        // Save the image to storage
-        val (chunkId, filePath) = chunkStorage.saveChunk(sessionId, bitmap)
-            ?: throw RuntimeException("Failed to save chunk image")
+        // Save the image to storage using the authoritative index
+        val result = chunkStorage.saveChunk(sessionId, nextIndex, bitmap)
+        val (chunkId, filePath) = when (result) {
+            is com.synapse.data.storage.StorageResult.Success -> result.data
+            is com.synapse.data.storage.StorageResult.Error ->
+                throw RuntimeException("Failed to save chunk image: ${result.message}")
+        }
 
         // Create chunk metadata
         val chunk = Chunk(

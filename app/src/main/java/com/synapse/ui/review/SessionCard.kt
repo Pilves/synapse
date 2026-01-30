@@ -85,11 +85,16 @@ fun SessionCard(
 ) {
     var isExpanded by remember { mutableStateOf(true) }
 
-    val sessionChunksSelected = remember(session.chunks, selectedChunkIds) {
-        session.chunks.count { it.id in selectedChunkIds }
+    // Deduplicate chunks by ID to prevent LazyRow key collisions
+    val chunks = remember(session.chunks) {
+        session.chunks.distinctBy { it.id }
     }
-    val allSelected = remember(sessionChunksSelected, session.chunks.size) {
-        sessionChunksSelected == session.chunks.size && session.chunks.isNotEmpty()
+
+    val sessionChunksSelected = remember(chunks, selectedChunkIds) {
+        chunks.count { it.id in selectedChunkIds }
+    }
+    val allSelected = remember(sessionChunksSelected, chunks.size) {
+        sessionChunksSelected == chunks.size && chunks.isNotEmpty()
     }
     val someSelected = remember(sessionChunksSelected, allSelected) {
         sessionChunksSelected > 0 && !allSelected
@@ -127,13 +132,13 @@ fun SessionCard(
                 Column {
                     when (viewMode) {
                         ViewMode.STITCHED -> StitchedChunksView(
-                            chunks = session.chunks,
+                            chunks = chunks,
                             session = session,
                             onPreviewChunk = onPreviewChunk,
                             modifier = Modifier.padding(bottom = 12.dp)
                         )
                         ViewMode.SEPARATE -> SeparateChunksView(
-                            chunks = session.chunks,
+                            chunks = chunks,
                             session = session,
                             selectedChunkIds = selectedChunkIds,
                             onChunkSelected = onChunkSelected,
