@@ -93,6 +93,9 @@ dependencies {
     // DocumentFile - SAF file access
     implementation(libs.androidx.documentfile)
 
+    // Security - Encrypted SharedPreferences
+    implementation(libs.androidx.security.crypto)
+
     // Coil - Image loading
     implementation(libs.coil.compose)
 

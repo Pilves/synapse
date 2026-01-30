@@ -32,6 +32,7 @@ okhttp = "4.12.0"
 datastorePreferences = "1.0.0"
 documentfile = "1.0.1"
 roomRuntime = "2.6.1"
+securityCrypto = "1.1.0-alpha06"
 
 # Image Loading
 coil = "2.5.0"
@@ -85,6 +86,9 @@ androidx-datastore-preferences = { group = "androidx.datastore", name = "datasto
 
 # DocumentFile
 androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
+
+# Security
+androidx-security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "securityCrypto" }
 
 # Room (optional, for local database)
 androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "roomRuntime" }
