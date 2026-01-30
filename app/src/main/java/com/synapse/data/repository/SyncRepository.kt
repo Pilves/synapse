@@ -215,6 +215,7 @@ class SyncRepositoryImpl(
 
             _syncStatus.value = SyncStatus.InProgress(0.1f)
             var failedCount = 0
+            var lastTranscriptionError: String? = null
             val segmentResults = mutableListOf<String>() // markdown content per segment
 
             for ((segIndex, segment) in segments.withIndex()) {
@@ -236,14 +237,17 @@ class SyncRepositoryImpl(
 
                     // Chunk-only segment: transcribe and write
                     segment.contexts.isEmpty() && segment.chunks.isNotEmpty() -> {
-                        val (notes, failed) = transcribeChunks(
+                        val result = transcribeChunks(
                             sessionId, segment.chunks, requireNotNull(transcriptionService) { "Transcription service not available" }
                         )
-                        failedCount += failed
-                        if (notes.isNotEmpty()) {
-                            segmentResults.add(notes.joinToString("\n\n"))
+                        failedCount += result.failedCount
+                        if (result.notes.isNotEmpty()) {
+                            segmentResults.add(result.notes.joinToString("\n\n"))
                         }
-                        Log.d(TAG, "Segment $segIndex: chunks-only (${segment.chunks.size} chunks, $failed failed)")
+                        if (result.lastError != null) {
+                            lastTranscriptionError = result.lastError
+                        }
+                        Log.d(TAG, "Segment $segIndex: chunks-only (${segment.chunks.size} chunks, ${result.failedCount} failed, error=${result.lastError})")
                     }
 
                     // Context + Chunks segment: Q&A flow
@@ -273,9 +277,14 @@ class SyncRepositoryImpl(
                         }
 
                         // Try transcribing chunks to text (for the question)
-                        val (notes, failed) = transcribeChunks(
+                        val transcribeResult = transcribeChunks(
                             sessionId, segment.chunks, requireNotNull(transcriptionService) { "Transcription service not available" }
                         )
+                        val notes = transcribeResult.notes
+                        val failed = transcribeResult.failedCount
+                        if (transcribeResult.lastError != null) {
+                            lastTranscriptionError = transcribeResult.lastError
+                        }
                         // Track failed transcriptions, but if we send images directly
                         // and get an answer, we'll subtract them back
                         failedCount += failed
@@ -345,7 +354,12 @@ class SyncRepositoryImpl(
             }
 
             if (segmentResults.isEmpty()) {
-                val error = SyncStatus.Error("No content produced from session")
+                val errorMsg = if (lastTranscriptionError != null) {
+                    "Transcription failed: $lastTranscriptionError"
+                } else {
+                    "No content produced from session"
+                }
+                val error = SyncStatus.Error(errorMsg)
                 _syncStatus.value = error
                 return@withContext error
             }
@@ -439,13 +453,23 @@ only fix formatting. Return ONLY the cleaned markdown, nothing else."""
     }
 
     /**
-     * Transcribes a list of chunks and returns the transcribed notes and failed count.
+     * Result of transcribing chunks: notes, failed count, and optional error message.
+     */
+    private data class TranscribeResult(
+        val notes: List<String>,
+        val failedCount: Int,
+        val lastError: String? = null
+    )
+
+    /**
+     * Transcribes a list of chunks and returns the transcribed notes, failed count,
+     * and the last error message (if any chunks failed).
      */
     private suspend fun transcribeChunks(
         sessionId: String,
         chunks: List<Chunk>,
         transcriptionService: TranscriptionService
-    ): Pair<List<String>, Int> {
+    ): TranscribeResult {
         val chunkDataList = mutableListOf<ChunkData>()
         val validChunks = chunks.filter { !it.isCorrupted }
 
@@ -469,11 +493,13 @@ only fix formatting. Return ONLY the cleaned markdown, nothing else."""
         chunkDataList.addAll(loadedChunks)
 
         if (chunkDataList.isEmpty()) {
-            return Pair(emptyList(), chunks.size)
+            Log.e(TAG, "All ${chunks.size} chunk images failed to load from disk")
+            return TranscribeResult(emptyList(), chunks.size, "Failed to load chunk images from disk")
         }
 
         val transcribedNotes = mutableListOf<String>()
         var failedCount = 0
+        var lastError: String? = null
 
         val totalBatches = (chunkDataList.size + MAX_CHUNKS_PER_REQUEST - 1) / MAX_CHUNKS_PER_REQUEST
         chunkDataList.chunked(MAX_CHUNKS_PER_REQUEST).forEachIndexed { batchIndex, batch ->
@@ -488,10 +514,11 @@ only fix formatting. Return ONLY the cleaned markdown, nothing else."""
             } catch (e: TranscriptionError) {
                 Log.e(TAG, "Transcription error on batch $batchIndex", e)
                 failedCount += batch.size
+                lastError = e.message ?: e::class.simpleName
             }
         }
 
-        return Pair(transcribedNotes, failedCount)
+        return TranscribeResult(transcribedNotes, failedCount, lastError)
     }
 
     /**
