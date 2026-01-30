@@ -486,7 +486,8 @@ class ImageProcessor {
      * @return A new grayscale bitmap (caller must recycle the source if no longer needed)
      */
     fun toGrayscale(bitmap: Bitmap): Bitmap {
-        val grayscale = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+        // RGB_565 uses 2 bytes/pixel vs 4 for ARGB_8888 — grayscale has no alpha channel
+        val grayscale = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.RGB_565)
         val canvas = Canvas(grayscale)
         val paint = android.graphics.Paint().apply {
             val colorMatrix = android.graphics.ColorMatrix()
