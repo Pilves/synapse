@@ -26,12 +26,30 @@ class LlmSettingsProvider(
     // Legacy fallback keys
     private val legacyProviderKey = stringPreferencesKey("llm_provider")
 
+    // In-memory cache for preferences to avoid redundant DataStore reads
+    // when readLlmSettings() and readFullLlmConfig() are called in quick succession
+    private var cachedPrefs: Preferences? = null
+    private var cacheTimestamp: Long = 0L
+    private val cacheTtlMs = 5_000L
+
+    private suspend fun getPrefs(): Preferences {
+        val now = System.currentTimeMillis()
+        val cached = cachedPrefs
+        if (cached != null && (now - cacheTimestamp) < cacheTtlMs) {
+            return cached
+        }
+        val prefs = dataStore.data.first()
+        cachedPrefs = prefs
+        cacheTimestamp = now
+        return prefs
+    }
+
     /**
      * Reads the current transcription provider, API key, and rate-limiting flag.
      * API keys are read from encrypted storage with legacy DataStore fallback.
      */
     suspend fun readLlmSettings(): Triple<LlmProvider, String?, Boolean> {
-        val prefs = dataStore.data.first()
+        val prefs = getPrefs()
         val providerName = prefs[transcriptionProviderKey]
             ?: prefs[legacyProviderKey]
             ?: LlmProvider.GEMINI.name
@@ -50,7 +68,7 @@ class LlmSettingsProvider(
      * Returns null when no API key is configured.
      */
     suspend fun readFullLlmConfig(): LlmConfig? {
-        val prefs = dataStore.data.first()
+        val prefs = getPrefs()
         val providerName = prefs[transcriptionProviderKey]
             ?: prefs[legacyProviderKey]
             ?: LlmProvider.GEMINI.name
