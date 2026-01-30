@@ -17,6 +17,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import java.io.File
 import java.io.IOException
+import java.util.UUID
 
 /**
  * Handles persistent storage for session and chunk metadata.
@@ -71,7 +72,7 @@ class SessionStorage(
      * @return Session ID (timestamp string)
      */
     fun generateSessionId(): String {
-        return System.currentTimeMillis().toString()
+        return UUID.randomUUID().toString()
     }
 
     private val validIdRegex = Regex("^[a-zA-Z0-9_-]+$")
