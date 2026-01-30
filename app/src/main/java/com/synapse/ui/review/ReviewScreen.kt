@@ -165,9 +165,11 @@ fun ReviewScreen(
                 filename = uiState.filename,
                 syncStatus = uiState.syncStatus,
                 selectedCount = if (uiState.viewMode == ViewMode.SEPARATE) {
-                    uiState.selectedChunkIds.size
+                    uiState.selectedChunkIds.size +
+                        uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
                 } else {
-                    uiState.sessions.sumOf { it.chunks.size }
+                    uiState.sessions.sumOf { it.chunks.size } +
+                        uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
                 },
                 availableDestinations = uiState.availableDestinations,
                 selectedDestinations = uiState.selectedDestinations,

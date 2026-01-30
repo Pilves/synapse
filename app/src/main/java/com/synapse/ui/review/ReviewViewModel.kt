@@ -315,7 +315,7 @@ class ReviewViewModel(
                         } else {
                             session
                         }
-                    }.filter { it.chunks.isNotEmpty() }
+                    }.filter { it.chunks.isNotEmpty() || it.contexts.isNotEmpty() }
 
                     state.copy(
                         sessions = updatedSessions,
