@@ -22,7 +22,7 @@ class GeminiService(
         private const val DEFAULT_MODEL = "gemini-2.0-flash"
 
         /** Safety threshold applied to all categories. */
-        const val DEFAULT_SAFETY_THRESHOLD = "BLOCK_NONE"
+        const val DEFAULT_SAFETY_THRESHOLD = "BLOCK_MEDIUM_AND_ABOVE"
         val ERROR_MAPPINGS = ErrorFieldMappings(
             errorPath = "error",
             typePath = "status",
