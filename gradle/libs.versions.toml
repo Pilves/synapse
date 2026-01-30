@@ -1,8 +1,8 @@
 [versions]
 # SDK versions
 minSdk = "26"
-targetSdk = "34"
-compileSdk = "34"
+targetSdk = "35"
+compileSdk = "35"
 
 # Core
 agp = "9.0.0"
@@ -10,20 +10,20 @@ kotlin = "2.2.10"
 ksp = "1.9.22-1.0.17"
 
 # Compose
-composeBom = "2024.02.00"
-activityCompose = "1.8.2"
-lifecycleRuntimeCompose = "2.7.0"
+composeBom = "2024.06.00"
+activityCompose = "1.9.1"
+lifecycleRuntimeCompose = "2.8.4"
 navigationCompose = "2.7.7"
 
 # AndroidX
-coreKtx = "1.12.0"
-appcompat = "1.6.1"
-material = "1.11.0"
-lifecycleRuntimeKtx = "2.7.0"
+coreKtx = "1.13.1"
+appcompat = "1.7.0"
+material = "1.12.0"
+lifecycleRuntimeKtx = "2.8.4"
 
 # Dependency Injection
-koin = "3.5.3"
-koinCompose = "3.5.3"
+koin = "3.5.6"
+koinCompose = "3.5.6"
 
 # Networking
 okhttp = "4.12.0"
@@ -38,7 +38,7 @@ securityCrypto = "1.1.0-alpha06"
 coil = "2.5.0"
 
 # Serialization
-kotlinxSerialization = "1.6.2"
+kotlinxSerialization = "1.6.3"
 
 # Testing
 junit = "4.13.2"
