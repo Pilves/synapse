@@ -156,6 +156,36 @@ class CaptureViewModel : ViewModel() {
     }
 
     /**
+     * Captures any remaining strokes as a chunk and returns it directly,
+     * WITHOUT emitting a ChunkCaptured event. This allows the caller to
+     * save the chunk synchronously before ending the session, avoiding
+     * race conditions with async event processing.
+     *
+     * After calling this, strokeManager is cleared, so a subsequent
+     * endSession() will NOT emit a ChunkCaptured event.
+     *
+     * @return The captured chunk, or null if no strokes to capture
+     */
+    fun captureRemainingStrokes(): CapturedChunk? {
+        if (strokeManager.isEmpty() || canvasWidth <= 0 || canvasHeight <= 0) return null
+
+        val bitmap = strokeManager.toBitmapForOcr(canvasWidth, canvasHeight)
+        val chunk = CapturedChunk(
+            bitmap = bitmap,
+            timestamp = System.currentTimeMillis(),
+            index = chunkIndex++
+        )
+
+        _uiState.update { it.copy(chunkCount = chunkIndex) }
+
+        // Clear strokes so endSession() won't re-capture
+        strokeManager.clear()
+        _strokes.value = emptyList()
+
+        return chunk
+    }
+
+    /**
      * Ends the current capture session.
      * Any pending strokes will be captured as a final chunk.
      */

@@ -440,9 +440,19 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     /**
      * Ends the session and opens Review screen after session is saved.
+     *
+     * Captures any remaining strokes synchronously on the Main thread,
+     * then saves the chunk and ends the session sequentially on IO to
+     * avoid race conditions with the async event system.
      */
     private fun finishSessionAndOpenReview() {
-        val sessionId = currentSessionId.get()
+        // Capture remaining strokes synchronously BEFORE ending session.
+        // This returns the bitmap directly instead of going through the async
+        // ChunkCaptured event, preventing a race where the session is ended
+        // before the final chunk is saved.
+        val pendingChunk = captureViewModel?.captureRemainingStrokes()
+
+        // End UI session (strokes already cleared, so no ChunkCaptured event emitted)
         captureViewModel?.endSession()
 
         // Reset badge count since user is going to review
@@ -450,16 +460,52 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         serviceScope.launch(Dispatchers.IO) {
             try {
+                // Ensure session exists for the pending chunk
+                if (pendingChunk != null) {
+                    sessionMutex.withLock {
+                        if (currentSessionId.get() == null) {
+                            val session = sessionRepository.createSession()
+                            currentSessionId.set(session.id)
+                            Log.d(TAG, "Created session for final chunk: ${session.id}")
+                        }
+                    }
+                }
+
+                val sessionId = currentSessionId.get()
+
+                // Save pending chunk to the correct session
+                if (pendingChunk != null) {
+                    try {
+                        if (sessionId != null) {
+                            val timestampSeconds = pendingChunk.timestamp / 1000f
+                            val chunk = chunkRepository.saveChunk(
+                                sessionId = sessionId,
+                                bitmap = pendingChunk.bitmap,
+                                timestampSeconds = timestampSeconds
+                            )
+                            Log.d(TAG, "Saved final chunk: ${chunk.id} to session $sessionId")
+                        } else {
+                            Log.w(TAG, "No session for pending chunk, discarding")
+                        }
+                    } finally {
+                        pendingChunk.bitmap.recycle()
+                    }
+                }
+
+                // End session AFTER all chunks are saved
                 if (sessionId != null) {
                     sessionRepository.endSession(sessionId)
                     Log.d(TAG, "Ended session: $sessionId")
                     currentSessionId.set(null)
                 }
+
                 ScreenshotManager.cleanupScreenshots(this@OverlayService)
             } catch (e: IOException) {
                 Log.e(TAG, "IO error ending session for review", e)
             } catch (e: IllegalStateException) {
                 Log.e(TAG, "Invalid state ending session for review", e)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error ending session for review", e)
             }
 
             // Hide overlay and open review on main thread after session is saved
