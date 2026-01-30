@@ -2,6 +2,7 @@ package com.synapse.data.storage
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.graphics.Canvas
 import android.graphics.Color
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,15 @@ class ImageProcessor {
 
         /** Default thumbnail width */
         const val THUMBNAIL_WIDTH = 200
+
+        /** WebP compress format compatible with API 26+ */
+        val WEBP_FORMAT: Bitmap.CompressFormat =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Bitmap.CompressFormat.WEBP_LOSSY
+            } else {
+                @Suppress("DEPRECATION")
+                Bitmap.CompressFormat.WEBP
+            }
 
         /** Default thumbnail height */
         const val THUMBNAIL_HEIGHT = 300
@@ -75,9 +85,7 @@ class ImageProcessor {
     ): ImageResult<ByteArray> = withContext(Dispatchers.IO) {
         try {
             val outputStream = ByteArrayOutputStream()
-            val compressFormat = Bitmap.CompressFormat.WEBP_LOSSY
-
-            val success = bitmap.compress(compressFormat, quality, outputStream)
+            val success = bitmap.compress(WEBP_FORMAT, quality, outputStream)
 
             if (success) {
                 ImageResult.Success(outputStream.toByteArray())
@@ -104,8 +112,7 @@ class ImageProcessor {
     ): ImageResult<File> = withContext(Dispatchers.IO) {
         try {
             FileOutputStream(outputFile).use { fos ->
-                val compressFormat = Bitmap.CompressFormat.WEBP_LOSSY
-                val success = bitmap.compress(compressFormat, quality, fos)
+                val success = bitmap.compress(WEBP_FORMAT, quality, fos)
 
                 if (success) {
                     fos.flush()

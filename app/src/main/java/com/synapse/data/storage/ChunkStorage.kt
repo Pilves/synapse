@@ -217,7 +217,7 @@ class ChunkStorage(private val context: Context) {
                 // 3. Write to temp file
                 FileOutputStream(tempFile).use { out ->
                     val success = bitmap.compress(
-                        Bitmap.CompressFormat.WEBP_LOSSY,
+                        ImageProcessor.WEBP_FORMAT,
                         IMAGE_QUALITY,
                         out
                     )
@@ -325,7 +325,7 @@ class ChunkStorage(private val context: Context) {
             val thumbFile = File(sessionDir, thumbFilename)
 
             FileOutputStream(thumbFile).use { out ->
-                thumbnail.compress(Bitmap.CompressFormat.WEBP_LOSSY, THUMBNAIL_QUALITY, out)
+                thumbnail.compress(ImageProcessor.WEBP_FORMAT, THUMBNAIL_QUALITY, out)
             }
             thumbnail.recycle()
         } catch (e: Exception) {
