@@ -23,11 +23,8 @@
     kotlinx.serialization.KSerializer serializer(...);
 }
 
-# Ktor
--keep class io.ktor.** { *; }
--keepclassmembers class io.ktor.** { volatile <fields>; }
--keep class io.ktor.client.engine.** { *; }
--keep class kotlinx.coroutines.** { *; }
+# Ktor (not used - suppress warnings only)
+-dontwarn io.ktor.**
 -dontwarn java.lang.management.ManagementFactory
 -dontwarn java.lang.management.RuntimeMXBean
 
@@ -35,17 +32,25 @@
 -dontwarn org.slf4j.impl.StaticLoggerBinder
 -dontwarn org.slf4j.impl.StaticMDCBinder
 
-# OkHttp
+# OkHttp - keep public API and connection internals
 -dontwarn okhttp3.**
 -dontwarn okio.**
--keep class okhttp3.** { *; }
--keep interface okhttp3.** { *; }
+-keep class okhttp3.OkHttpClient { *; }
+-keep class okhttp3.Request { *; }
+-keep class okhttp3.Response { *; }
+-keep class okhttp3.CertificatePinner { *; }
+-keep class okhttp3.CertificatePinner$Builder { *; }
+-keep interface okhttp3.Interceptor { *; }
+-keepclassmembers class okhttp3.internal.** { volatile <fields>; }
 
-# Coil
--keep class coil.** { *; }
+# Coil - keep image loader entry points
+-keep class coil.ImageLoader { *; }
+-keep class coil.compose.** { *; }
 
-# Koin
--keep class org.koin.** { *; }
+# Koin - keep DI module declarations and injection
+-keep class org.koin.core.module.Module { *; }
+-keep class org.koin.core.KoinApplication { *; }
+-keepclassmembers class * { @org.koin.core.annotation.* <methods>; }
 
 # Strip verbose/debug/info logs in release builds
 -assumenosideeffects class android.util.Log {
