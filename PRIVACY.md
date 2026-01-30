@@ -55,7 +55,7 @@ When you sync, your handwriting images and any captured context are sent to the 
 
 Each provider has its own privacy policy and data retention practices. Using Ollama keeps all processing on-device.
 
-Your API keys are stored locally in Android DataStore (encrypted app preferences) and are never sent anywhere other than the corresponding provider's API.
+Your API keys are stored locally using Android's EncryptedSharedPreferences (AES-256-GCM encryption) and are never sent anywhere other than the corresponding provider's API.
 
 ## Data Retention
 
