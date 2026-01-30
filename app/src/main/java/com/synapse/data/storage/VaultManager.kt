@@ -33,6 +33,32 @@ class VaultManager(private val context: Context) {
 
     private val appendMutex = Mutex()
 
+    /**
+     * Sanitizes a filename by removing illegal characters and limiting length.
+     * Strips: < > : " / \ | ? *
+     * Trims whitespace, collapses dots, and caps at 200 characters.
+     */
+    private fun sanitizeFilename(filename: String): String {
+        val illegalChars = Regex("[<>:\"/\\\\|?*]")
+        var sanitized = filename
+            .replace(illegalChars, "")
+            .trim()
+            .replace(Regex("\\.{2,}"), ".")  // collapse consecutive dots
+            .trimStart('.')  // no hidden files
+        if (sanitized.length > 200) {
+            // Preserve extension
+            val ext = sanitized.substringAfterLast('.', "")
+            val name = sanitized.substringBeforeLast('.', sanitized)
+            sanitized = if (ext.isNotEmpty()) {
+                "${name.take(200 - ext.length - 1)}.$ext"
+            } else {
+                name.take(200)
+            }
+        }
+        if (sanitized.isBlank()) sanitized = "untitled.md"
+        return sanitized
+    }
+
     private val prefs by lazy {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
     }
@@ -180,6 +206,7 @@ class VaultManager(private val context: Context) {
         filename: String,
         content: String
     ): WriteResult = appendMutex.withLock {
+        val safeFilename = sanitizeFilename(filename)
         withContext(Dispatchers.IO) {
         try {
             val projectDoc = DocumentFile.fromTreeUri(context, projectUri)
@@ -188,13 +215,13 @@ class VaultManager(private val context: Context) {
             }
 
             // Find or create the file
-            var fileDoc = projectDoc.findFile(filename)
+            var fileDoc = projectDoc.findFile(safeFilename)
             if (fileDoc == null) {
-                fileDoc = projectDoc.createFile("text/markdown", filename)
+                fileDoc = projectDoc.createFile("text/markdown", safeFilename)
                 if (fileDoc == null) {
-                    return@withContext WriteResult.Error("Failed to create file: $filename")
+                    return@withContext WriteResult.Error("Failed to create file: $safeFilename")
                 }
-                Log.d(TAG, "Created new file: $filename")
+                Log.d(TAG, "Created new file: $safeFilename")
             }
 
             // Sanitize and append content
@@ -204,7 +231,7 @@ class VaultManager(private val context: Context) {
                 outputStream.flush()
             } ?: return@withContext WriteResult.Error("Failed to open file for writing")
 
-            Log.d(TAG, "Successfully appended to file: $filename")
+            Log.d(TAG, "Successfully appended to file: $safeFilename")
             WriteResult.Success
         } catch (e: SecurityException) {
             Log.e(TAG, "Permission denied writing to file", e)
@@ -227,6 +254,7 @@ class VaultManager(private val context: Context) {
         projectUri: Uri,
         filename: String
     ): Uri? = withContext(Dispatchers.IO) {
+        val safeFilename = sanitizeFilename(filename)
         try {
             val projectDoc = DocumentFile.fromTreeUri(context, projectUri)
             if (projectDoc == null || !projectDoc.exists()) {
@@ -235,20 +263,20 @@ class VaultManager(private val context: Context) {
             }
 
             // Check if file already exists
-            val existingFile = projectDoc.findFile(filename)
+            val existingFile = projectDoc.findFile(safeFilename)
             if (existingFile != null && existingFile.exists()) {
-                Log.d(TAG, "File already exists: $filename")
+                Log.d(TAG, "File already exists: $safeFilename")
                 return@withContext existingFile.uri
             }
 
             // Create the file
-            val newFile = projectDoc.createFile("text/markdown", filename)
+            val newFile = projectDoc.createFile("text/markdown", safeFilename)
             if (newFile == null) {
-                Log.e(TAG, "Failed to create file: $filename")
+                Log.e(TAG, "Failed to create file: $safeFilename")
                 return@withContext null
             }
 
-            Log.d(TAG, "Created file: $filename")
+            Log.d(TAG, "Created file: $safeFilename")
             newFile.uri
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create file", e)
@@ -267,6 +295,7 @@ class VaultManager(private val context: Context) {
         projectUri: Uri,
         filename: String
     ): String? = withContext(Dispatchers.IO) {
+        val safeFilename = sanitizeFilename(filename)
         try {
             val projectDoc = DocumentFile.fromTreeUri(context, projectUri)
             if (projectDoc == null || !projectDoc.exists()) {
@@ -274,9 +303,9 @@ class VaultManager(private val context: Context) {
                 return@withContext null
             }
 
-            val fileDoc = projectDoc.findFile(filename)
+            val fileDoc = projectDoc.findFile(safeFilename)
             if (fileDoc == null || !fileDoc.exists()) {
-                Log.d(TAG, "File not found: $filename")
+                Log.d(TAG, "File not found: $safeFilename")
                 return@withContext null
             }
 
