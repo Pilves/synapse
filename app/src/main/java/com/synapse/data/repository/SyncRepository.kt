@@ -423,6 +423,9 @@ class SyncRepositoryImpl(
                 SyncStatus.Success
             }
 
+            // Clean up temporary screenshot files now that sync is done
+            cleanupScreenshots()
+
             _syncStatus.value = finalStatus
             Log.d(TAG, "Sync completed: $finalStatus")
             finalStatus
@@ -670,6 +673,25 @@ The output should read as if the user wrote it themselves.
     }
 
     override fun observeSyncStatus(): Flow<SyncStatus> = _syncStatus.asStateFlow()
+
+    /**
+     * Deletes temporary screenshot files from internal storage.
+     */
+    private fun cleanupScreenshots() {
+        try {
+            val dir = File(context.filesDir, "screenshots")
+            if (dir.exists() && dir.isDirectory) {
+                val files = dir.listFiles() ?: return
+                var deleted = 0
+                for (file in files) {
+                    if (file.delete()) deleted++
+                }
+                if (deleted > 0) Log.d(TAG, "Cleaned up $deleted temporary screenshot(s) after sync")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to clean up screenshots", e)
+        }
+    }
 
     /**
      * Processes pending items in the sync queue.

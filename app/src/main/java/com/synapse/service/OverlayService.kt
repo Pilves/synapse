@@ -497,7 +497,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                 sessionRepository.endSession(sessionId)
                 Log.d(TAG, "Ended session: $sessionId")
                 currentSessionId.set(null)
-                ScreenshotManager.cleanupScreenshots(this@OverlayService)
+                // Don't clean up screenshots here — they're needed by SyncRepository
+                // Cleanup happens after sync in finishSessionAndOpenReview or on next service start
             } catch (e: IOException) {
                 Log.e(TAG, "IO error ending session", e)
             } catch (e: IllegalStateException) {
@@ -567,7 +568,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
                     currentSessionId.set(null)
                 }
 
-                ScreenshotManager.cleanupScreenshots(this@OverlayService)
+                // Don't clean up screenshots here — sync hasn't happened yet.
+                // SyncRepository will clean up after sync completes.
             } catch (e: IOException) {
                 Log.e(TAG, "IO error ending session for review", e)
             } catch (e: IllegalStateException) {
