@@ -22,11 +22,6 @@ class OllamaService(
     sharedHttpClient: OkHttpClient? = null
 ) : BaseLlmService(apiKey = null, customPrompt = customPrompt, rateLimitingSafe = false, sharedHttpClient = sharedHttpClient) {
 
-    companion object {
-        private const val DEFAULT_BASE_URL = "http://localhost:11434"
-        private const val DEFAULT_MODEL = "llava"
-    }
-
     override val provider: LlmProvider = LlmProvider.OLLAMA
     override val modelId: String get() = model
 
@@ -193,10 +188,28 @@ class OllamaService(
 
     // ── Ollama-specific configuration ───────────────────────────────────
 
+    companion object {
+        private const val DEFAULT_BASE_URL = "http://localhost:11434"
+        private const val DEFAULT_MODEL = "llava"
+
+        private val ALLOWED_HOSTS = setOf("localhost", "127.0.0.1", "::1", "10.0.2.2")
+
+        private fun isAllowedHost(host: String): Boolean {
+            if (host in ALLOWED_HOSTS) return true
+            // Allow 192.168.* for local network Ollama instances
+            if (host.startsWith("192.168.")) return true
+            return false
+        }
+    }
+
     fun setBaseUrl(url: String) {
         val parsed = URL(url.trimEnd('/'))
         require(parsed.protocol in listOf("http", "https")) { "Invalid URL scheme: ${parsed.protocol}" }
         require(!parsed.host.isNullOrEmpty()) { "Invalid URL host" }
+        require(isAllowedHost(parsed.host)) {
+            "URL host '${parsed.host}' is not in the allowlist. " +
+            "Allowed: localhost, 127.0.0.1, ::1, 10.0.2.2, 192.168.*"
+        }
         this.baseUrl = url.trimEnd('/')
     }
 
