@@ -906,14 +906,22 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         val vm = captureViewModel ?: return
         isCaptureActive = true
 
-        // Ensure screenshot permission is available when capture opens
+        // Ensure screenshot permission is available when capture opens.
+        // If missing, close the overlay so the user doesn't scribble on the
+        // permission dialog, then request permission.
         if (!screenshotManager.hasPermission()) {
-            Log.d(TAG, "No screenshot permission on capture show, requesting")
+            Log.d(TAG, "No screenshot permission on capture show, closing overlay and requesting")
+            isCaptureActive = false
+            hideCaptureOverlay()
             requestScreenCapturePermission()
+            return
         } else if (!ensureProjectionReady()) {
-            Log.w(TAG, "Projection stale on capture show, re-requesting")
+            Log.w(TAG, "Projection stale on capture show, closing overlay and re-requesting")
+            isCaptureActive = false
+            hideCaptureOverlay()
             screenshotManager.invalidateProjection()
             requestScreenCapturePermission()
+            return
         }
 
         // Read settings on IO thread (use cached default until loaded)
