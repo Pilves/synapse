@@ -2,88 +2,33 @@
 
 **Zero-friction handwriting capture for Obsidian.**
 
-Synapse is an Android overlay app that lets you capture handwritten notes without leaving your current app. Scribble quick thoughts, and later sync them to your Obsidian vault as clean, formatted markdown -- transcribed by your choice of LLM.
-
-## How It Works
-
-1. **Tap the floating bubble** -- appears over any app
-2. **Scribble your notes** -- on a transparent fullscreen canvas
-3. **Auto-chunks after 1s** -- keeps capturing as you write
-4. **Tap Done** -- session ends
-5. **Review & Sync** -- select destination, transcribe via LLM, sync to vault
+Synapse is an Android overlay app that lets you capture handwritten notes without leaving your current app. Scribble quick thoughts, and later sync them to your Obsidian vault as clean, formatted markdown — transcribed by your choice of LLM.
 
 ## Features
 
-### Core Capture
-- **Floating Overlay** -- capture notes without switching apps
-- **Automatic Chunking** -- 1-second timeout creates natural breaks between strokes (configurable 1-10s)
-- **Smart Transcription** -- messy handwriting to clean markdown via LLM
-- **Mermaid Diagrams** -- hand-drawn flowcharts converted to Mermaid code via LLM (advanced formatting mode)
-- **Undo Support** -- undo last stroke while capturing
-
-### Multi-Provider LLM
-- **Gemini** -- Google's Gemini 2.0 Flash (free tier available)
-- **Claude** -- Anthropic's Claude 3.5 Haiku (claude-3-5-haiku-20241022)
-- **OpenAI** -- GPT-4o Mini
-- **Ollama** -- local LLaVA for fully offline transcription
-- **Separate providers** -- configure different LLMs for transcription (image-based) vs. question answering (text-based)
-
-### Context Capture
-- **Text Selection** -- select text in any app, share it to Synapse via Android's text processing
-- **Region Capture** -- hold-and-drag to select a screen region, extract text via accessibility or screenshot
-- **Auto Context** -- captures active app info via accessibility service
-- **Context-Aware Output** -- captured context is woven into the transcription prompt for smarter results
-
-### Intent Detection
-- **Automatic Classification** -- LLM detects if your note is a plain note, task, question, or reminder
-- **Question Answering** -- detected questions are answered inline using the configured LLM
-- **Reminder Creation** -- detected reminders prompt to set alarms or calendar events
-- **Task Extraction** -- tasks are formatted with checkboxes in markdown output
-
-### Multiple Destinations
-- **Obsidian Vault** -- sync via Storage Access Framework with persistent URI permissions
-- **Local Folder** -- write to any folder on device via SAF
-- **Clipboard** -- copy transcribed text directly
-- **Share Sheet** -- send to any app via Android's share intent
-- **Per-Session Config** -- choose destination(s) for each sync session
-
-### Cost Tracking
-- **Token Pricing** -- tracks estimated cost per LLM call based on model pricing
-- **Usage Statistics** -- cumulative stats stored in DataStore (total cost, monthly cost, sync count)
-- **Cost Display** -- banner in review screen shows estimated sync cost before you commit
-
-### Offline Support
-- **Network Monitor** -- detects connectivity changes in real time
-- **Sync Queue** -- failed syncs are queued with status tracking (pending, syncing, completed, failed)
-- **Queue Summary** -- UI shows pending/queued/failed counts with retry controls
-
-## Requirements
-
-- Android 8.0+ (API 26)
-- Stylus recommended (works with finger too)
-- Obsidian vault on device storage (for vault sync)
-- API key for at least one cloud LLM provider, or Ollama running locally
-
-## Permissions
-
-| Permission | Purpose |
-|---|---|
-| `SYSTEM_ALERT_WINDOW` | Floating overlay bubble and capture canvas |
-| `FOREGROUND_SERVICE` | Keep capture service alive during sessions |
-| `POST_NOTIFICATIONS` | Foreground service notification |
-| `INTERNET` | LLM API calls and sync |
-| `ACCESS_NETWORK_STATE` | Offline detection for sync queue |
-| `VIBRATE` | Haptic feedback on region selection |
-| Accessibility Service | Text extraction from screen regions, auto-context capture |
-| MediaProjection | Screenshot-based region capture (requested on demand) |
-| SAF (document access) | Read/write Obsidian vault and local folders |
+- **Floating overlay** — capture notes over any app without switching
+- **Automatic chunking** — configurable timeout (1–10s) creates natural breaks between strokes
+- **Smart transcription** — messy handwriting → clean markdown via LLM
+- **Mermaid diagrams** — hand-drawn flowcharts converted to Mermaid code (advanced formatting mode)
+- **Intent detection** — auto-classifies notes as plain notes, tasks, questions, or reminders
+- **Question answering** — detected questions are answered inline by the LLM
+- **Context capture** — select text, capture screen regions, or auto-capture active app info
+- **Multiple destinations** — sync to Obsidian vault, local folder, clipboard, or share sheet
+- **Multi-provider LLM** — Gemini, Claude, OpenAI, or local Ollama
+- **Separate providers** — configure different LLMs for transcription (vision) vs. question answering (text)
+- **Cost tracking** — estimated cost per sync, cumulative usage stats
+- **Offline queue** — failed syncs are queued with retry controls
+- **Prompt customization** — edit the transcription prompt template in-app
+- **Undo support** — undo last stroke while capturing
 
 ## Installation
 
 ### Download
+
 See [Releases](https://github.com/Pilves/synapse/releases).
 
 ### Build from Source
+
 ```bash
 git clone https://github.com/Pilves/synapse.git
 cd synapse
@@ -93,25 +38,246 @@ cd synapse
 
 Or open in Android Studio and run directly on a connected device.
 
-## Setup
+## Quick Start
 
-The onboarding flow walks through these steps:
+1. **Install & open** — launch Synapse, walk through the onboarding screens
+2. **Grant permissions** — allow "Draw over apps" and enable the accessibility service
+3. **Pick your vault** — select your Obsidian vault folder (or any folder)
+4. **Add an API key** — enter a key for Gemini, Claude, or OpenAI (or set up Ollama locally)
+5. **Start capturing** — tap the floating bubble, scribble, tap Done, review & sync
 
-1. **Welcome** -- introduction to Synapse
-2. **Overlay Permission** -- draw over other apps
-3. **Accessibility Permission** -- enable Synapse accessibility service for context capture
-4. **Screen Capture Permission** -- allow MediaProjection for region capture
-5. **Vault Selection** -- pick your Obsidian vault folder
-6. **Destination Setup** -- choose default sync destinations
-7. **API Key** -- enter key for your preferred LLM provider
+> **Tip:** Gemini offers a free tier — the onboarding screen links directly to get a key.
 
-After onboarding, configure additional options in Settings:
-- Switch between LLM providers for transcription and answering separately
-- Toggle advanced formatting (Mermaid diagrams, LaTeX)
-- Adjust capture timeout, fade animation, auto-end timer
-- Manage projects (subfolders in your vault)
+## Configuration
 
-## Architecture
+### LLM Providers
+
+| Provider | Model | API Key Required | Offline | Notes |
+|---|---|---|---|---|
+| Google Gemini | `gemini-2.0-flash` | Yes | No | Free tier available |
+| Anthropic Claude | `claude-3-5-haiku-20241022` | Yes | No | |
+| OpenAI | `gpt-4o-mini` | Yes | No | |
+| Ollama | `llava` | No | Yes | Requires Ollama running on local network |
+
+You can configure **separate providers** for transcription (image-based) and question answering (text-based) in Settings → LLM Configuration.
+
+<details>
+<summary><strong>Gemini setup</strong></summary>
+
+1. Go to [Google AI Studio](https://aistudio.google.com/apikey) and create an API key
+2. In Synapse, open **Settings → LLM Configuration**
+3. Select **Google Gemini** as your provider
+4. Paste your API key
+5. Tap **Save**
+
+</details>
+
+<details>
+<summary><strong>Claude setup</strong></summary>
+
+1. Go to [Anthropic Console](https://console.anthropic.com/) and create an API key
+2. In Synapse, open **Settings → LLM Configuration**
+3. Select **Anthropic Claude** as your provider
+4. Paste your API key
+5. Tap **Save**
+
+</details>
+
+<details>
+<summary><strong>OpenAI setup</strong></summary>
+
+1. Go to [OpenAI Platform](https://platform.openai.com/api-keys) and create an API key
+2. In Synapse, open **Settings → LLM Configuration**
+3. Select **OpenAI** as your provider
+4. Paste your API key
+5. Tap **Save**
+
+</details>
+
+<details>
+<summary><strong>Ollama setup (local/offline)</strong></summary>
+
+1. Install [Ollama](https://ollama.ai/) on a machine on your local network
+2. Pull the LLaVA model: `ollama pull llava`
+3. Start the Ollama server (default port 11434)
+4. In Synapse, open **Settings → LLM Configuration**
+5. Select **Ollama (Local)** as your provider
+6. Enter the server URL (e.g. `http://192.168.1.100:11434`)
+7. No API key needed
+
+</details>
+
+### Destinations
+
+| Destination | Description |
+|---|---|
+| **Clipboard** | Copies transcribed markdown to clipboard |
+| **Local Folder** | Appends to a file in a user-selected folder (e.g. Obsidian vault) |
+| **Share to…** | Opens Android share sheet; sends markdown to compatible apps (Obsidian, Notion, Logseq, Discord, Slack) and plain text to others |
+
+Choose default destinations during onboarding, or change per-session in the review screen.
+
+### Capture Settings
+
+| Setting | Default | Range |
+|---|---|---|
+| Chunk timeout | 1 second | 1–10 seconds |
+| Session auto-end | 15 minutes | 5–60 minutes |
+| Fade animation | 0.2 seconds | 0–1 second |
+| Rate limiting | Fast | Safe / Fast |
+| Advanced formatting | Off | On (Mermaid, LaTeX) / Off |
+
+## Usage
+
+### Capturing Notes
+
+1. **Tap the floating bubble** — a transparent fullscreen canvas appears over your current app
+2. **Write your notes** — use stylus or finger on the canvas
+3. **Auto-chunking** — after the chunk timeout (default 1s of inactivity), a chunk is captured and the canvas clears for more writing
+4. **Tap Done** — ends the session and opens the review screen
+
+### Input Modes
+
+| Mode | Stylus | Finger | Best for |
+|---|---|---|---|
+| **Stylus write, finger scroll** (default) | Writes | Passes through to app below | Note-taking over scrollable apps |
+| **Both write** | Writes | Writes | Finger-only devices |
+| **Stylus only** | Writes | Ignored | Avoiding accidental palm input |
+
+### Context Capture
+
+- **Text selection** — select text in any app, then share it to Synapse via Android's text processing menu. The selected text is included as context in the transcription prompt.
+- **Region capture** — hold and drag to select a screen region. Text is extracted via the accessibility service or a screenshot.
+- **Auto context** — the accessibility service captures the active app's information automatically.
+
+### Review & Sync
+
+After tapping Done:
+
+1. Review captured chunks (stitched or separate view)
+2. Delete unwanted chunks
+3. Choose destination(s) — Clipboard, Local Folder, Share
+4. Tap **Sync** — the LLM transcribes your handwriting and sends the result to your chosen destinations
+5. Cost estimate shown before sync
+
+## Troubleshooting
+
+<details>
+<summary><strong>Floating bubble doesn't appear</strong></summary>
+
+- Go to **Settings → Apps → Synapse → Display over other apps** and make sure it's enabled
+- On some devices, battery optimization can kill the overlay service. Exclude Synapse from battery optimization.
+- Restart the app after granting the permission
+
+</details>
+
+<details>
+<summary><strong>Accessibility service keeps turning off</strong></summary>
+
+- Some Android skins (MIUI, OneUI, ColorOS) aggressively kill accessibility services
+- Exclude Synapse from battery optimization
+- Lock the app in the recent apps tray (long-press → Lock)
+- On MIUI: Settings → Apps → Manage apps → Synapse → Autostart → Enable
+
+</details>
+
+<details>
+<summary><strong>Transcription fails or returns errors</strong></summary>
+
+- Verify your API key is correct in Settings → LLM Configuration
+- Check your internet connection (or Ollama server reachability)
+- If using rate limiting in **Safe** mode, requests are throttled — switch to **Fast** if you're hitting limits
+- Check that the provider's API isn't down (e.g. Google AI Studio status page)
+
+</details>
+
+<details>
+<summary><strong>Region capture doesn't work</strong></summary>
+
+- Grant the screen capture permission when prompted (MediaProjection)
+- Make sure the accessibility service is enabled
+- Region capture requires both permissions to function
+
+</details>
+
+<details>
+<summary><strong>Sync to Obsidian vault fails</strong></summary>
+
+- Re-select the vault folder in Settings — SAF URI permissions can expire after app updates
+- Make sure the Obsidian vault folder exists on device storage
+- Check that Synapse has storage access (Settings → Apps → Synapse → Permissions)
+
+</details>
+
+## FAQ
+
+<details>
+<summary><strong>Does Synapse send my data anywhere?</strong></summary>
+
+Only to the LLM provider you configure, and only when you tap Sync. No analytics, no telemetry, no third-party tracking. If you use Ollama, everything stays on your local network. See [PRIVACY.md](PRIVACY.md).
+
+</details>
+
+<details>
+<summary><strong>Which provider should I use?</strong></summary>
+
+- **Gemini** — best starting point. Free tier available, good handwriting recognition.
+- **Claude** — strong at structured output and following formatting instructions.
+- **OpenAI** — reliable general-purpose option.
+- **Ollama** — fully offline, but requires a local server and recognition quality depends on hardware.
+
+</details>
+
+<details>
+<summary><strong>Can I use Synapse without an Obsidian vault?</strong></summary>
+
+Yes. You can sync to any local folder, copy to clipboard, or share to any app. The Obsidian vault is optional.
+
+</details>
+
+<details>
+<summary><strong>Can I customize the transcription prompt?</strong></summary>
+
+Yes. Go to **Settings → Edit Prompt**. The editor validates that required placeholders (`{cleanup_enabled}`, `{advanced_formatting}`) are present. You can reset to the default template at any time.
+
+</details>
+
+<details>
+<summary><strong>What apps are excluded from the accessibility service?</strong></summary>
+
+Synapse's accessibility service automatically excludes sensitive apps: banking apps (Chase, Bank of America, Wells Fargo, Citi, USAA, Ally), password managers (1Password, LastPass, Bitwarden, Dashlane, KeePass), payment apps (Venmo, Cash App, PayPal), and authenticator apps (Google Authenticator, Authy, FreeOTP).
+
+</details>
+
+<details>
+<summary><strong>Does it work offline?</strong></summary>
+
+Capture works fully offline — you can scribble and save chunks without a connection. Transcription requires either an internet connection (for cloud providers) or a local Ollama server. Failed syncs are queued and retried automatically when connectivity returns.
+
+</details>
+
+## Requirements
+
+- Android 8.0+ (API 26)
+- Stylus recommended (works with finger too)
+- API key for at least one cloud LLM provider, or Ollama running locally
+
+## Permissions
+
+| Permission | Purpose |
+|---|---|
+| `SYSTEM_ALERT_WINDOW` | Floating overlay bubble and capture canvas |
+| `FOREGROUND_SERVICE` | Keep capture service alive during sessions |
+| `POST_NOTIFICATIONS` | Foreground service notification (Android 13+) |
+| `INTERNET` | LLM API calls and sync |
+| `ACCESS_NETWORK_STATE` | Offline detection for sync queue |
+| `VIBRATE` | Haptic feedback on region selection |
+| Accessibility Service | Text extraction from screen regions, auto-context capture |
+| MediaProjection | Screenshot-based region capture (requested on demand) |
+| SAF (document access) | Read/write Obsidian vault and local folders |
+
+<details>
+<summary><strong>Architecture</strong></summary>
 
 ```
 app/src/main/java/com/synapse/
@@ -178,7 +344,10 @@ app/src/main/java/com/synapse/
 └── ProcessTextActivity.kt        # Android ACTION_PROCESS_TEXT handler
 ```
 
-## Tech Stack
+</details>
+
+<details>
+<summary><strong>Tech Stack</strong></summary>
 
 | Component | Technology |
 |---|---|
@@ -192,6 +361,8 @@ app/src/main/java/com/synapse/
 | Min SDK | API 26 (Android 8.0) |
 | Target SDK | API 35 (Android 15) |
 | JVM | Java 17 |
+
+</details>
 
 ## Contributing
 
@@ -212,4 +383,4 @@ See [CHANGELOG.md](CHANGELOG.md) for version history and notable changes.
 
 ## License
 
-MIT License -- see [LICENSE](LICENSE).
+MIT License — see [LICENSE](LICENSE).
