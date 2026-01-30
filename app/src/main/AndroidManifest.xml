@@ -57,16 +57,6 @@
                 android:value="handwriting_capture_overlay" />
         </service>
 
-        <!-- Capture Processing Service -->
-        <service
-            android:name=".service.CaptureService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse|mediaProjection">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="capture_processing" />
-        </service>
-
         <!-- Process Text Activity for text selection context -->
         <activity
             android:name=".ui.ProcessTextActivity"
