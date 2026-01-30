@@ -13,7 +13,6 @@ data class QueuedSync(
     val destinations: List<String>,
     val status: QueueStatus,
     val attempts: Int = 0,
-    val lastError: SyncError? = null,
     val queuedAt: Long = System.currentTimeMillis(),
     val completedAt: Long? = null
 )

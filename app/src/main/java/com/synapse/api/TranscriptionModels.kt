@@ -1,7 +1,5 @@
 package com.synapse.api
 
-import com.synapse.model.DetectedIntent
-import com.synapse.model.IntentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -178,3 +176,23 @@ data class RateLimitState(
         }
     }
 }
+
+/**
+ * Type of intent detected in a transcribed note.
+ */
+enum class IntentType {
+    NOTE,
+    TASK,
+    QUESTION,
+    REMINDER,
+    REACTION
+}
+
+/**
+ * Result of intent detection on a transcribed note.
+ */
+data class DetectedIntent(
+    val type: IntentType,
+    val confidence: Float,
+    val needsConfirmation: Boolean = false
+)
