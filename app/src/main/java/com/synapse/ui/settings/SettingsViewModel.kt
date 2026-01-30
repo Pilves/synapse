@@ -15,6 +15,7 @@ import androidx.lifecycle.viewModelScope
 import com.synapse.api.LlmProvider
 import com.synapse.api.PromptTemplate
 import com.synapse.data.repository.ProjectRepository
+import com.synapse.data.storage.SecureKeyStorage
 import com.synapse.model.LlmConfig
 import com.synapse.model.Project
 import com.synapse.ui.overlay.InputMode
@@ -37,10 +38,10 @@ val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(na
  */
 class SettingsViewModel(
     private val dataStore: DataStore<Preferences>,
-    private val projectRepository: ProjectRepository
+    private val projectRepository: ProjectRepository,
+    private val secureKeyStorage: SecureKeyStorage
 ) : ViewModel() {
 
-    // TODO: migrate API key storage to EncryptedSharedPreferences (see QA audit #27)
     // Preference Keys
     private object PreferenceKeys {
         // Capture settings
@@ -125,9 +126,9 @@ class SettingsViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Defaults.LLM_PROVIDER)
 
-    val apiKey: StateFlow<String> = dataStore.data
-        .map { it[PreferenceKeys.API_KEY] ?: "" }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), "")
+    private val _apiKey = MutableStateFlow(secureKeyStorage.getKey("transcription")
+        ?: secureKeyStorage.getKey("legacy") ?: "")
+    val apiKey: StateFlow<String> = _apiKey.asStateFlow()
 
     val cleanupMode: StateFlow<Boolean> = dataStore.data
         .map { it[PreferenceKeys.CLEANUP_MODE] ?: Defaults.CLEANUP_MODE }
@@ -218,8 +219,9 @@ class SettingsViewModel(
 
     fun setApiKey(key: String) {
         viewModelScope.launch {
-            dataStore.edit { it[PreferenceKeys.API_KEY] = key }
-            // Clear validation error when key changes
+            secureKeyStorage.saveKey("transcription", key)
+            secureKeyStorage.saveKey("legacy", key)
+            _apiKey.value = key
             _uiState.update { it.copy(apiKeyError = null) }
         }
     }
@@ -232,18 +234,20 @@ class SettingsViewModel(
 
     fun setLlmConfig(config: LlmConfig) {
         viewModelScope.launch {
+            // Store API keys in encrypted storage
+            secureKeyStorage.saveKey("transcription", config.transcriptionApiKey)
+            if (config.answeringApiKey != null) {
+                secureKeyStorage.saveKey("answering", config.answeringApiKey)
+            }
+            _apiKey.value = config.transcriptionApiKey
+
+            // Store non-secret config in DataStore
             dataStore.edit { prefs ->
                 prefs[PreferenceKeys.TRANSCRIPTION_PROVIDER] = config.transcriptionProvider
-                prefs[PreferenceKeys.TRANSCRIPTION_API_KEY] = config.transcriptionApiKey
                 if (config.answeringProvider != null) {
                     prefs[PreferenceKeys.ANSWERING_PROVIDER] = config.answeringProvider
                 } else {
                     prefs.remove(PreferenceKeys.ANSWERING_PROVIDER)
-                }
-                if (config.answeringApiKey != null) {
-                    prefs[PreferenceKeys.ANSWERING_API_KEY] = config.answeringApiKey
-                } else {
-                    prefs.remove(PreferenceKeys.ANSWERING_API_KEY)
                 }
             }
         }

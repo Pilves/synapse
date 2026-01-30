@@ -5,39 +5,43 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.synapse.api.LlmProvider
+import com.synapse.data.storage.SecureKeyStorage
 import com.synapse.model.LlmConfig
 import kotlinx.coroutines.flow.first
 
 /**
- * Reads LLM-related settings from DataStore.
+ * Reads LLM-related settings from DataStore and SecureKeyStorage.
  *
- * Extracted from the DI module to keep the Koin setup concise and make
- * the settings-reading logic reusable and testable.
+ * Provider selection and non-secret settings come from DataStore.
+ * API keys are read from EncryptedSharedPreferences via SecureKeyStorage.
  */
-class LlmSettingsProvider(private val dataStore: DataStore<Preferences>) {
+class LlmSettingsProvider(
+    private val dataStore: DataStore<Preferences>,
+    private val secureKeyStorage: SecureKeyStorage
+) {
 
     private val transcriptionProviderKey = stringPreferencesKey("transcription_provider")
-    private val transcriptionApiKeyKey = stringPreferencesKey("transcription_api_key")
     private val answeringProviderKey = stringPreferencesKey("answering_provider")
-    private val answeringApiKeyKey = stringPreferencesKey("answering_api_key")
     private val rateLimitingSafeKey = booleanPreferencesKey("rate_limiting_safe")
     // Legacy fallback keys
     private val legacyProviderKey = stringPreferencesKey("llm_provider")
-    private val legacyApiKeyKey = stringPreferencesKey("api_key")
 
     /**
      * Reads the current transcription provider, API key, and rate-limiting flag.
-     * Falls back to legacy keys when the new keys are absent.
+     * API keys are read from encrypted storage with legacy DataStore fallback.
      */
     suspend fun readLlmSettings(): Triple<LlmProvider, String?, Boolean> {
         val prefs = dataStore.data.first()
         val providerName = prefs[transcriptionProviderKey]
             ?: prefs[legacyProviderKey]
             ?: LlmProvider.GEMINI.name
-        val apiKey = prefs[transcriptionApiKeyKey]
-            ?: prefs[legacyApiKeyKey]
         val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
         val rateLimitingSafe = prefs[rateLimitingSafeKey] ?: true
+
+        // Read API key from encrypted storage
+        val apiKey = secureKeyStorage.getKey("transcription")
+            ?: secureKeyStorage.getKey("legacy")
+
         return Triple(provider, apiKey, rateLimitingSafe)
     }
 
@@ -50,17 +54,19 @@ class LlmSettingsProvider(private val dataStore: DataStore<Preferences>) {
         val providerName = prefs[transcriptionProviderKey]
             ?: prefs[legacyProviderKey]
             ?: LlmProvider.GEMINI.name
-        val apiKey = prefs[transcriptionApiKeyKey]
-            ?: prefs[legacyApiKeyKey]
         val provider = LlmProvider.fromName(providerName) ?: LlmProvider.GEMINI
+
+        val apiKey = secureKeyStorage.getKey("transcription")
+            ?: secureKeyStorage.getKey("legacy")
+
         return if (apiKey != null) {
             val answeringProv = prefs[answeringProviderKey]
-            val answeringKey = prefs[answeringApiKeyKey]
+            val answeringKey = secureKeyStorage.getKey("answering") ?: apiKey
             LlmConfig(
                 transcriptionProvider = provider.name,
                 transcriptionApiKey = apiKey,
                 answeringProvider = answeringProv ?: provider.name,
-                answeringApiKey = answeringKey ?: apiKey
+                answeringApiKey = answeringKey
             )
         } else null
     }

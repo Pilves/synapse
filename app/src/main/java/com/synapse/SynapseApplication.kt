@@ -13,6 +13,10 @@ import com.synapse.di.v2Module
 import com.synapse.di.viewModelModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
 import org.koin.java.KoinJavaComponent.get
@@ -33,12 +37,25 @@ import org.koin.java.KoinJavaComponent.get
  */
 class SynapseApplication : Application() {
 
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
 
         initKoin()
         createNotificationChannels()
         get<com.synapse.service.NotificationHelper>(com.synapse.service.NotificationHelper::class.java).createNotificationChannels()
+
+        // Migrate API keys from plain DataStore to encrypted storage
+        appScope.launch {
+            val secureKeyStorage = get<com.synapse.data.storage.SecureKeyStorage>(
+                com.synapse.data.storage.SecureKeyStorage::class.java
+            )
+            val dataStore = get<androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>>(
+                androidx.datastore.core.DataStore::class.java
+            )
+            secureKeyStorage.migrateFromDataStore(dataStore)
+        }
     }
 
     /**

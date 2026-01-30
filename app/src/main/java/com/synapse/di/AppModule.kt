@@ -21,6 +21,7 @@ import com.synapse.data.repository.SyncRepositoryImpl
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.ImageProcessor
 import com.synapse.data.storage.ProjectStorage
+import com.synapse.data.storage.SecureKeyStorage
 import com.synapse.data.storage.SessionStorage
 import com.synapse.data.storage.StorageHelper
 import com.synapse.data.storage.SyncStorage
@@ -58,6 +59,9 @@ import java.util.concurrent.TimeUnit
  * - StorageHelper: Utility functions for storage operations
  */
 val storageModule = module {
+    // SecureKeyStorage - encrypted API key storage
+    single { SecureKeyStorage(androidContext()) }
+
     // ChunkStorage - requires Context
     single { ChunkStorage(androidContext()) }
 
@@ -114,8 +118,8 @@ val repositoryModule = module {
         )
     }
 
-    // LlmSettingsProvider - reads LLM settings from DataStore (reuse singleton from appModule)
-    single { com.synapse.data.LlmSettingsProvider(get()) }
+    // LlmSettingsProvider - reads LLM settings from DataStore + SecureKeyStorage
+    single { com.synapse.data.LlmSettingsProvider(get(), get()) }
 
     // SyncRepository - requires Context, storage classes, and TranscriptionServiceFactory
     single<SyncRepository> {
@@ -184,8 +188,8 @@ val viewModelModule = module {
         )
     }
 
-    // SettingsViewModel - requires DataStore and ProjectRepository
-    viewModel { SettingsViewModel(androidContext().settingsDataStore, get()) }
+    // SettingsViewModel - requires DataStore, ProjectRepository, and SecureKeyStorage
+    viewModel { SettingsViewModel(androidContext().settingsDataStore, get(), get()) }
 
     // OnboardingViewModel - requires Application and ProjectRepository for AndroidViewModel
     viewModel { OnboardingViewModel(androidApplication(), get()) }
