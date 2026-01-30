@@ -1,13 +1,11 @@
 package com.synapse.ui.review
 
 import androidx.arch.core.executor.testing.InstantTaskExecutorRule
-import com.synapse.data.destination.DestinationRepository
 import com.synapse.data.repository.ProjectRepository
 import com.synapse.data.repository.SessionRepository
 import com.synapse.data.repository.SyncRepository
 import com.synapse.model.CapturedContext
 import com.synapse.model.Chunk
-import com.synapse.model.IntentType
 import com.synapse.model.Project
 import com.synapse.model.Session
 import com.synapse.model.SyncStatus
@@ -44,7 +42,6 @@ class ReviewViewModelTest {
     private lateinit var sessionRepository: SessionRepository
     private lateinit var projectRepository: ProjectRepository
     private lateinit var syncRepository: SyncRepository
-    private lateinit var destinationRepository: DestinationRepository
 
     private fun createChunk(id: String, sessionId: String, index: Int = 0) = Chunk(
         id = id,
@@ -81,15 +78,10 @@ class ReviewViewModelTest {
         sessionRepository = mockk(relaxed = true)
         projectRepository = mockk(relaxed = true)
         syncRepository = mockk(relaxed = true)
-        destinationRepository = mockk(relaxed = true)
 
         every { sessionRepository.observeSessions() } returns flowOf(emptyList())
         every { projectRepository.observeProjects() } returns flowOf(emptyList())
         every { syncRepository.observeSyncStatus() } returns flowOf(SyncStatus.Idle)
-        coEvery { destinationRepository.getAllDestinations() } returns emptyList()
-        every { destinationRepository.mainDestination } returns mockk {
-            every { value } returns "clipboard"
-        }
     }
 
     @After
@@ -100,8 +92,7 @@ class ReviewViewModelTest {
     private fun createViewModel() = ReviewViewModel(
         sessionRepository = sessionRepository,
         projectRepository = projectRepository,
-        syncRepository = syncRepository,
-        destinationRepository = destinationRepository
+        syncRepository = syncRepository
     )
 
     // --- Init / Loading ---
@@ -425,50 +416,6 @@ class ReviewViewModelTest {
         coVerify(exactly = 0) { sessionRepository.deleteSession("s1") }
         val status = vm.uiState.value.syncStatus
         assertTrue(status is SyncStatus.PartialSuccess)
-    }
-
-    // --- Dialog management ---
-
-    @Test
-    fun `showIntentConfirmation sets pending dialog`() = runTest {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.showIntentConfirmation("Buy milk", IntentType.TASK)
-        val dialog = vm.uiState.value.pendingDialog
-        assertTrue(dialog is PendingDialog.IntentConfirmation)
-        assertEquals("Buy milk", (dialog as PendingDialog.IntentConfirmation).noteText)
-    }
-
-    @Test
-    fun `confirmIntent dismisses dialog`() = runTest {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.showIntentConfirmation("note", IntentType.NOTE)
-        vm.confirmIntent(IntentType.NOTE)
-        assertNull(vm.uiState.value.pendingDialog)
-    }
-
-    @Test
-    fun `showQuestionAnswer sets QA dialog`() = runTest {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.showQuestionAnswer("What is X?", "X is Y")
-        val dialog = vm.uiState.value.pendingDialog
-        assertTrue(dialog is PendingDialog.QuestionAnswer)
-    }
-
-    @Test
-    fun `showReminder sets reminder dialog`() = runTest {
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.showReminder("Call doctor", "3pm")
-        val dialog = vm.uiState.value.pendingDialog
-        assertTrue(dialog is PendingDialog.Reminder)
-        assertEquals("Call doctor", (dialog as PendingDialog.Reminder).reminderText)
     }
 
     // --- Misc ---
