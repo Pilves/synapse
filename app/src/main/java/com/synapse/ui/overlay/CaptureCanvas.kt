@@ -236,6 +236,15 @@ fun CaptureCanvas(
                 }
             )
     ) {
+        // Cache path + width for the current (live) stroke to avoid recalculating
+        // createSmoothPath() and calculateWidths() on every draw frame
+        val currentStrokePath = remember(currentStroke) {
+            if (currentStroke.size >= 2) {
+                StrokeSmoother.createSmoothPath(currentStroke) to
+                    StrokeSmoother.calculateWidths(currentStroke, strokeConfig.strokeWidth).average().toFloat()
+            } else null
+        }
+
         // Cache Path objects and widths for completed strokes to avoid recreating on every frame
         val cachedPaths = remember(strokes) {
             strokes.map { stroke ->
@@ -266,11 +275,11 @@ fun CaptureCanvas(
                 )
             }
 
-            // Draw current stroke being drawn (with smooth path)
-            if (currentStroke.isNotEmpty()) {
-                drawStrokePointsWithOutline(
-                    points = currentStroke,
-                    baseStrokeWidth = strokeConfig.strokeWidth,
+            // Draw current stroke being drawn (with smooth path, cached per snapshot)
+            currentStrokePath?.let { (path, avgWidth) ->
+                drawPathWithOutline(
+                    path = path,
+                    strokeWidth = avgWidth,
                     strokeColor = strokeConfig.strokeColor,
                     outlineColor = strokeConfig.outlineColor,
                     outlineWidth = strokeConfig.outlineWidth
