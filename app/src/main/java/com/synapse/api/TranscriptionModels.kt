@@ -90,33 +90,6 @@ data class NoteResponse(
 )
 
 /**
- * A transcribed note with intent detection and context references.
- */
-data class TranscribedNote(
-    val text: String,
-    val chunksUsed: List<Int>,
-    val intent: DetectedIntent = DetectedIntent(type = IntentType.NOTE, confidence = 1.0f),
-    val contextsUsed: List<String> = emptyList()
-)
-
-/**
- * A question extracted from a note paired with its generated answer.
- */
-data class QuestionWithAnswer(
-    val originalNote: TranscribedNote,
-    val question: String,
-    val answer: String
-)
-
-/**
- * Aggregated result of transcription processing including intent-detected questions.
- */
-data class ProcessedResult(
-    val notes: List<TranscribedNote>,
-    val questions: List<QuestionWithAnswer> = emptyList()
-)
-
-/**
  * Error types that can occur during transcription.
  */
 sealed class TranscriptionError : Exception() {
@@ -177,22 +150,3 @@ data class RateLimitState(
     }
 }
 
-/**
- * Type of intent detected in a transcribed note.
- */
-enum class IntentType {
-    NOTE,
-    TASK,
-    QUESTION,
-    REMINDER,
-    REACTION
-}
-
-/**
- * Result of intent detection on a transcribed note.
- */
-data class DetectedIntent(
-    val type: IntentType,
-    val confidence: Float,
-    val needsConfirmation: Boolean = false
-)
