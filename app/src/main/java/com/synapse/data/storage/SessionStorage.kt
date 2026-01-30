@@ -74,6 +74,14 @@ class SessionStorage(
         return System.currentTimeMillis().toString()
     }
 
+    private val validIdRegex = Regex("^[a-zA-Z0-9_-]+$")
+
+    private fun validateId(id: String) {
+        require(validIdRegex.matches(id)) {
+            "Invalid session ID: contains illegal characters"
+        }
+    }
+
     /**
      * Creates a new session.
      *
@@ -82,6 +90,7 @@ class SessionStorage(
      */
     suspend fun createSession(sessionId: String? = null): Session = mutex.withLock {
         val id = sessionId ?: generateSessionId()
+        validateId(id)
         val startTime = System.currentTimeMillis()
 
         val session = Session(
@@ -147,6 +156,7 @@ class SessionStorage(
      */
     suspend fun getSession(sessionId: String): Session? = withContext(Dispatchers.IO) {
         try {
+            if (!validIdRegex.matches(sessionId)) return@withContext null
             val file = File(sessionsDir, "$sessionId${StorageHelper.JSON_EXTENSION}")
             if (!file.exists()) return@withContext null
 

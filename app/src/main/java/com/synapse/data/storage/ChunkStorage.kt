@@ -63,6 +63,14 @@ class ChunkStorage(private val context: Context) {
         private const val MIN_VALID_IMAGE_SIZE = 100L
     }
 
+    private val validIdRegex = Regex("^[a-zA-Z0-9_-]+$")
+
+    private fun validateId(id: String) {
+        require(validIdRegex.matches(id)) {
+            "Invalid ID: contains illegal characters"
+        }
+    }
+
     /** Mutex for ensuring atomic operations per session */
     private val sessionMutexes = ConcurrentHashMap<String, Mutex>()
 
@@ -177,6 +185,7 @@ class ChunkStorage(private val context: Context) {
         index: Int,
         bitmap: Bitmap
     ): StorageResult<Pair<String, String>> = withContext(Dispatchers.IO) {
+        validateId(sessionId)
         val mutex = getSessionMutex(sessionId)
 
         mutex.withLock {
@@ -355,7 +364,7 @@ class ChunkStorage(private val context: Context) {
      */
     suspend fun loadChunk(sessionId: String, chunkId: String): Bitmap? = withContext(Dispatchers.IO) {
         try {
-            // Check if marked as corrupted
+            if (!validIdRegex.matches(sessionId)) return@withContext null
             val sessionDir = File(chunksDir, sessionId)
 
             // Try to find the file - chunkId might be full ID or just index
