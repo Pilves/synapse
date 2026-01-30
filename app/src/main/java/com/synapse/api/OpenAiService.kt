@@ -48,7 +48,7 @@ class OpenAiService(
 
     override fun addAuthHeaders(builder: okhttp3.Request.Builder) = builder
         .addHeader("Content-Type", "application/json")
-        .addHeader("Authorization", "Bearer ${_apiKey!!}")
+        .addHeader("Authorization", "Bearer ${requireNotNull(_apiKey) { "API key not configured for OpenAI" }}")
 
     override fun buildTranscribeRequestBody(
         chunks: List<ChunkData>,

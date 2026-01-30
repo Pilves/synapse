@@ -31,7 +31,7 @@ class RegionGestureDetector(
                         max(start.x, event.x).toInt(),
                         max(start.y, event.y).toInt()
                     )
-                    RegionGestureResult.SelectionInProgress(currentRect!!)
+                    RegionGestureResult.SelectionInProgress(currentRect ?: return RegionGestureResult.Ignored)
                 } else {
                     RegionGestureResult.Ignored
                 }
@@ -39,7 +39,7 @@ class RegionGestureDetector(
 
             MotionEvent.ACTION_UP -> {
                 if (isHolding && currentRect != null) {
-                    val rect = currentRect!!
+                    val rect = currentRect ?: return RegionGestureResult.SelectionCancelled
                     isHolding = false
                     currentRect = null
                     holdStartPoint = null

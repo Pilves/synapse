@@ -46,7 +46,7 @@ class GeminiService(
     override fun getQueryUrl() = "$BASE_URL/$modelId:generateContent"
 
     override fun addAuthHeaders(builder: okhttp3.Request.Builder) = builder
-        .addHeader("x-goog-api-key", _apiKey!!)
+        .addHeader("x-goog-api-key", requireNotNull(_apiKey) { "API key not configured for Gemini" })
 
     override fun buildTranscribeRequestBody(
         chunks: List<ChunkData>,

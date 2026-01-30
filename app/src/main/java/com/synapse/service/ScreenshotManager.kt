@@ -259,7 +259,7 @@ class ScreenshotManager(private val context: Context) {
         // Wait for a fresh frame after reattaching surface
         delay(200)
 
-        val image = reader!!.acquireLatestImage()
+        val image = requireNotNull(reader) { "ImageReader not initialized" }.acquireLatestImage()
         val fullBitmap = image?.let { imageToBitmap(it) }
         image?.close()
 

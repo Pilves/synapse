@@ -134,7 +134,7 @@ fun OnboardingScreen(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == android.app.Activity.RESULT_OK && result.data != null) {
-            com.synapse.service.MediaProjectionHolder.setResult(result.resultCode, result.data!!)
+            com.synapse.service.MediaProjectionHolder.setResult(result.resultCode, requireNotNull(result.data))
             // Forward to OverlayService if it's running
             try {
                 val serviceIntent = android.content.Intent(context, com.synapse.service.OverlayService::class.java).apply {

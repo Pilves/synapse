@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK && result.data != null) {
             val resultCode = result.resultCode
-            val data = result.data!!
+            val data = requireNotNull(result.data) { "MediaProjection result data is null" }
             // Store the result intent for creating MediaProjection later
             MediaProjectionHolder.setResult(resultCode, data)
             // Send to OverlayService which has the mediaProjection foreground type

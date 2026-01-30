@@ -237,7 +237,7 @@ class SyncRepositoryImpl(
                     // Chunk-only segment: transcribe and write
                     segment.contexts.isEmpty() && segment.chunks.isNotEmpty() -> {
                         val (notes, failed) = transcribeChunks(
-                            sessionId, segment.chunks, transcriptionService!!
+                            sessionId, segment.chunks, requireNotNull(transcriptionService) { "Transcription service not available" }
                         )
                         failedCount += failed
                         if (notes.isNotEmpty()) {
@@ -274,7 +274,7 @@ class SyncRepositoryImpl(
 
                         // Try transcribing chunks to text (for the question)
                         val (notes, failed) = transcribeChunks(
-                            sessionId, segment.chunks, transcriptionService!!
+                            sessionId, segment.chunks, requireNotNull(transcriptionService) { "Transcription service not available" }
                         )
                         // Track failed transcriptions, but if we send images directly
                         // and get an answer, we'll subtract them back

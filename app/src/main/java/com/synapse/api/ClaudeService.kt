@@ -50,7 +50,7 @@ class ClaudeService(
 
     override fun addAuthHeaders(builder: okhttp3.Request.Builder) = builder
         .addHeader("Content-Type", "application/json")
-        .addHeader("x-api-key", _apiKey!!)
+        .addHeader("x-api-key", requireNotNull(_apiKey) { "API key not configured for Claude" })
         .addHeader("anthropic-version", ANTHROPIC_VERSION)
 
     override fun buildTranscribeRequestBody(
