@@ -3,6 +3,7 @@ package com.synapse.service
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
+import android.content.Intent
 import android.graphics.Rect
 import android.provider.Settings
 import android.view.accessibility.AccessibilityEvent
