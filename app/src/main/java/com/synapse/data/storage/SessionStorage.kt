@@ -625,22 +625,18 @@ class SessionStorage(
  */
 @Serializable
 private data class SessionDto(
+    val schemaVersion: Int = CURRENT_SCHEMA_VERSION,
     val id: String,
     val startedAt: Long,
     val endedAt: Long? = null,
     val chunks: List<ChunkDto> = emptyList(),
     val contexts: List<CapturedContextDto> = emptyList()
 ) {
-    fun toSession(): Session = Session(
-        id = id,
-        startedAt = startedAt,
-        endedAt = endedAt,
-        chunks = chunks.map { it.toChunk() },
-        contexts = contexts.mapNotNull { it.toCapturedContext() }
-    )
-
     companion object {
+        const val CURRENT_SCHEMA_VERSION = 1
+
         fun fromSession(session: Session): SessionDto = SessionDto(
+            schemaVersion = CURRENT_SCHEMA_VERSION,
             id = session.id,
             startedAt = session.startedAt,
             endedAt = session.endedAt,
@@ -648,6 +644,14 @@ private data class SessionDto(
             contexts = session.contexts.map { CapturedContextDto.from(it) }
         )
     }
+
+    fun toSession(): Session = Session(
+        id = id,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        chunks = chunks.map { it.toChunk() },
+        contexts = contexts.mapNotNull { it.toCapturedContext() }
+    )
 }
 
 /**
@@ -655,6 +659,7 @@ private data class SessionDto(
  */
 @Serializable
 private data class ChunkDto(
+    val schemaVersion: Int = ChunkDto.CURRENT_SCHEMA_VERSION,
     val id: String,
     val sessionId: String,
     val index: Int,
@@ -674,7 +679,10 @@ private data class ChunkDto(
     )
 
     companion object {
+        const val CURRENT_SCHEMA_VERSION = 1
+
         fun fromChunk(chunk: Chunk): ChunkDto = ChunkDto(
+            schemaVersion = CURRENT_SCHEMA_VERSION,
             id = chunk.id,
             sessionId = chunk.sessionId,
             index = chunk.index,
