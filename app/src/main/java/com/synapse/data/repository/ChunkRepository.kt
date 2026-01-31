@@ -28,7 +28,8 @@ class ChunkRepository(
     ) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
         override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) {
-            if (evicted) oldValue.recycle()
+            // Don't recycle — callers may still hold references to evicted bitmaps.
+            // GC will reclaim the native memory when no references remain.
         }
     }
 
@@ -108,7 +109,7 @@ class ChunkRepository(
         if (bitmap != null) {
             imageCache.put(chunkId, bitmap)
         }
-        return bitmap
+        return bitmap?.copy(bitmap.config, false)
     }
 
     /**
