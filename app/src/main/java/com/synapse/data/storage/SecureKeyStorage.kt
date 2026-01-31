@@ -70,22 +70,20 @@ class SecureKeyStorage(context: Context) {
         try {
             val snapshot = dataStore.data.first()
 
-            // Legacy single-provider key
-            val legacyApiKey = snapshot[stringPreferencesKey("api_key")]
-            if (!legacyApiKey.isNullOrBlank()) {
-                saveKey("legacy", legacyApiKey)
-            }
+            // Migrate keys and remove plaintext originals immediately.
+            // Note: JVM strings are immutable so we cannot zero the in-memory
+            // copies, but removing them from DataStore eliminates the on-disk risk.
+            snapshot[stringPreferencesKey("api_key")]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { saveKey("legacy", it) }
 
-            // Multi-provider keys
-            val transcriptionKey = snapshot[stringPreferencesKey("transcription_api_key")]
-            if (!transcriptionKey.isNullOrBlank()) {
-                saveKey("transcription", transcriptionKey)
-            }
+            snapshot[stringPreferencesKey("transcription_api_key")]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { saveKey("transcription", it) }
 
-            val answeringKey = snapshot[stringPreferencesKey("answering_api_key")]
-            if (!answeringKey.isNullOrBlank()) {
-                saveKey("answering", answeringKey)
-            }
+            snapshot[stringPreferencesKey("answering_api_key")]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { saveKey("answering", it) }
 
             // Remove old plain-text keys from DataStore
             dataStore.edit { prefs ->
