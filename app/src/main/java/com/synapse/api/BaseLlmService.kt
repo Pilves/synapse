@@ -3,11 +3,13 @@ package com.synapse.api
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.delay
+import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
+import java.io.IOException
 import java.net.ConnectException
 import java.util.concurrent.TimeUnit
 
@@ -31,6 +33,9 @@ abstract class BaseLlmService(
     companion object {
         /** Maximum response body size (5MB) to prevent OOM on malformed responses. */
         private const val MAX_RESPONSE_BODY_BYTES = 5L * 1024L * 1024L
+
+        /** Maximum backoff delay for retry logic. */
+        private const val MAX_BACKOFF_MS = 30_000L
     }
 
     // ── Abstract properties ─────────────────────────────────────────────
@@ -67,9 +72,9 @@ abstract class BaseLlmService(
     protected open val httpExtraRetryAfterHeader: String? = null
     protected open val httpHandle529AsOverloaded: Boolean = false
 
-    /** Override in Ollama to handle 404 model-not-found before HttpErrorHandler. */
+    /** Override in Ollama to handle 404 model-not-found before the default handler. */
     protected open fun handleNonSuccessResponse(code: Int, responseBody: String, response: okhttp3.Response) {
-        HttpErrorHandler.handleHttpError(
+        handleHttpError(
             response, responseBody,
             retryAfterHeader = httpRetryAfterHeader,
             extraRetryAfterHeader = httpExtraRetryAfterHeader,
@@ -188,10 +193,9 @@ abstract class BaseLlmService(
         val prompt = PromptTemplate.buildPrompt(cleanupEnabled, advancedFormatting, _customPrompt)
         val chunkContext = PromptTemplate.buildChunkContext(chunks)
 
-        return RetryHelper.executeWithRetry(
+        return executeWithRetry(
             maxRetries = maxRetries,
             initialDelayMs = initialRetryDelayMs,
-            tag = tag,
             retryServerErrors = retryServerErrors,
             onConnectException = connectExceptionHandler
         ) {
@@ -208,10 +212,9 @@ abstract class BaseLlmService(
             delay(waitTime)
         }
 
-        return RetryHelper.executeWithRetry(
+        return executeWithRetry(
             maxRetries = maxRetries,
             initialDelayMs = initialRetryDelayMs,
-            tag = tag,
             retryServerErrors = retryServerErrors,
             onConnectException = connectExceptionHandler
         ) {
@@ -227,10 +230,9 @@ abstract class BaseLlmService(
         if (!isConfigured()) throw TranscriptionError.ApiKeyMissing()
         if (images.isEmpty()) return textQuery(prompt, systemPrompt)
 
-        return RetryHelper.executeWithRetry(
+        return executeWithRetry(
             maxRetries = maxRetries,
             initialDelayMs = initialRetryDelayMs,
-            tag = tag,
             retryServerErrors = retryServerErrors,
             onConnectException = connectExceptionHandler
         ) {
@@ -358,12 +360,174 @@ abstract class BaseLlmService(
                 return TranscriptionResult.failure((0 until chunkCount).toList())
             }
 
-            return TranscriptionJsonParser.parse(content, chunkCount, extractJsonBounds = extractJsonBounds)
+            return parseTranscriptionJson(content, chunkCount, extractJsonBounds = extractJsonBounds)
         } catch (e: TranscriptionError) {
             throw e
         } catch (e: Exception) {
             Log.e(tag, "Failed to parse response", e)
             throw TranscriptionError.InvalidResponse("Failed to parse response: ${e.message}", e)
+        }
+    }
+
+    // ── Inlined RetryHelper ─────────────────────────────────────────────
+
+    /**
+     * Executes a block with retry logic for transient errors.
+     *
+     * Retries on:
+     * - [TranscriptionError.RateLimitError] -- uses Retry-After header when available
+     * - [TranscriptionError.ServerError] with retryable status codes
+     * - [TranscriptionError.ServiceUnavailable] -- local service not reachable
+     * - [ConnectException] -- connection refused (e.g. Ollama not running)
+     * - [IOException] -- generic network failure
+     */
+    private suspend fun <T> executeWithRetry(
+        maxRetries: Int = 3,
+        initialDelayMs: Long = 1000L,
+        retryServerErrors: (Int) -> Boolean = { it in 500..599 },
+        onConnectException: ((ConnectException) -> Exception)? = null,
+        block: suspend () -> T
+    ): T {
+        var lastException: Exception? = null
+        var retryDelay = initialDelayMs
+
+        repeat(maxRetries) { attempt ->
+            try {
+                return block()
+            } catch (e: TranscriptionError.RateLimitError) {
+                Log.w(tag, "Rate limited on attempt ${attempt + 1}, waiting...")
+                val waitTime = e.retryAfterSeconds?.times(1000L) ?: retryDelay
+                delay(waitTime + retryJitter(waitTime))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
+                lastException = e
+            } catch (e: TranscriptionError.ServiceUnavailable) {
+                Log.w(tag, "Service unavailable on attempt ${attempt + 1}")
+                delay(retryDelay + retryJitter(retryDelay))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
+                lastException = e
+            } catch (e: TranscriptionError.ServerError) {
+                if (retryServerErrors(e.statusCode)) {
+                    Log.w(tag, "Server error on attempt ${attempt + 1}: ${e.message}")
+                    delay(retryDelay + retryJitter(retryDelay))
+                    retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
+                    lastException = e
+                } else {
+                    throw e
+                }
+            } catch (e: ConnectException) {
+                Log.w(tag, "Connection refused on attempt ${attempt + 1}")
+                delay(retryDelay + retryJitter(retryDelay))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
+                lastException = onConnectException?.invoke(e)
+                    ?: TranscriptionError.NetworkError(e.message ?: "Connection refused", e)
+            } catch (e: IOException) {
+                Log.w(tag, "Network error on attempt ${attempt + 1}: ${e.message}")
+                delay(retryDelay + retryJitter(retryDelay))
+                retryDelay = minOf(retryDelay * 2, MAX_BACKOFF_MS)
+                lastException = TranscriptionError.NetworkError(e.message ?: "Network error", e)
+            }
+        }
+
+        throw lastException ?: TranscriptionError.Unknown("Max retries exceeded")
+    }
+
+    private fun retryJitter(delayMs: Long): Long {
+        return (delayMs * 0.1 * Math.random()).toLong()
+    }
+
+    // ── Inlined HttpErrorHandler ────────────────────────────────────────
+
+    /**
+     * Throws the appropriate [TranscriptionError] for a non-successful HTTP response.
+     */
+    private fun handleHttpError(
+        response: okhttp3.Response,
+        responseBody: String,
+        retryAfterHeader: String = "Retry-After",
+        extraRetryAfterHeader: String? = null,
+        handle529AsOverloaded: Boolean = false
+    ): Nothing {
+        val code = response.code
+
+        when {
+            code == 401 || code == 403 -> {
+                throw TranscriptionError.ApiKeyInvalid(
+                    "Invalid or unauthorized API key (HTTP $code): $responseBody"
+                )
+            }
+            code == 429 -> {
+                val retryAfter = response.header(retryAfterHeader)?.toIntOrNull()
+                    ?: extraRetryAfterHeader?.let { response.header(it)?.toIntOrNull() }
+                throw TranscriptionError.RateLimitError(retryAfter)
+            }
+            handle529AsOverloaded && code == 529 -> {
+                throw TranscriptionError.ServiceUnavailable("API overloaded")
+            }
+            code in 500..599 -> {
+                throw TranscriptionError.ServerError(code, responseBody)
+            }
+            else -> {
+                throw TranscriptionError.Unknown("HTTP $code: $responseBody")
+            }
+        }
+    }
+
+    // ── Inlined TranscriptionJsonParser ─────────────────────────────────
+
+    private val transcriptionJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
+
+    /**
+     * Parses the JSON transcription output from an LLM.
+     *
+     * @param content Raw text from the LLM (may include markdown fences)
+     * @param chunkCount Total number of chunks sent, used to compute failed indices
+     * @param extractJsonBounds If true, searches for the outermost `{...}` in the cleaned
+     *   content before parsing. Useful for models (e.g. Ollama/llava) that sometimes
+     *   embed JSON inside prose.
+     */
+    protected fun parseTranscriptionJson(
+        content: String,
+        chunkCount: Int,
+        extractJsonBounds: Boolean = false
+    ): TranscriptionResult {
+        try {
+            // Clean up markdown code fencing
+            var cleanedContent = content
+                .replace(Regex("^```json\\s*", RegexOption.MULTILINE), "")
+                .replace(Regex("^```\\s*", RegexOption.MULTILINE), "")
+                .replace(Regex("```$", RegexOption.MULTILINE), "")
+                .trim()
+
+            if (extractJsonBounds) {
+                val jsonStart = cleanedContent.indexOf('{')
+                val jsonEnd = cleanedContent.lastIndexOf('}')
+                if (jsonStart == -1 || jsonEnd == -1 || jsonEnd < jsonStart) {
+                    throw TranscriptionError.InvalidResponse("No valid JSON found in response")
+                }
+                cleanedContent = cleanedContent.substring(jsonStart, jsonEnd + 1)
+            }
+
+            val transcriptionResponse = transcriptionJson.decodeFromString<TranscriptionResponse>(cleanedContent)
+
+            val notes = transcriptionResponse.notes.map { noteResponse ->
+                Note(
+                    text = noteResponse.text,
+                    chunksUsed = noteResponse.chunksUsed
+                )
+            }
+
+            val usedChunks = notes.flatMap { it.chunksUsed }.toSet()
+            val failedChunks = (0 until chunkCount).filter { it !in usedChunks }
+
+            return TranscriptionResult(notes, failedChunks)
+        } catch (e: TranscriptionError) {
+            throw e
+        } catch (e: Exception) {
+            Log.e(tag, "Failed to parse transcription JSON (${content.length} chars)", e)
+            throw TranscriptionError.InvalidResponse("Invalid JSON from LLM: ${e.message}", e)
         }
     }
 }
