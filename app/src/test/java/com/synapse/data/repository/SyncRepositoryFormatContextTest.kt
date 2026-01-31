@@ -87,7 +87,7 @@ class SyncRepositoryFormatContextTest {
             contexts = listOf(ctx)
         )
 
-        coEvery { sessionStorage.getSession("s1") } returns com.synapse.data.storage.StorageResult.Success(session)
+        coEvery { sessionStorage.getSession("s1") } returns session
         coEvery { transcriptionService.textQuery(any(), any()) } returns "# Formatted Text"
         // polishMarkdownFormatting also calls textQuery — allow it
         coEvery { transcriptionService.textQuery(match { it.contains("Formatted Text") }, any()) } returns "# Formatted Text"
@@ -119,7 +119,7 @@ class SyncRepositoryFormatContextTest {
             contexts = listOf(ctx)
         )
 
-        coEvery { sessionStorage.getSession("s2") } returns com.synapse.data.storage.StorageResult.Success(session)
+        coEvery { sessionStorage.getSession("s2") } returns session
 
         val repo = createRepo(serviceProvider = { null })
         // With no LLM and no chunks, the session still has contexts to write.
@@ -144,7 +144,7 @@ class SyncRepositoryFormatContextTest {
             contexts = listOf(ctx)
         )
 
-        coEvery { sessionStorage.getSession("s3") } returns com.synapse.data.storage.StorageResult.Success(session)
+        coEvery { sessionStorage.getSession("s3") } returns session
         coEvery {
             transcriptionService.textQuery(eq("Error text"), any())
         } throws RuntimeException("LLM unavailable")

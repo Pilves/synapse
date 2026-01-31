@@ -158,27 +158,16 @@ class ChunkStorage(
     /**
      * Check if there is sufficient storage for saving a new chunk.
      *
-     * @return StorageResult.Success(true) if storage is available, Error otherwise
+     * @throws IOException if storage is insufficient or cannot be checked
      */
-    suspend fun checkStorageAvailable(): StorageResult<Boolean> = withContext(Dispatchers.IO) {
-        try {
-            val stat = android.os.StatFs(context.cacheDir.path)
-            val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
+    suspend fun checkStorageAvailable(): Unit = withContext(Dispatchers.IO) {
+        val stat = android.os.StatFs(context.cacheDir.path)
+        val availableBytes = stat.availableBlocksLong * stat.blockSizeLong
 
-            if (availableBytes >= MIN_FREE_STORAGE_BYTES) {
-                StorageResult.Success(true)
-            } else {
-                StorageResult.Error(
-                    ErrorType.INSUFFICIENT_STORAGE,
-                    "Insufficient storage: ${StorageHelper.formatBytes(availableBytes)} free, " +
-                            "${StorageHelper.formatBytes(MIN_FREE_STORAGE_BYTES)} required"
-                )
-            }
-        } catch (e: Exception) {
-            StorageResult.Error(
-                ErrorType.UNKNOWN,
-                "Failed to check storage: ${e.message}",
-                e
+        if (availableBytes < MIN_FREE_STORAGE_BYTES) {
+            throw IOException(
+                "Insufficient storage: ${StorageHelper.formatBytes(availableBytes)} free, " +
+                        "${StorageHelper.formatBytes(MIN_FREE_STORAGE_BYTES)} required"
             )
         }
     }
@@ -195,22 +184,21 @@ class ChunkStorage(
      * @param sessionId The session this chunk belongs to
      * @param index The chunk index within the session
      * @param bitmap The image to save
-     * @return StorageResult with the chunk ID and file path on success
+     * @return Pair of chunk ID and file path
+     * @throws IOException if storage is insufficient, write fails, or verification fails
+     * @throws SecurityException if file access is denied
      */
     suspend fun saveChunk(
         sessionId: String,
         index: Int,
         bitmap: Bitmap
-    ): StorageResult<Pair<String, String>> = withContext(Dispatchers.IO) {
+    ): Pair<String, String> = withContext(Dispatchers.IO) {
         validateId(sessionId)
         val mutex = getSessionMutex(sessionId)
 
         mutex.withLock {
             // 1. Pre-flight storage check
-            val storageCheck = checkStorageAvailable()
-            if (storageCheck is StorageResult.Error) {
-                return@withContext storageCheck
-            }
+            checkStorageAvailable()
 
             // 2. Setup files
             val sessionDir = File(chunksDir, sessionId).also { it.mkdirs() }
@@ -228,10 +216,7 @@ class ChunkStorage(
                     )
                     if (!success) {
                         tempFile.delete()
-                        return@withContext StorageResult.Error(
-                            ErrorType.WRITE_FAILED,
-                            "Failed to compress bitmap to WebP"
-                        )
+                        throw IOException("Failed to compress bitmap to WebP")
                     }
                     out.flush()
                 }
@@ -239,10 +224,7 @@ class ChunkStorage(
                 // 4. Verify the written file
                 if (!verifyImageFile(tempFile)) {
                     tempFile.delete()
-                    return@withContext StorageResult.Error(
-                        ErrorType.VERIFICATION_FAILED,
-                        "Written chunk failed verification"
-                    )
+                    throw IOException("Written chunk failed verification")
                 }
 
                 // 5. Atomic rename (delete existing first if needed)
@@ -258,11 +240,7 @@ class ChunkStorage(
                         tempFile.delete()
                     } catch (e: Exception) {
                         tempFile.delete()
-                        return@withContext StorageResult.Error(
-                            ErrorType.WRITE_FAILED,
-                            "Failed to finalize chunk file: ${e.message}",
-                            e
-                        )
+                        throw IOException("Failed to finalize chunk file: ${e.message}", e)
                     }
                 }
 
@@ -278,29 +256,17 @@ class ChunkStorage(
                 val chunkId = "${sessionId}_$index"
                 Log.d(TAG, "Saved chunk $chunkId at ${finalFile.absolutePath}")
 
-                StorageResult.Success(Pair(chunkId, finalFile.absolutePath))
+                Pair(chunkId, finalFile.absolutePath)
 
             } catch (e: SecurityException) {
                 tempFile.delete()
-                StorageResult.Error(
-                    ErrorType.PERMISSION_DENIED,
-                    "Permission denied: ${e.message}",
-                    e
-                )
+                throw e
             } catch (e: IOException) {
                 tempFile.delete()
-                StorageResult.Error(
-                    ErrorType.WRITE_FAILED,
-                    "IO error: ${e.message}",
-                    e
-                )
+                throw e
             } catch (e: Exception) {
                 tempFile.delete()
-                StorageResult.Error(
-                    ErrorType.UNKNOWN,
-                    "Unexpected error: ${e.message}",
-                    e
-                )
+                throw IOException("Unexpected error saving chunk: ${e.message}", e)
             }
         }
     }
@@ -317,12 +283,11 @@ class ChunkStorage(
         val existingChunks = listChunksForSession(sessionId)
         val nextIndex = (existingChunks.maxOfOrNull { it.index } ?: -1) + 1
 
-        when (val result = saveChunk(sessionId, nextIndex, bitmap)) {
-            is StorageResult.Success -> result.data
-            is StorageResult.Error -> {
-                Log.e(TAG, "Failed to save chunk: ${result.message}")
-                null
-            }
+        try {
+            saveChunk(sessionId, nextIndex, bitmap)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save chunk: ${e.message}")
+            null
         }
     }
 

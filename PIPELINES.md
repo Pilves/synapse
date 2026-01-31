@@ -376,4 +376,4 @@ UI updated with result status
 - **StateFlow** for all observable data
 - **Dispatchers.IO** for file operations
 - **Atomic writes** via temp file + header verification + rename
-- **Result types** (`StorageResult<T>`, `ImageResult<T>`) for error propagation
+- **Direct returns + exceptions** for storage error propagation; `ImageResult<T>` for image processing

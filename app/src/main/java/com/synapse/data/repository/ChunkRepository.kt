@@ -4,7 +4,6 @@ import android.graphics.Bitmap
 import android.util.LruCache
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.SessionStorage
-import com.synapse.data.storage.StorageResult
 import com.synapse.model.Chunk
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -104,21 +103,14 @@ class ChunkRepositoryImpl(
 
     override suspend fun saveChunk(sessionId: String, bitmap: Bitmap, timestampSeconds: Float): Chunk {
         // Validate session exists
-        when (sessionStorage.getSession(sessionId)) {
-            is StorageResult.Success -> {} // session exists
-            is StorageResult.Error -> throw IllegalArgumentException("Session not found: $sessionId")
-        }
+        sessionStorage.getSession(sessionId)
+            ?: throw IllegalArgumentException("Session not found: $sessionId")
 
         // Use single authoritative source for chunk index
         val nextIndex = sessionStorage.getNextChunkIndex(sessionId)
 
         // Save the image to storage using the authoritative index
-        val result = chunkStorage.saveChunk(sessionId, nextIndex, bitmap)
-        val (chunkId, filePath) = when (result) {
-            is com.synapse.data.storage.StorageResult.Success -> result.data
-            is com.synapse.data.storage.StorageResult.Error ->
-                throw RuntimeException("Failed to save chunk image: ${result.message}")
-        }
+        val (chunkId, filePath) = chunkStorage.saveChunk(sessionId, nextIndex, bitmap)
 
         // Create chunk metadata
         val chunk = Chunk(
@@ -132,19 +124,13 @@ class ChunkRepositoryImpl(
         )
 
         // Add chunk to session
-        when (val addResult = sessionStorage.addChunk(sessionId, chunk)) {
-            is StorageResult.Success -> {} // chunk added
-            is StorageResult.Error -> throw RuntimeException("Failed to add chunk to session: ${addResult.message}")
-        }
+        sessionStorage.addChunk(sessionId, chunk)
 
         return chunk
     }
 
     override suspend fun getChunksForSession(sessionId: String): List<Chunk> {
-        val session = when (val result = sessionStorage.getSession(sessionId)) {
-            is StorageResult.Success -> result.data
-            is StorageResult.Error -> return emptyList()
-        }
+        val session = sessionStorage.getSession(sessionId) ?: return emptyList()
         return session.chunks.sortedBy { it.index }
     }
 
