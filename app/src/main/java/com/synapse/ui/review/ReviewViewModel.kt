@@ -67,7 +67,6 @@ data class ReviewUiState(
     val pendingSyncCount: Int = 0,
     val queuedSyncCount: Int = 0,
     val failedSyncCount: Int = 0,
-    val syncedSessionIds: Set<String> = emptySet(),
     val failedChunkIds: Set<String> = emptySet()
 )
 
@@ -108,13 +107,9 @@ class ReviewViewModel(
     // Debounce job for cost estimate refresh
     private var costEstimateJob: Job? = null
 
-    // Deferred cleanup job for synced sessions
-    private var deferredCleanupJob: Job? = null
-
     companion object {
         private const val UNDO_TIMEOUT_MS = 5000L
         private const val COST_DEBOUNCE_MS = 300L
-        private const val DEFERRED_CLEANUP_MS = 30_000L
         private val INVALID_FILENAME_CHARS = Regex("[/\\\\:*?\"<>|]")
     }
 
@@ -537,17 +532,21 @@ class ReviewViewModel(
                 }
 
                 progressJob.cancelAndJoin()
+
+                // Delete successfully synced sessions immediately
+                for (id in syncedIds) {
+                    try {
+                        sessionRepository.deleteSession(id)
+                    } catch (e: Exception) {
+                        android.util.Log.w("ReviewViewModel", "Failed to cleanup session $id", e)
+                    }
+                }
+
                 _uiState.update {
                     it.copy(
                         syncStatus = finalStatus,
-                        syncedSessionIds = syncedIds,
                         failedChunkIds = failedIds
                     )
-                }
-
-                // Start deferred cleanup timer for successfully synced sessions
-                if (syncedIds.isNotEmpty()) {
-                    startDeferredCleanup(syncedIds)
                 }
             } catch (e: Exception) {
                 progressJob.cancelAndJoin()
@@ -556,44 +555,6 @@ class ReviewViewModel(
                 }
             }
         }
-    }
-
-    /**
-     * Schedule auto-cleanup of synced sessions after a delay.
-     * User can trigger immediate cleanup via [clearSyncedSessions].
-     */
-    private fun startDeferredCleanup(sessionIds: Set<String>) {
-        deferredCleanupJob?.cancel()
-        deferredCleanupJob = viewModelScope.launch {
-            delay(DEFERRED_CLEANUP_MS)
-            performCleanup(sessionIds)
-        }
-    }
-
-    /**
-     * Immediately clean up synced sessions (called from UI "Clear" button).
-     */
-    fun clearSyncedSessions() {
-        deferredCleanupJob?.cancel()
-        val sessionIds = _uiState.value.syncedSessionIds
-        if (sessionIds.isEmpty()) return
-        viewModelScope.launch {
-            performCleanup(sessionIds)
-        }
-    }
-
-    private suspend fun performCleanup(sessionIds: Set<String>) {
-        for (id in sessionIds) {
-            try {
-                sessionRepository.deleteSession(id)
-            } catch (e: Exception) {
-                android.util.Log.w("ReviewViewModel", "Failed to cleanup session $id", e)
-            }
-        }
-        _uiState.update {
-            it.copy(syncedSessionIds = emptySet())
-        }
-        // Session list auto-refreshes via observeSessions() flow
     }
 
     /**
@@ -618,7 +579,7 @@ class ReviewViewModel(
      * Reset sync status to idle
      */
     fun resetSyncStatus() {
-        _uiState.update { it.copy(syncStatus = SyncStatus.Idle, syncedSessionIds = emptySet(), failedChunkIds = emptySet()) }
+        _uiState.update { it.copy(syncStatus = SyncStatus.Idle, failedChunkIds = emptySet()) }
     }
 
     /**

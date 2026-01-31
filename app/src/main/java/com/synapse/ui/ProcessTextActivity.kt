@@ -3,6 +3,7 @@ package com.synapse.ui
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import com.synapse.model.CapturedContext
 import com.synapse.service.OverlayService
@@ -29,6 +30,9 @@ class ProcessTextActivity : ComponentActivity() {
             } else {
                 startService(overlayIntent)
             }
+
+            val preview = if (text.length > 40) text.take(40) + "…" else text
+            Toast.makeText(this, "✓ Text captured: $preview", Toast.LENGTH_SHORT).show()
         }
 
         finish()

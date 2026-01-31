@@ -4,7 +4,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -200,7 +199,6 @@ fun ReviewScreen(
                 viewMode = uiState.viewMode,
                 selectedChunkIds = uiState.selectedChunkIds,
                 failedChunkIds = uiState.failedChunkIds,
-                syncedSessionIds = uiState.syncedSessionIds,
                 isLoading = uiState.isLoading,
                 onChunkSelected = { chunkId, _ ->
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -233,9 +231,7 @@ fun ReviewScreen(
             SyncStatusBar(
                 syncStatus = uiState.syncStatus,
                 onDismiss = viewModel::resetSyncStatus,
-                syncedSessionIds = uiState.syncedSessionIds,
                 failedChunkIds = uiState.failedChunkIds,
-                onClearSynced = viewModel::clearSyncedSessions,
                 onRetryFailed = viewModel::retryFailedChunks
             )
 
@@ -400,7 +396,6 @@ private fun ReviewContent(
     viewMode: ViewMode,
     selectedChunkIds: Set<String>,
     failedChunkIds: Set<String>,
-    syncedSessionIds: Set<String>,
     isLoading: Boolean,
     onChunkSelected: (String, Boolean) -> Unit,
     onSelectAllChunksInSession: (com.synapse.model.Session) -> Unit,
@@ -433,31 +428,19 @@ private fun ReviewContent(
                         items = sessions,
                         key = { it.id }
                     ) { session ->
-                        val isSynced = session.id in syncedSessionIds
-                        val alpha = if (isSynced) 0.5f else 1f
-                        Box(
-                            modifier = Modifier
-                                .then(
-                                    if (isSynced) Modifier.background(
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                                        RoundedCornerShape(12.dp)
-                                    ) else Modifier
-                                )
-                        ) {
-                            SessionCard(
-                                session = session,
-                                viewMode = viewMode,
-                                selectedChunkIds = selectedChunkIds,
-                                onChunkSelected = onChunkSelected,
-                                onSelectAllChunks = { onSelectAllChunksInSession(session) },
-                                onDeselectAllChunks = { onDeselectAllChunksInSession(session) },
-                                onDeleteChunk = onDeleteChunk,
-                                onDeleteSession = { onDeleteSession(session) },
-                                onPreviewChunk = onPreviewChunk,
-                                onDeleteContext = onDeleteContext,
-                                failedChunkIds = failedChunkIds
-                            )
-                        }
+                        SessionCard(
+                            session = session,
+                            viewMode = viewMode,
+                            selectedChunkIds = selectedChunkIds,
+                            onChunkSelected = onChunkSelected,
+                            onSelectAllChunks = { onSelectAllChunksInSession(session) },
+                            onDeselectAllChunks = { onDeselectAllChunksInSession(session) },
+                            onDeleteChunk = onDeleteChunk,
+                            onDeleteSession = { onDeleteSession(session) },
+                            onPreviewChunk = onPreviewChunk,
+                            onDeleteContext = onDeleteContext,
+                            failedChunkIds = failedChunkIds
+                        )
                     }
                 }
             }

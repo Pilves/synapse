@@ -53,9 +53,7 @@ import com.synapse.ui.theme.SynapseTheme
 fun SyncStatusBar(
     syncStatus: SyncStatus,
     onDismiss: () -> Unit,
-    syncedSessionIds: Set<String> = emptySet(),
     failedChunkIds: Set<String> = emptySet(),
-    onClearSynced: (() -> Unit)? = null,
     onRetryFailed: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -78,8 +76,6 @@ fun SyncStatusBar(
                 is SyncStatus.Queued -> QueuedContent()
                 is SyncStatus.InProgress -> InProgressContent(progress = syncStatus.progress)
                 is SyncStatus.Success -> SuccessContent(
-                    hasSyncedSessions = syncedSessionIds.isNotEmpty(),
-                    onClearSynced = onClearSynced,
                     onDismiss = onDismiss
                 )
                 is SyncStatus.PartialSuccess -> PartialSuccessContent(
@@ -192,11 +188,7 @@ private fun InProgressContent(progress: Float) {
 }
 
 @Composable
-private fun SuccessContent(
-    hasSyncedSessions: Boolean = false,
-    onClearSynced: (() -> Unit)? = null,
-    onDismiss: () -> Unit
-) {
+private fun SuccessContent(onDismiss: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -217,11 +209,6 @@ private fun SuccessContent(
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.weight(1f)
         )
-        if (hasSyncedSessions && onClearSynced != null) {
-            TextButton(onClick = onClearSynced) {
-                Text("Clear")
-            }
-        }
         TextButton(onClick = onDismiss) {
             Text("Dismiss")
         }
