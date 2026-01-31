@@ -3,10 +3,7 @@ package com.synapse.service
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
+import com.synapse.util.HapticFeedbackHelper
 import android.util.Log
 import androidx.compose.runtime.MutableState
 import com.synapse.data.repository.ChunkRepository
@@ -98,10 +95,11 @@ class OverlaySessionManager(
                     capturedChunk.bitmap.recycle()
                 }
 
-                // Update badge count and provide haptic feedback
+                // Update badge count, clear text preview, and provide haptic feedback
                 launch(Dispatchers.Main) {
                     pendingChunkCount++
                     onBadgeUpdate(pendingChunkCount)
+                    capturedTextPreview.value = null
                     vibrate(30)
                 }
             } catch (e: IOException) {
@@ -449,28 +447,6 @@ class OverlaySessionManager(
     }
 
     private fun vibrate(durationMs: Long = 50) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
-                vibratorManager.defaultVibrator.vibrate(
-                    VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(
-                        VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(durationMs)
-                }
-            }
-        } catch (e: SecurityException) {
-            Log.w(TAG, "Vibration permission denied", e)
-        } catch (e: IllegalStateException) {
-            Log.w(TAG, "Vibrator not available", e)
-        }
+        HapticFeedbackHelper.vibrate(context, durationMs)
     }
 }

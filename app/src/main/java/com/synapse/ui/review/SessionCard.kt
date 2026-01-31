@@ -81,6 +81,7 @@ fun SessionCard(
     onDeleteSession: () -> Unit,
     onPreviewChunk: (Chunk) -> Unit,
     onDeleteContext: (String) -> Unit = {},
+    failedChunkIds: Set<String> = emptySet(),
     modifier: Modifier = Modifier
 ) {
     var isExpanded by remember { mutableStateOf(true) }
@@ -141,6 +142,7 @@ fun SessionCard(
                             chunks = chunks,
                             session = session,
                             selectedChunkIds = selectedChunkIds,
+                            failedChunkIds = failedChunkIds,
                             onChunkSelected = onChunkSelected,
                             onDeleteChunk = onDeleteChunk,
                             onPreviewChunk = onPreviewChunk,
@@ -303,6 +305,7 @@ private fun SeparateChunksView(
     chunks: List<Chunk>,
     session: Session,
     selectedChunkIds: Set<String>,
+    failedChunkIds: Set<String> = emptySet(),
     onChunkSelected: (String, Boolean) -> Unit,
     onDeleteChunk: (Chunk) -> Unit,
     onPreviewChunk: (Chunk) -> Unit,
@@ -326,7 +329,8 @@ private fun SeparateChunksView(
                     isSelected = chunk.id in selectedChunkIds,
                     showCheckbox = true,
                     onSelect = { selected -> onChunkSelected(chunk.id, selected) },
-                    onPreview = { onPreviewChunk(chunk) }
+                    onPreview = { onPreviewChunk(chunk) },
+                    isFailed = chunk.id in failedChunkIds
                 )
 
                 // Delete button for individual chunk

@@ -53,6 +53,10 @@ import com.synapse.ui.theme.SynapseTheme
 fun SyncStatusBar(
     syncStatus: SyncStatus,
     onDismiss: () -> Unit,
+    syncedSessionIds: Set<String> = emptySet(),
+    failedChunkIds: Set<String> = emptySet(),
+    onClearSynced: (() -> Unit)? = null,
+    onRetryFailed: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val isVisible = syncStatus !is SyncStatus.Idle
@@ -73,10 +77,16 @@ fun SyncStatusBar(
                 is SyncStatus.Idle -> {}
                 is SyncStatus.Queued -> QueuedContent()
                 is SyncStatus.InProgress -> InProgressContent(progress = syncStatus.progress)
-                is SyncStatus.Success -> SuccessContent(onDismiss = onDismiss)
+                is SyncStatus.Success -> SuccessContent(
+                    hasSyncedSessions = syncedSessionIds.isNotEmpty(),
+                    onClearSynced = onClearSynced,
+                    onDismiss = onDismiss
+                )
                 is SyncStatus.PartialSuccess -> PartialSuccessContent(
                     syncedCount = syncStatus.syncedCount,
                     failedCount = syncStatus.failedCount,
+                    hasFailedChunks = failedChunkIds.isNotEmpty(),
+                    onRetryFailed = onRetryFailed,
                     onDismiss = onDismiss
                 )
                 is SyncStatus.Error -> ErrorContent(
@@ -182,7 +192,11 @@ private fun InProgressContent(progress: Float) {
 }
 
 @Composable
-private fun SuccessContent(onDismiss: () -> Unit) {
+private fun SuccessContent(
+    hasSyncedSessions: Boolean = false,
+    onClearSynced: (() -> Unit)? = null,
+    onDismiss: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -203,6 +217,11 @@ private fun SuccessContent(onDismiss: () -> Unit) {
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.weight(1f)
         )
+        if (hasSyncedSessions && onClearSynced != null) {
+            TextButton(onClick = onClearSynced) {
+                Text("Clear")
+            }
+        }
         TextButton(onClick = onDismiss) {
             Text("Dismiss")
         }
@@ -213,6 +232,8 @@ private fun SuccessContent(onDismiss: () -> Unit) {
 private fun PartialSuccessContent(
     syncedCount: Int,
     failedCount: Int,
+    hasFailedChunks: Boolean = false,
+    onRetryFailed: (() -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     Row(
@@ -240,6 +261,11 @@ private fun PartialSuccessContent(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
             )
+        }
+        if (hasFailedChunks && onRetryFailed != null) {
+            TextButton(onClick = onRetryFailed) {
+                Text("Retry Failed")
+            }
         }
         TextButton(onClick = onDismiss) {
             Text("Dismiss")

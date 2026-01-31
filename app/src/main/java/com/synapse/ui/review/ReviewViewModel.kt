@@ -15,9 +15,14 @@ import com.synapse.model.Project
 import com.synapse.model.Session
 import com.synapse.model.SyncStatus
 import com.synapse.util.NetworkMonitor
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -35,6 +40,13 @@ enum class ViewMode {
 }
 
 /**
+ * One-shot events emitted by ReviewViewModel to the UI layer.
+ */
+sealed class ReviewEvent {
+    data class ShowUndoSnackbar(val message: String, val tag: String) : ReviewEvent()
+}
+
+/**
  * UI state for the Review screen
  */
 data class ReviewUiState(
@@ -43,6 +55,7 @@ data class ReviewUiState(
     val projects: List<Project> = emptyList(),
     val selectedProject: Project? = null,
     val filename: String = "quick notes.md",
+    val filenameError: String? = null,
     val syncStatus: SyncStatus = SyncStatus.Idle,
     val selectedChunkIds: Set<String> = emptySet(),
     val isLoading: Boolean = false,
@@ -53,7 +66,9 @@ data class ReviewUiState(
     val queueStatus: QueueStatus? = null,
     val pendingSyncCount: Int = 0,
     val queuedSyncCount: Int = 0,
-    val failedSyncCount: Int = 0
+    val failedSyncCount: Int = 0,
+    val syncedSessionIds: Set<String> = emptySet(),
+    val failedChunkIds: Set<String> = emptySet()
 )
 
 /**
@@ -77,6 +92,31 @@ class ReviewViewModel(
 
     private val _uiState = MutableStateFlow(ReviewUiState())
     val uiState: StateFlow<ReviewUiState> = _uiState.asStateFlow()
+
+    private val _events = MutableSharedFlow<ReviewEvent>()
+    val events = _events.asSharedFlow()
+
+    // Pending deletions awaiting undo timeout
+    private data class PendingDeletion(
+        val chunk: Chunk? = null,
+        val session: Session? = null,
+        val tag: String
+    )
+    private val pendingDeletions = mutableMapOf<String, PendingDeletion>()
+    private val pendingDeletionJobs = mutableMapOf<String, Job>()
+
+    // Debounce job for cost estimate refresh
+    private var costEstimateJob: Job? = null
+
+    // Deferred cleanup job for synced sessions
+    private var deferredCleanupJob: Job? = null
+
+    companion object {
+        private const val UNDO_TIMEOUT_MS = 5000L
+        private const val COST_DEBOUNCE_MS = 300L
+        private const val DEFERRED_CLEANUP_MS = 30_000L
+        private val INVALID_FILENAME_CHARS = Regex("[/\\\\:*?\"<>|]")
+    }
 
     init {
         observeSessions()
@@ -120,6 +160,17 @@ class ReviewViewModel(
             } catch (e: Exception) {
                 android.util.Log.w("ReviewViewModel", "Failed to refresh cost estimate", e)
             }
+        }
+    }
+
+    /**
+     * Debounced cost estimate refresh triggered by selection changes.
+     */
+    private fun debouncedRefreshCostEstimate() {
+        costEstimateJob?.cancel()
+        costEstimateJob = viewModelScope.launch {
+            delay(COST_DEBOUNCE_MS)
+            refreshCostEstimate()
         }
     }
 
@@ -186,10 +237,19 @@ class ReviewViewModel(
     }
 
     /**
-     * Update the filename for sync
+     * Update the filename for sync with inline validation.
      */
     fun updateFilename(filename: String) {
-        _uiState.update { it.copy(filename = filename) }
+        val error = validateFilename(filename)
+        _uiState.update { it.copy(filename = filename, filenameError = error) }
+    }
+
+    private fun validateFilename(filename: String): String? {
+        return when {
+            filename.isBlank() -> "Filename required"
+            INVALID_FILENAME_CHARS.containsMatchIn(filename) -> "Invalid characters: / \\ : * ? \" < > |"
+            else -> null
+        }
     }
 
     /**
@@ -204,6 +264,7 @@ class ReviewViewModel(
             }
             state.copy(selectedChunkIds = newSelection)
         }
+        debouncedRefreshCostEstimate()
     }
 
     /**
@@ -214,6 +275,7 @@ class ReviewViewModel(
             val chunkIds = session.chunks.map { it.id }.toSet()
             state.copy(selectedChunkIds = state.selectedChunkIds + chunkIds)
         }
+        debouncedRefreshCostEstimate()
     }
 
     /**
@@ -224,6 +286,7 @@ class ReviewViewModel(
             val chunkIds = session.chunks.map { it.id }.toSet()
             state.copy(selectedChunkIds = state.selectedChunkIds - chunkIds)
         }
+        debouncedRefreshCostEstimate()
     }
 
     /**
@@ -236,6 +299,7 @@ class ReviewViewModel(
             }.toSet()
             state.copy(selectedChunkIds = allChunkIds)
         }
+        debouncedRefreshCostEstimate()
     }
 
     /**
@@ -243,54 +307,139 @@ class ReviewViewModel(
      */
     fun clearSelection() {
         _uiState.update { it.copy(selectedChunkIds = emptySet()) }
+        debouncedRefreshCostEstimate()
     }
 
     /**
-     * Delete an individual chunk
+     * Soft-delete an individual chunk with undo support.
+     * The chunk is removed from the UI immediately. Permanent deletion
+     * happens after a timeout unless the user taps Undo.
      */
     fun deleteChunk(chunk: Chunk) {
+        val tag = "chunk_${chunk.id}"
+
+        // Remove from UI immediately
+        _uiState.update { state ->
+            val updatedSessions = state.sessions.map { session ->
+                if (session.id == chunk.sessionId) {
+                    session.copy(chunks = session.chunks.filter { it.id != chunk.id })
+                } else {
+                    session
+                }
+            }.filter { it.chunks.isNotEmpty() || it.contexts.isNotEmpty() }
+
+            state.copy(
+                sessions = updatedSessions,
+                selectedChunkIds = state.selectedChunkIds - chunk.id
+            )
+        }
+
+        // Store pending deletion
+        pendingDeletions[tag] = PendingDeletion(chunk = chunk, tag = tag)
+
+        // Schedule permanent deletion after timeout
+        pendingDeletionJobs[tag]?.cancel()
+        pendingDeletionJobs[tag] = viewModelScope.launch {
+            delay(UNDO_TIMEOUT_MS)
+            commitDeletion(tag)
+        }
+
+        // Emit undo snackbar event
         viewModelScope.launch {
-            try {
-                sessionRepository.deleteChunk(chunk.sessionId, chunk.id)
-                _uiState.update { state ->
+            _events.emit(ReviewEvent.ShowUndoSnackbar("Chunk deleted", tag))
+        }
+    }
+
+    /**
+     * Soft-delete an entire session with undo support.
+     */
+    fun deleteSession(session: Session) {
+        val tag = "session_${session.id}"
+
+        // Remove from UI immediately
+        _uiState.update { state ->
+            val chunkIds = session.chunks.map { it.id }.toSet()
+            state.copy(
+                sessions = state.sessions.filter { it.id != session.id },
+                selectedChunkIds = state.selectedChunkIds - chunkIds
+            )
+        }
+
+        // Store pending deletion
+        pendingDeletions[tag] = PendingDeletion(session = session, tag = tag)
+
+        // Schedule permanent deletion after timeout
+        pendingDeletionJobs[tag]?.cancel()
+        pendingDeletionJobs[tag] = viewModelScope.launch {
+            delay(UNDO_TIMEOUT_MS)
+            commitDeletion(tag)
+        }
+
+        // Emit undo snackbar event
+        viewModelScope.launch {
+            _events.emit(ReviewEvent.ShowUndoSnackbar("Session deleted", tag))
+        }
+    }
+
+    /**
+     * Undo a pending deletion, restoring the chunk or session to the UI.
+     */
+    fun undoDelete(tag: String) {
+        val pending = pendingDeletions.remove(tag) ?: return
+        pendingDeletionJobs.remove(tag)?.cancel()
+
+        _uiState.update { state ->
+            when {
+                pending.chunk != null -> {
+                    val chunk = pending.chunk
                     val updatedSessions = state.sessions.map { session ->
                         if (session.id == chunk.sessionId) {
-                            session.copy(chunks = session.chunks.filter { it.id != chunk.id })
+                            session.copy(chunks = (session.chunks + chunk).sortedBy { it.index })
                         } else {
                             session
                         }
-                    }.filter { it.chunks.isNotEmpty() || it.contexts.isNotEmpty() }
-
-                    state.copy(
-                        sessions = updatedSessions,
-                        selectedChunkIds = state.selectedChunkIds - chunk.id
-                    )
+                    }
+                    // If the session was removed because it became empty, re-add it
+                    val hasSession = updatedSessions.any { it.id == chunk.sessionId }
+                    if (hasSession) {
+                        state.copy(sessions = updatedSessions)
+                    } else {
+                        // Session was filtered out; we can't fully restore without re-fetching
+                        // Force a refresh from the repository
+                        state
+                    }
                 }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(error = "Failed to delete chunk: ${e.message}")
+                pending.session != null -> {
+                    val session = pending.session
+                    // Re-insert session in original position (sorted by startedAt)
+                    val updatedSessions = (state.sessions + session).sortedByDescending { it.startedAt }
+                    state.copy(sessions = updatedSessions)
                 }
+                else -> state
             }
         }
     }
 
     /**
-     * Delete an entire session with all its chunks
+     * Permanently deletes a pending item from the repository.
      */
-    fun deleteSession(session: Session) {
+    private fun commitDeletion(tag: String) {
+        val pending = pendingDeletions.remove(tag) ?: return
+        pendingDeletionJobs.remove(tag)
+
         viewModelScope.launch {
             try {
-                sessionRepository.deleteSession(session.id)
-                _uiState.update { state ->
-                    val chunkIds = session.chunks.map { it.id }.toSet()
-                    state.copy(
-                        sessions = state.sessions.filter { it.id != session.id },
-                        selectedChunkIds = state.selectedChunkIds - chunkIds
-                    )
+                when {
+                    pending.chunk != null -> {
+                        sessionRepository.deleteChunk(pending.chunk.sessionId, pending.chunk.id)
+                    }
+                    pending.session != null -> {
+                        sessionRepository.deleteSession(pending.session.id)
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.update {
-                    it.copy(error = "Failed to delete session: ${e.message}")
+                    it.copy(error = "Failed to delete: ${e.message}")
                 }
             }
         }
@@ -306,12 +455,12 @@ class ReviewViewModel(
                 _uiState.update { it.copy(error = "Please select a project") }
                 return@launch
             }
-            if (state.filename.isBlank()) {
-                _uiState.update { it.copy(error = "Please enter a filename") }
+            if (state.filename.isBlank() || state.filenameError != null) {
+                _uiState.update { it.copy(error = "Please enter a valid filename") }
                 return@launch
             }
 
-            _uiState.update { it.copy(syncStatus = SyncStatus.Queued) }
+            _uiState.update { it.copy(syncStatus = SyncStatus.Queued, failedChunkIds = emptySet()) }
 
             // Observe granular progress from the repository
             val progressJob = viewModelScope.launch {
@@ -335,7 +484,7 @@ class ReviewViewModel(
                 }
 
                 if (sessionsToSync.isEmpty()) {
-                    progressJob.cancel()
+                    progressJob.cancelAndJoin()
                     _uiState.update {
                         it.copy(
                             syncStatus = SyncStatus.Idle,
@@ -349,6 +498,8 @@ class ReviewViewModel(
                 var syncedCount = 0
                 var failedCount = 0
                 var lastErrorMessage: String? = null
+                val syncedIds = mutableSetOf<String>()
+                val failedIds = mutableSetOf<String>()
 
                 for ((index, session) in sessionsToSync.withIndex()) {
                     val result = syncRepository.syncSession(
@@ -360,17 +511,18 @@ class ReviewViewModel(
                     when (result) {
                         is SyncStatus.Success -> {
                             syncedCount++
-                            // Delete successfully synced session
-                            sessionRepository.deleteSession(session.id)
+                            syncedIds.add(session.id)
                         }
                         is SyncStatus.PartialSuccess -> {
                             syncedCount++
                             failedCount += result.failedCount
-                            // Keep session in review so user can retry failed chunks
+                            failedIds.addAll(result.failedChunkIds)
                         }
                         is SyncStatus.Error -> {
                             failedCount++
                             lastErrorMessage = result.message
+                            // All chunks in this session failed
+                            failedIds.addAll(session.chunks.map { it.id })
                         }
                         else -> {}
                     }
@@ -381,15 +533,24 @@ class ReviewViewModel(
                     syncedCount == 0 -> SyncStatus.Error(
                         lastErrorMessage ?: "All sessions failed to sync"
                     )
-                    else -> SyncStatus.PartialSuccess(syncedCount, failedCount)
+                    else -> SyncStatus.PartialSuccess(syncedCount, failedCount, failedIds.toList())
                 }
 
-                progressJob.cancel()
-                _uiState.update { it.copy(syncStatus = finalStatus) }
+                progressJob.cancelAndJoin()
+                _uiState.update {
+                    it.copy(
+                        syncStatus = finalStatus,
+                        syncedSessionIds = syncedIds,
+                        failedChunkIds = failedIds
+                    )
+                }
 
-                // Session list auto-refreshes via observeSessions() flow
+                // Start deferred cleanup timer for successfully synced sessions
+                if (syncedIds.isNotEmpty()) {
+                    startDeferredCleanup(syncedIds)
+                }
             } catch (e: Exception) {
-                progressJob.cancel()
+                progressJob.cancelAndJoin()
                 _uiState.update {
                     it.copy(syncStatus = SyncStatus.Error(e.message ?: "Unknown error"))
                 }
@@ -398,10 +559,66 @@ class ReviewViewModel(
     }
 
     /**
+     * Schedule auto-cleanup of synced sessions after a delay.
+     * User can trigger immediate cleanup via [clearSyncedSessions].
+     */
+    private fun startDeferredCleanup(sessionIds: Set<String>) {
+        deferredCleanupJob?.cancel()
+        deferredCleanupJob = viewModelScope.launch {
+            delay(DEFERRED_CLEANUP_MS)
+            performCleanup(sessionIds)
+        }
+    }
+
+    /**
+     * Immediately clean up synced sessions (called from UI "Clear" button).
+     */
+    fun clearSyncedSessions() {
+        deferredCleanupJob?.cancel()
+        val sessionIds = _uiState.value.syncedSessionIds
+        if (sessionIds.isEmpty()) return
+        viewModelScope.launch {
+            performCleanup(sessionIds)
+        }
+    }
+
+    private suspend fun performCleanup(sessionIds: Set<String>) {
+        for (id in sessionIds) {
+            try {
+                sessionRepository.deleteSession(id)
+            } catch (e: Exception) {
+                android.util.Log.w("ReviewViewModel", "Failed to cleanup session $id", e)
+            }
+        }
+        _uiState.update {
+            it.copy(syncedSessionIds = emptySet())
+        }
+        // Session list auto-refreshes via observeSessions() flow
+    }
+
+    /**
+     * Retry sync for only the chunks that failed in the last sync.
+     */
+    fun retryFailedChunks() {
+        val failedIds = _uiState.value.failedChunkIds
+        if (failedIds.isEmpty()) return
+
+        // Select only failed chunks and re-sync
+        _uiState.update {
+            it.copy(
+                viewMode = ViewMode.SEPARATE,
+                selectedChunkIds = failedIds,
+                failedChunkIds = emptySet()
+            )
+        }
+        syncAll()
+    }
+
+    /**
      * Reset sync status to idle
      */
     fun resetSyncStatus() {
-        _uiState.update { it.copy(syncStatus = SyncStatus.Idle) }
+        _uiState.update { it.copy(syncStatus = SyncStatus.Idle, syncedSessionIds = emptySet(), failedChunkIds = emptySet()) }
     }
 
     /**

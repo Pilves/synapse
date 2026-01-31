@@ -56,7 +56,8 @@ fun ChunkThumbnail(
     onSelect: (Boolean) -> Unit,
     onPreview: () -> Unit,
     modifier: Modifier = Modifier,
-    thumbnailSize: Int = 80
+    thumbnailSize: Int = 80,
+    isFailed: Boolean = false
 ) {
     val context = LocalContext.current
 
@@ -69,14 +70,18 @@ fun ChunkThumbnail(
                 .size(thumbnailSize.dp)
                 .clip(RoundedCornerShape(8.dp))
                 .then(
-                    if (isSelected) {
-                        Modifier.border(
+                    when {
+                        isFailed -> Modifier.border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.error,
+                            shape = RoundedCornerShape(8.dp)
+                        )
+                        isSelected -> Modifier.border(
                             width = 2.dp,
                             color = MaterialTheme.colorScheme.primary,
                             shape = RoundedCornerShape(8.dp)
                         )
-                    } else {
-                        Modifier
+                        else -> Modifier
                     }
                 )
                 .clickable {

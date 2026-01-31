@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -28,8 +29,8 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ViewCarousel
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -48,6 +49,7 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -65,8 +67,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -113,11 +117,10 @@ fun ReviewScreen(
     val uiState by viewModel.uiState.collectAsState()
     val isOffline by viewModel.isOffline.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val haptic = LocalHapticFeedback.current
 
-    // Confirmation dialog states
+    // Confirmation dialog state
     var showSyncConfirmation by remember { mutableStateOf(false) }
-    var sessionToDelete by remember { mutableStateOf<com.synapse.model.Session?>(null) }
-    var chunkToDelete by remember { mutableStateOf<Chunk?>(null) }
 
     // Show error in snackbar
     LaunchedEffect(uiState.error) {
@@ -130,11 +133,32 @@ fun ReviewScreen(
         }
     }
 
+    // Collect undo events
+    LaunchedEffect(Unit) {
+        viewModel.events.collect { event ->
+            when (event) {
+                is ReviewEvent.ShowUndoSnackbar -> {
+                    val result = snackbarHostState.showSnackbar(
+                        message = event.message,
+                        actionLabel = "Undo",
+                        duration = SnackbarDuration.Short
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        viewModel.undoDelete(event.tag)
+                    }
+                }
+            }
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             ReviewTopBar(
                 viewMode = uiState.viewMode,
-                onViewModeChange = viewModel::setViewMode,
+                onViewModeChange = { mode ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.setViewMode(mode)
+                },
                 queueStatus = uiState.queueStatus,
                 onRetrySync = viewModel::retrySyncQueue
             )
@@ -175,12 +199,23 @@ fun ReviewScreen(
                 sessions = uiState.sessions,
                 viewMode = uiState.viewMode,
                 selectedChunkIds = uiState.selectedChunkIds,
+                failedChunkIds = uiState.failedChunkIds,
+                syncedSessionIds = uiState.syncedSessionIds,
                 isLoading = uiState.isLoading,
-                onChunkSelected = { chunkId, _ -> viewModel.toggleChunkSelection(chunkId) },
+                onChunkSelected = { chunkId, _ ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.toggleChunkSelection(chunkId)
+                },
                 onSelectAllChunksInSession = viewModel::selectAllChunksInSession,
                 onDeselectAllChunksInSession = viewModel::deselectAllChunksInSession,
-                onDeleteChunk = { chunk -> chunkToDelete = chunk },
-                onDeleteSession = { session -> sessionToDelete = session },
+                onDeleteChunk = { chunk ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.deleteChunk(chunk)
+                },
+                onDeleteSession = { session ->
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    viewModel.deleteSession(session)
+                },
                 onPreviewChunk = viewModel::setPreviewChunk,
                 onDeleteContext = viewModel::removeContext,
                 modifier = Modifier.weight(1f)
@@ -197,7 +232,11 @@ fun ReviewScreen(
             // Sync status bar
             SyncStatusBar(
                 syncStatus = uiState.syncStatus,
-                onDismiss = viewModel::resetSyncStatus
+                onDismiss = viewModel::resetSyncStatus,
+                syncedSessionIds = uiState.syncedSessionIds,
+                failedChunkIds = uiState.failedChunkIds,
+                onClearSynced = viewModel::clearSyncedSessions,
+                onRetryFailed = viewModel::retryFailedChunks
             )
 
             // Memoize selected count to avoid recalculating on every recomposition
@@ -217,6 +256,7 @@ fun ReviewScreen(
                 projects = uiState.projects,
                 selectedProject = uiState.selectedProject,
                 filename = uiState.filename,
+                filenameError = uiState.filenameError,
                 syncStatus = uiState.syncStatus,
                 selectedCount = selectedCount,
                 costEstimate = uiState.costEstimate,
@@ -224,6 +264,7 @@ fun ReviewScreen(
                 onProjectSelected = viewModel::selectProject,
                 onFilenameChanged = viewModel::updateFilename,
                 onSyncAll = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                     if (selectedCount > 5) {
                         showSyncConfirmation = true
                     } else {
@@ -259,7 +300,7 @@ fun ReviewScreen(
                     }
                 }
             }
-            AlertDialog(
+            androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showSyncConfirmation = false },
                 icon = {
                     Icon(
@@ -287,59 +328,6 @@ fun ReviewScreen(
                 }
             )
         }
-
-        // Delete session confirmation dialog
-        sessionToDelete?.let { session ->
-            AlertDialog(
-                onDismissRequest = { sessionToDelete = null },
-                icon = {
-                    Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                },
-                title = { Text("Delete Session?") },
-                text = {
-                    Text("This will remove all chunks in this session.")
-                },
-                confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.deleteSession(session)
-                        sessionToDelete = null
-                    }) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { sessionToDelete = null }) {
-                        Text("Cancel")
-                    }
-                }
-            )
-        }
-
-        // Delete chunk confirmation dialog
-        chunkToDelete?.let { chunk ->
-            AlertDialog(
-                onDismissRequest = { chunkToDelete = null },
-                title = { Text("Delete this chunk?") },
-                confirmButton = {
-                    TextButton(onClick = {
-                        viewModel.deleteChunk(chunk)
-                        chunkToDelete = null
-                    }) {
-                        Text("Delete", color = MaterialTheme.colorScheme.error)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { chunkToDelete = null }) {
-                        Text("Cancel")
-                    }
-                }
-            )
-        }
-
     }
 }
 
@@ -411,6 +399,8 @@ private fun ReviewContent(
     sessions: List<com.synapse.model.Session>,
     viewMode: ViewMode,
     selectedChunkIds: Set<String>,
+    failedChunkIds: Set<String>,
+    syncedSessionIds: Set<String>,
     isLoading: Boolean,
     onChunkSelected: (String, Boolean) -> Unit,
     onSelectAllChunksInSession: (com.synapse.model.Session) -> Unit,
@@ -443,18 +433,31 @@ private fun ReviewContent(
                         items = sessions,
                         key = { it.id }
                     ) { session ->
-                        SessionCard(
-                            session = session,
-                            viewMode = viewMode,
-                            selectedChunkIds = selectedChunkIds,
-                            onChunkSelected = onChunkSelected,
-                            onSelectAllChunks = { onSelectAllChunksInSession(session) },
-                            onDeselectAllChunks = { onDeselectAllChunksInSession(session) },
-                            onDeleteChunk = onDeleteChunk,
-                            onDeleteSession = { onDeleteSession(session) },
-                            onPreviewChunk = onPreviewChunk,
-                            onDeleteContext = onDeleteContext
-                        )
+                        val isSynced = session.id in syncedSessionIds
+                        val alpha = if (isSynced) 0.5f else 1f
+                        Box(
+                            modifier = Modifier
+                                .then(
+                                    if (isSynced) Modifier.background(
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                                        RoundedCornerShape(12.dp)
+                                    ) else Modifier
+                                )
+                        ) {
+                            SessionCard(
+                                session = session,
+                                viewMode = viewMode,
+                                selectedChunkIds = selectedChunkIds,
+                                onChunkSelected = onChunkSelected,
+                                onSelectAllChunks = { onSelectAllChunksInSession(session) },
+                                onDeselectAllChunks = { onDeselectAllChunksInSession(session) },
+                                onDeleteChunk = onDeleteChunk,
+                                onDeleteSession = { onDeleteSession(session) },
+                                onPreviewChunk = onPreviewChunk,
+                                onDeleteContext = onDeleteContext,
+                                failedChunkIds = failedChunkIds
+                            )
+                        }
                     }
                 }
             }
@@ -499,6 +502,7 @@ private fun BottomControls(
     projects: List<Project>,
     selectedProject: Project?,
     filename: String,
+    filenameError: String?,
     syncStatus: SyncStatus,
     selectedCount: Int,
     costEstimate: CostEstimate?,
@@ -508,6 +512,7 @@ private fun BottomControls(
     onSyncAll: () -> Unit
 ) {
     val isSyncing = syncStatus is SyncStatus.InProgress || syncStatus is SyncStatus.Queued
+    val isSyncEnabled = !isSyncing && !isOffline && selectedCount > 0 && selectedProject != null && filenameError == null && filename.isNotBlank()
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -529,13 +534,17 @@ private fun BottomControls(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Filename input
+            // Filename input with validation
             OutlinedTextField(
                 value = filename,
                 onValueChange = onFilenameChanged,
                 label = { Text("File") },
                 singleLine = true,
                 enabled = !isSyncing,
+                isError = filenameError != null,
+                supportingText = filenameError?.let { error ->
+                    { Text(error, color = MaterialTheme.colorScheme.error) }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp)
             )
@@ -553,7 +562,7 @@ private fun BottomControls(
             // Sync button
             Button(
                 onClick = onSyncAll,
-                enabled = !isSyncing && !isOffline && selectedCount > 0 && selectedProject != null,
+                enabled = isSyncEnabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),
@@ -580,6 +589,29 @@ private fun BottomControls(
                     Text(
                         text = if (selectedCount > 0) "Sync All ($selectedCount)" else "Sync All",
                         style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+
+            // Disabled sync button reason
+            if (!isSyncEnabled && !isSyncing) {
+                val reason = when {
+                    isOffline -> "No internet connection"
+                    selectedCount == 0 -> "No chunks selected"
+                    selectedProject == null -> "Select a project first"
+                    filenameError != null -> filenameError
+                    filename.isBlank() -> "Enter a filename"
+                    else -> null
+                }
+                reason?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp)
                     )
                 }
             }

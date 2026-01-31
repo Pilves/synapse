@@ -17,6 +17,8 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -24,23 +26,31 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +58,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -286,6 +297,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.d(TAG, "onTaskRemoved — cleaning up stale state")
+        overlayManager?.hide()
+        bubbleManager?.hideFloatingBubble()
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         permissionHealthMonitor.stopMonitoring()
         serviceScope.cancel()
@@ -310,12 +330,18 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
 
         val notification = createNotification()
-        startForeground(
-            NOTIFICATION_ID,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-        )
-        Log.d(TAG, "Started foreground service")
+        try {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+            Log.d(TAG, "Started foreground service")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start foreground service", e)
+            stopSelf()
+            return
+        }
         showFloatingBubble()
 
         // Request screen capture permission when user explicitly starts the overlay
@@ -663,6 +689,11 @@ class TouchDifferentiatingOverlayView(
             pendingPassThroughRunnable = null
         }
     }
+
+    override fun onDetachedFromWindow() {
+        cancelPendingPassThrough()
+        super.onDetachedFromWindow()
+    }
 }
 
 /**
@@ -688,8 +719,35 @@ internal fun CaptureOverlayContent(
     var toolbarWidth by remember { mutableFloatStateOf(0f) }
     var toolbarHeight by remember { mutableFloatStateOf(0f) }
 
+    // Fade-in animation for overlay appearance
+    var overlayVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { overlayVisible = true }
+    val overlayAlpha by animateFloatAsState(
+        targetValue = if (overlayVisible) 1f else 0f,
+        animationSpec = tween(durationMillis = 200),
+        label = "overlayFadeIn"
+    )
+
+    // Chunk timeout countdown progress
+    val captureState by viewModel.uiState.collectAsState()
+    var chunkTimeoutProgress by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(captureState.isDrawing, captureState.strokeCount) {
+        // Reset and start countdown when user stops drawing (strokeCount changes and not drawing)
+        if (!captureState.isDrawing && captureState.strokeCount > 0) {
+            chunkTimeoutProgress = 0f
+            val steps = (chunkTimeoutMs / 100).toInt().coerceAtLeast(1)
+            for (i in 1..steps) {
+                delay(100)
+                chunkTimeoutProgress = i.toFloat() / steps
+            }
+        } else {
+            chunkTimeoutProgress = 0f
+        }
+    }
+
     BoxWithConstraints(
         modifier = Modifier
+            .alpha(overlayAlpha)
             .background(Color.Transparent)
     ) {
         val screenWidthPx = constraints.maxWidth.toFloat()
@@ -826,38 +884,39 @@ internal fun CaptureOverlayContent(
                         tint = MaterialTheme.colorScheme.onError
                     )
                 }
+
+                // Chunk timeout countdown indicator
+                if (chunkTimeoutProgress > 0f && chunkTimeoutProgress < 1f) {
+                    CircularProgressIndicator(
+                        progress = { chunkTimeoutProgress },
+                        modifier = Modifier
+                            .size(20.dp)
+                            .align(Alignment.CenterVertically),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 2.dp
+                    )
+                }
             }
         }
 
-        // Captured text preview chip
-        var showPreview by remember(capturedTextPreview) {
-            mutableStateOf(capturedTextPreview != null)
-        }
-
-        if (capturedTextPreview != null) {
-            LaunchedEffect(capturedTextPreview) {
-                delay(2500)
-                showPreview = false
-                onClearPreview?.invoke()
-            }
-        }
-
+        // Captured text preview chip - persistent until user dismisses or next chunk
         AnimatedVisibility(
-            visible = showPreview && capturedTextPreview != null,
+            visible = capturedTextPreview != null,
             enter = fadeIn(),
             exit = fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 80.dp)
         ) {
-            Box(
+            Row(
                 modifier = Modifier
-                    .fillMaxWidth(0.8f)
+                    .fillMaxWidth(0.85f)
                     .background(
                         color = Color.Black.copy(alpha = 0.75f),
                         shape = RoundedCornerShape(8.dp)
                     )
-                    .padding(horizontal = 16.dp, vertical = 10.dp)
+                    .padding(start = 16.dp, top = 6.dp, bottom = 6.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = if (capturedTextPreview?.startsWith("Draw") == true || capturedTextPreview?.startsWith("[") == true) {
@@ -867,8 +926,21 @@ internal fun CaptureOverlayContent(
                     },
                     color = Color.White,
                     style = MaterialTheme.typography.bodySmall,
-                    maxLines = 2
+                    maxLines = 2,
+                    modifier = Modifier.weight(1f)
                 )
+                Spacer(modifier = Modifier.width(4.dp))
+                IconButton(
+                    onClick = { onClearPreview?.invoke() },
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Dismiss preview",
+                        tint = Color.White.copy(alpha = 0.7f),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
         }
     }
