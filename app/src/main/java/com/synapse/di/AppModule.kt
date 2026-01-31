@@ -21,7 +21,6 @@ import com.synapse.data.storage.ImageProcessor
 import com.synapse.data.storage.ProjectStorage
 import com.synapse.data.storage.SecureKeyStorage
 import com.synapse.data.storage.SessionStorage
-import com.synapse.data.storage.StorageHelper
 import com.synapse.data.storage.SyncStorage
 import com.synapse.data.storage.VaultManager
 import com.synapse.service.NotificationHelper
@@ -54,7 +53,6 @@ import java.util.concurrent.TimeUnit
  * - SyncStorage: Manages sync queue
  * - VaultManager: Manages vault/project file operations
  * - ImageProcessor: Handles image conversion and manipulation
- * - StorageHelper: Utility functions for storage operations
  */
 val storageModule = module {
     // SecureKeyStorage - encrypted API key storage
@@ -77,9 +75,6 @@ val storageModule = module {
 
     // ImageProcessor - no dependencies
     single { ImageProcessor() }
-
-    // StorageHelper - requires Context
-    single { StorageHelper(androidContext()) }
 }
 
 /**
