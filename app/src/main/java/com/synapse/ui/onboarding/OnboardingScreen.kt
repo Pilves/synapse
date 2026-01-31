@@ -111,7 +111,10 @@ fun OnboardingScreen(
     // Handle errors
     LaunchedEffect(state.errorMessage) {
         state.errorMessage?.let { error ->
-            snackbarHostState.showSnackbar(error)
+            snackbarHostState.showSnackbar(
+                message = error,
+                duration = androidx.compose.material3.SnackbarDuration.Long
+            )
             viewModel.clearError()
         }
     }
@@ -311,6 +314,16 @@ private fun PermissionsPage(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Auto-advance when both permissions are granted
+    var hasAutoAdvanced by remember { mutableStateOf(false) }
+    LaunchedEffect(hasOverlayPermission, hasAccessibilityPermission) {
+        if (hasOverlayPermission && hasAccessibilityPermission && !hasAutoAdvanced) {
+            hasAutoAdvanced = true
+            kotlinx.coroutines.delay(500)
+            onContinue()
+        }
     }
 
     val allGranted = hasOverlayPermission && hasAccessibilityPermission

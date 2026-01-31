@@ -14,11 +14,15 @@ import com.synapse.model.Chunk
 import com.synapse.model.Project
 import com.synapse.model.Session
 import com.synapse.model.SyncStatus
+import com.synapse.util.NetworkMonitor
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -62,8 +66,14 @@ class ReviewViewModel(
     private val sessionRepository: SessionRepository,
     private val projectRepository: ProjectRepository,
     private val syncRepository: SyncRepository,
-    private val llmSettingsProvider: LlmSettingsProvider? = null
+    private val llmSettingsProvider: LlmSettingsProvider? = null,
+    networkMonitor: NetworkMonitor? = null
 ) : ViewModel() {
+
+    val isOffline: StateFlow<Boolean> = networkMonitor?.isOnline
+        ?.map { !it }
+        ?.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+        ?: MutableStateFlow(false)
 
     private val _uiState = MutableStateFlow(ReviewUiState())
     val uiState: StateFlow<ReviewUiState> = _uiState.asStateFlow()

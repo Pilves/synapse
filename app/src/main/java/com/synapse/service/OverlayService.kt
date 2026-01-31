@@ -860,7 +860,11 @@ internal fun CaptureOverlayContent(
                     .padding(horizontal = 16.dp, vertical = 10.dp)
             ) {
                 Text(
-                    text = "\u2713 Selected: ${capturedTextPreview ?: ""}",
+                    text = if (capturedTextPreview?.startsWith("Draw") == true || capturedTextPreview?.startsWith("[") == true) {
+                        capturedTextPreview ?: ""
+                    } else {
+                        "\u2713 Selected: ${capturedTextPreview ?: ""}"
+                    },
                     color = Color.White,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 2

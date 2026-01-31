@@ -23,10 +23,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.ViewCarousel
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,10 +45,12 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -106,12 +111,21 @@ fun ReviewScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val isOffline by viewModel.isOffline.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    // Confirmation dialog states
+    var showSyncConfirmation by remember { mutableStateOf(false) }
+    var sessionToDelete by remember { mutableStateOf<com.synapse.model.Session?>(null) }
+    var chunkToDelete by remember { mutableStateOf<Chunk?>(null) }
 
     // Show error in snackbar
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
-            snackbarHostState.showSnackbar(error)
+            snackbarHostState.showSnackbar(
+                message = error,
+                duration = SnackbarDuration.Long
+            )
             viewModel.clearError()
         }
     }
@@ -125,6 +139,38 @@ fun ReviewScreen(
                 onRetrySync = viewModel::retrySyncQueue
             )
 
+            // Offline banner
+            AnimatedVisibility(
+                visible = isOffline,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CloudOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = "No internet connection \u2014 sync unavailable",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                    }
+                }
+            }
+
             ReviewContent(
                 sessions = uiState.sessions,
                 viewMode = uiState.viewMode,
@@ -133,8 +179,8 @@ fun ReviewScreen(
                 onChunkSelected = { chunkId, _ -> viewModel.toggleChunkSelection(chunkId) },
                 onSelectAllChunksInSession = viewModel::selectAllChunksInSession,
                 onDeselectAllChunksInSession = viewModel::deselectAllChunksInSession,
-                onDeleteChunk = viewModel::deleteChunk,
-                onDeleteSession = viewModel::deleteSession,
+                onDeleteChunk = { chunk -> chunkToDelete = chunk },
+                onDeleteSession = { session -> sessionToDelete = session },
                 onPreviewChunk = viewModel::setPreviewChunk,
                 onDeleteContext = viewModel::removeContext,
                 modifier = Modifier.weight(1f)
@@ -174,9 +220,16 @@ fun ReviewScreen(
                 syncStatus = uiState.syncStatus,
                 selectedCount = selectedCount,
                 costEstimate = uiState.costEstimate,
+                isOffline = isOffline,
                 onProjectSelected = viewModel::selectProject,
                 onFilenameChanged = viewModel::updateFilename,
-                onSyncAll = viewModel::syncAll
+                onSyncAll = {
+                    if (selectedCount > 5) {
+                        showSyncConfirmation = true
+                    } else {
+                        viewModel.syncAll()
+                    }
+                }
             )
         }
 
@@ -191,6 +244,99 @@ fun ReviewScreen(
             ChunkPreviewDialog(
                 chunk = chunk,
                 onDismiss = { viewModel.setPreviewChunk(null) }
+            )
+        }
+
+        // Sync confirmation dialog
+        if (showSyncConfirmation) {
+            val syncCount by remember {
+                derivedStateOf {
+                    val contextOnlySessions = uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
+                    if (uiState.viewMode == ViewMode.SEPARATE) {
+                        uiState.selectedChunkIds.size + contextOnlySessions
+                    } else {
+                        uiState.sessions.sumOf { it.chunks.size } + contextOnlySessions
+                    }
+                }
+            }
+            AlertDialog(
+                onDismissRequest = { showSyncConfirmation = false },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.CloudSync,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = { Text("Sync $syncCount items?") },
+                text = {
+                    Text("This will use API credits to transcribe all selected items.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showSyncConfirmation = false
+                        viewModel.syncAll()
+                    }) {
+                        Text("Sync")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showSyncConfirmation = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // Delete session confirmation dialog
+        sessionToDelete?.let { session ->
+            AlertDialog(
+                onDismissRequest = { sessionToDelete = null },
+                icon = {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                },
+                title = { Text("Delete Session?") },
+                text = {
+                    Text("This will remove all chunks in this session.")
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.deleteSession(session)
+                        sessionToDelete = null
+                    }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { sessionToDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        // Delete chunk confirmation dialog
+        chunkToDelete?.let { chunk ->
+            AlertDialog(
+                onDismissRequest = { chunkToDelete = null },
+                title = { Text("Delete this chunk?") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        viewModel.deleteChunk(chunk)
+                        chunkToDelete = null
+                    }) {
+                        Text("Delete", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { chunkToDelete = null }) {
+                        Text("Cancel")
+                    }
+                }
             )
         }
 
@@ -356,6 +502,7 @@ private fun BottomControls(
     syncStatus: SyncStatus,
     selectedCount: Int,
     costEstimate: CostEstimate?,
+    isOffline: Boolean = false,
     onProjectSelected: (Project) -> Unit,
     onFilenameChanged: (String) -> Unit,
     onSyncAll: () -> Unit
@@ -406,7 +553,7 @@ private fun BottomControls(
             // Sync button
             Button(
                 onClick = onSyncAll,
-                enabled = !isSyncing && selectedCount > 0 && selectedProject != null,
+                enabled = !isSyncing && !isOffline && selectedCount > 0 && selectedProject != null,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),

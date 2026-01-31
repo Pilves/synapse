@@ -98,10 +98,11 @@ class OverlaySessionManager(
                     capturedChunk.bitmap.recycle()
                 }
 
-                // Update badge count
+                // Update badge count and provide haptic feedback
                 launch(Dispatchers.Main) {
                     pendingChunkCount++
                     onBadgeUpdate(pendingChunkCount)
+                    vibrate(30)
                 }
             } catch (e: IOException) {
                 Log.e(TAG, "IO error saving chunk", e)
@@ -444,22 +445,26 @@ class OverlaySessionManager(
      * Triggers a short haptic vibration for region selection feedback.
      */
     fun vibrateForRegionSelection() {
+        vibrate(50)
+    }
+
+    private fun vibrate(durationMs: Long = 50) {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
                 vibratorManager.defaultVibrator.vibrate(
-                    VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
+                    VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
                 )
             } else {
                 @Suppress("DEPRECATION")
                 val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     vibrator.vibrate(
-                        VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
+                        VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
                     )
                 } else {
                     @Suppress("DEPRECATION")
-                    vibrator.vibrate(50)
+                    vibrator.vibrate(durationMs)
                 }
             }
         } catch (e: SecurityException) {

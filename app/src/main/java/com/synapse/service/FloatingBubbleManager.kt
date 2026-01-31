@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 import android.view.Choreographer
 import android.view.Gravity
@@ -166,7 +169,7 @@ class FloatingBubbleManager(
                 setColor(errorColor)
             }
             visibility = if (pendingChunkCount > 0) View.VISIBLE else View.GONE
-            text = if (pendingChunkCount > 99) "99+" else pendingChunkCount.toString()
+            text = if (pendingChunkCount > 9) "9+" else pendingChunkCount.toString()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 elevation = elevationPx + 1
             }
@@ -272,6 +275,7 @@ class FloatingBubbleManager(
                 MotionEvent.ACTION_UP -> {
                     if (!isDragging) {
                         // Tap — open capture overlay
+                        vibrate()
                         onTap()
                     } else {
                         // Drag ended
@@ -324,7 +328,7 @@ class FloatingBubbleManager(
     fun updateBubbleBadge(count: Int) {
         bubbleBadgeView?.let { badge ->
             if (count > 0) {
-                badge.text = if (count > 99) "99+" else count.toString()
+                badge.text = if (count > 9) "9+" else count.toString()
                 badge.visibility = View.VISIBLE
             } else {
                 badge.visibility = View.GONE
@@ -349,6 +353,32 @@ class FloatingBubbleManager(
             bubbleBadgeView = null
             bubbleWarningView = null
             bubbleIconView = null
+        }
+    }
+
+    private fun vibrate(durationMs: Long = 50) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vibratorManager.defaultVibrator.vibrate(
+                    VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator.vibrate(
+                        VibrationEffect.createOneShot(durationMs, VibrationEffect.DEFAULT_AMPLITUDE)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator.vibrate(durationMs)
+                }
+            }
+        } catch (e: SecurityException) {
+            Log.w(TAG, "Vibration permission denied", e)
+        } catch (e: IllegalStateException) {
+            Log.w(TAG, "Vibrator not available", e)
         }
     }
 

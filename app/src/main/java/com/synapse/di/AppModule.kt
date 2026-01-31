@@ -241,7 +241,8 @@ val viewModelModule = module {
             sessionRepository = get(),
             projectRepository = get(),
             syncRepository = get(),
-            llmSettingsProvider = get()
+            llmSettingsProvider = get(),
+            networkMonitor = get()
         )
     }
 
