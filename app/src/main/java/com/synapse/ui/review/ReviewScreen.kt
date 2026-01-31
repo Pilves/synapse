@@ -51,6 +51,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -153,19 +154,25 @@ fun ReviewScreen(
                 onDismiss = viewModel::resetSyncStatus
             )
 
+            // Memoize selected count to avoid recalculating on every recomposition
+            val selectedCount by remember {
+                derivedStateOf {
+                    val contextOnlySessions = uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
+                    if (uiState.viewMode == ViewMode.SEPARATE) {
+                        uiState.selectedChunkIds.size + contextOnlySessions
+                    } else {
+                        uiState.sessions.sumOf { it.chunks.size } + contextOnlySessions
+                    }
+                }
+            }
+
             // Bottom controls (project, filename, sync button)
             BottomControls(
                 projects = uiState.projects,
                 selectedProject = uiState.selectedProject,
                 filename = uiState.filename,
                 syncStatus = uiState.syncStatus,
-                selectedCount = if (uiState.viewMode == ViewMode.SEPARATE) {
-                    uiState.selectedChunkIds.size +
-                        uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
-                } else {
-                    uiState.sessions.sumOf { it.chunks.size } +
-                        uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
-                },
+                selectedCount = selectedCount,
                 costEstimate = uiState.costEstimate,
                 onProjectSelected = viewModel::selectProject,
                 onFilenameChanged = viewModel::updateFilename,

@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,7 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import coil.compose.SubcomposeAsyncImage
+import coil.request.CachePolicy
 import coil.request.ImageRequest
 import com.synapse.model.Chunk
 import com.synapse.ui.theme.SynapseTheme
@@ -92,42 +93,22 @@ fun ChunkThumbnail(
                     modifier = Modifier.matchParentSize()
                 )
             } else {
-                // Normal image thumbnail with Coil
-                SubcomposeAsyncImage(
-                    model = ImageRequest.Builder(context)
+                // Normal image thumbnail with Coil - use AsyncImage (lighter than SubcomposeAsyncImage)
+                val imageRequest = remember(chunk.id, chunk.filePath) {
+                    ImageRequest.Builder(context)
                         .data(chunk.filePath)
                         .crossfade(true)
                         .size(thumbnailSize * 2) // Load at 2x for better quality on high DPI
                         .memoryCacheKey("chunk_thumb_${chunk.id}")
-                        .build(),
+                        .diskCachePolicy(CachePolicy.ENABLED)
+                        .memoryCachePolicy(CachePolicy.ENABLED)
+                        .build()
+                }
+                AsyncImage(
+                    model = imageRequest,
                     contentDescription = "Chunk ${chunk.index + 1}, ${if (isSelected) "selected" else "not selected"}",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize(),
-                    loading = {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(MaterialTheme.colorScheme.surfaceVariant),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            // Placeholder while loading
-                        }
-                    },
-                    error = {
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .background(MaterialTheme.colorScheme.errorContainer),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.BrokenImage,
-                                contentDescription = "Failed to load",
-                                tint = MaterialTheme.colorScheme.onErrorContainer,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        }
-                    }
+                    modifier = Modifier.matchParentSize()
                 )
             }
 

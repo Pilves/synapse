@@ -28,7 +28,9 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
@@ -73,8 +75,10 @@ fun MainScreen(
 ) {
     val uiState by reviewViewModel.uiState.collectAsState()
 
-    // Calculate total pending chunks across all sessions
-    val pendingChunkCount = uiState.sessions.sumOf { it.chunks.size }
+    // Memoize pending chunk count to avoid recalculating on every recomposition
+    val pendingChunkCount by remember {
+        derivedStateOf { uiState.sessions.sumOf { it.chunks.size } }
+    }
 
     Scaffold(
         topBar = {
