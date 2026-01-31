@@ -186,16 +186,23 @@ class OnboardingViewModel(
                 }
                 Log.d(TAG, "Saved vault path to settings DataStore: $vaultPath")
 
-                // Sync projects from the vault so they're available for sync
-                projectRepository.syncProjectsFromVault(Uri.parse(vaultPath))
-                Log.d(TAG, "Synced projects from vault")
-
+                // Update UI immediately so user can continue onboarding
                 _state.update { currentState ->
                     currentState.copy(
                         hasVaultConfigured = true,
                         vaultPath = vaultPath,
                         errorMessage = null
                     )
+                }
+
+                // Sync projects from the vault in the background
+                viewModelScope.launch {
+                    try {
+                        projectRepository.syncProjectsFromVault(Uri.parse(vaultPath))
+                        Log.d(TAG, "Synced projects from vault")
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Background vault sync failed", e)
+                    }
                 }
             } catch (e: Exception) {
                 _state.update { it.copy(errorMessage = "Failed to access folder: ${e.message}") }
