@@ -11,7 +11,7 @@ import org.json.JSONObject
  * Uses the gemini-2.0-flash model for vision-based handwriting transcription.
  * Supports the free tier rate limits: 15 RPM.
  */
-class GeminiService(
+open class GeminiService(
     apiKey: String? = null,
     customPrompt: String? = null,
     sharedHttpClient: OkHttpClient? = null
@@ -27,9 +27,9 @@ class GeminiService(
             errorPath = "error",
             typePath = "status",
             messagePath = "message",
-            authErrors = emptySet(),
-            rateLimitErrors = emptySet(),
-            overloadedErrors = emptySet()
+            authErrors = setOf("UNAUTHENTICATED", "PERMISSION_DENIED"),
+            rateLimitErrors = setOf("RESOURCE_EXHAUSTED"),
+            overloadedErrors = setOf("UNAVAILABLE")
         )
     }
 

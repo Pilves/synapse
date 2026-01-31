@@ -282,8 +282,11 @@ class ScreenshotManager(private val context: Context) {
         for (attempt in 1..3) {
             val image = actualReader.acquireLatestImage()
             if (image != null) {
-                fullBitmap = imageToBitmap(image)
-                image.close()
+                try {
+                    fullBitmap = imageToBitmap(image)
+                } finally {
+                    image.close()
+                }
                 break
             }
             Log.w(TAG, "acquireLatestImage returned null (attempt $attempt/3)")

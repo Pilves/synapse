@@ -290,7 +290,7 @@ abstract class BaseLlmService(
     private val rateLimitState = RateLimitState()
 
     protected val httpClient: OkHttpClient by lazy {
-        (sharedHttpClient?.newBuilder() ?: OkHttpClient.Builder())
+        sharedHttpClient ?: OkHttpClient.Builder()
             .connectTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .readTimeout(timeoutSeconds, TimeUnit.SECONDS)
             .writeTimeout(timeoutSeconds, TimeUnit.SECONDS)
@@ -555,7 +555,7 @@ abstract class BaseLlmService(
     }
 
     private fun retryJitter(delayMs: Long): Long {
-        return (delayMs * 0.1 * Math.random()).toLong()
+        return (delayMs * (0.5 + 0.5 * Math.random())).toLong()
     }
 
     // ── Inlined HttpErrorHandler ────────────────────────────────────────
