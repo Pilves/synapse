@@ -4,27 +4,29 @@
 
 | Metric | Value |
 |--------|-------|
-| Source files | ~110 Kotlin files, ~23k LOC |
+| Source files | 91 Kotlin files |
+| Test files | 24 unit test files |
 | Architecture | Single-module, MVVM, Koin DI, Jetpack Compose |
 | Packages | `api`, `data`, `model`, `service`, `ui`, `util`, `di` |
-| Completeness | ~97% — full pipeline working, UX hardening done, cost optimization done |
+| Completeness | Core pipeline fully working, UX hardening done |
 
 ### What's production-ready
 
-- Handwriting capture with overlay service
+- Handwriting capture with overlay service (`OverlayService`, `CaptureOverlayManager`, `FloatingBubbleManager`)
 - Region selection (accessibility text + screenshot fallback)
-- 4 LLM providers (Claude, OpenAI, Gemini, Ollama) — fully implemented
-- Vault sync pipeline (transcribe → write to Obsidian/local)
+- 4 LLM providers (Claude, OpenAI, Gemini, Ollama) -- fully implemented
+- Vault sync pipeline (transcribe -> segment -> write to Obsidian/local via SAF)
 - Settings, onboarding, cost tracking
 - Firebase Crashlytics, CI/CD with auto-release
 - SSL certificate pinning with backup pins (Anthropic, OpenAI, Google)
 - Accessibility service Play Store compliance (detailed DO/DON'T description, settingsActivity, capability mode detection)
-- Permission health monitoring with self-healing UI (broadcast-based, not polling)
+- Permission health monitoring with broadcast-based reactive updates
 - Palm rejection filter (touch area geometry + stylus-active finger suppression)
 - Ink smoothing with Catmull-Rom splines and pressure-sensitive variable-width strokes
-- Two-pass LLM cost optimization (text-only bypass when accessibility context is sufficient)
-- Grayscale preprocessing for handwriting images (~60% payload reduction)
-- Unit tests for StrokeSmoother, PalmRejectionFilter, TwoPassTranscriptionService
+- Haptic feedback on region selection and confirmation dialogs
+- Confirmation dialogs for destructive actions (delete session, delete chunk)
+- Offline indicator in UI
+- 24 unit tests covering API services, repositories, storage, ViewModels, and utilities
 
 ---
 
@@ -32,7 +34,21 @@
 
 ---
 
-## 0.3 Play Store Requirements
+## 0.1 Network-Triggered Sync Retry
+
+### Problem
+
+`SyncStorage` queue and `NetworkMonitor` both exist but are not connected. Failed syncs require manual retry.
+
+### Changes
+
+| File | Change |
+|------|--------|
+| `SyncRepository` | Wire `NetworkMonitor.isConnected` flow to trigger `processQueue()` on connectivity restore |
+
+---
+
+## 0.2 Play Store Requirements
 
 ### Problem
 
@@ -42,7 +58,7 @@ Missing standard requirements for publishing.
 
 | Item | Action |
 |------|--------|
-| Privacy policy | Update `PRIVACY.md` with accessibility data handling, API key storage, LLM data transmission details |
+| Privacy policy | `PRIVACY.md` is current -- host on web for Play Store listing |
 | Release signing | Generate proper release keystore, secure in CI via secrets |
 | Data safety form | Prepare responses (local storage, API key in EncryptedSharedPreferences, image data sent to user-chosen LLM) |
 | App listing | Screenshots, description, feature graphic |
@@ -59,7 +75,7 @@ Post-launch features that make Synapse worth paying for. v1.2+.
 
 ### Concept
 
-Draw a circle around screen content → app detects intent → executes action.
+Draw a circle around screen content -> app detects intent -> executes action.
 
 | Circle Content | Intent | Action |
 |----------------|--------|--------|
@@ -73,10 +89,10 @@ Draw a circle around screen content → app detects intent → executes action.
 
 ### Circle Detection Algorithm
 
-- **Angular accumulation:** sum signed angle changes between consecutive stroke segments; >270° total = circle
+- **Angular accumulation:** sum signed angle changes between consecutive stroke segments; >270 degrees total = circle
 - **Closure test:** distance between first and last point < 15% of bounding box diagonal
-- **Minimum requirements:** ≥12 points, bounding box diagonal ≥50px
-- **Scribble rejection:** require smooth curvature — standard deviation of segment angles < threshold (e.g., 0.5 radians)
+- **Minimum requirements:** >=12 points, bounding box diagonal >=50px
+- **Scribble rejection:** require smooth curvature -- standard deviation of segment angles < threshold (e.g., 0.5 radians)
 
 ### Existing Code to Reuse
 
@@ -84,16 +100,14 @@ Draw a circle around screen content → app detects intent → executes action.
 |-----------|------|-------|
 | Region gesture | `RegionGestureDetector.kt` | Extend to detect closed shapes |
 | Region capture | `OverlayService.kt` | `handleRegionSelected()` text extraction |
-| Intent types | `IntentType.kt` | Extend enum |
-| Calendar | `ReminderManager.kt` | `createCalendarEvent()` |
 | Accessibility text | `SynapseAccessibilityService.kt` | `getTextInRegion()` |
 
 ### New Files
 
 | File | Purpose |
 |------|---------|
-| `ui/overlay/ShapeGestureDetector.kt` | Detect circles (>270° rotation) vs rectangles vs strokes |
-| `service/CircleActionManager.kt` | Extract → classify → confirm → execute |
+| `ui/overlay/ShapeGestureDetector.kt` | Detect circles (>270 degrees rotation) vs rectangles vs strokes |
+| `service/CircleActionManager.kt` | Extract -> classify -> confirm -> execute |
 | `service/IntentClassifier.kt` | Regex patterns + LLM fallback |
 | `service/ActionExecutor.kt` | Intent dispatch |
 | `ui/overlay/CircleActionPopup.kt` | Confirmation card near circle |
@@ -106,7 +120,6 @@ Draw a circle around screen content → app detects intent → executes action.
 | `CaptureCanvas.kt` | Add `CIRCLE_ACTION` mode |
 | `RegionGestureDetector.kt` | Extend with `DetectedShape` sealed class |
 | `OverlayService.kt` | Add circle mode toggle, route to `CircleActionManager` |
-| `IntentType.kt` | Add CALENDAR, CALCULATE, TRANSLATE, CALL, MAPS, OPEN, SEARCH |
 | `AppModule.kt` | Register new managers |
 
 ### Dependencies
@@ -127,7 +140,7 @@ implementation("net.objecthunter:exp4j:0.4.8")  // Math evaluation
 
 ### Concept
 
-Bubble pulses when long content detected on screen. Tap → instant summary bottom sheet with follow-up questions.
+Bubble pulses when long content detected on screen. Tap -> instant summary bottom sheet with follow-up questions.
 
 ### Existing Code to Reuse
 
@@ -135,9 +148,9 @@ Bubble pulses when long content detected on screen. Tap → instant summary bott
 |-----------|------|-------|
 | Text extraction | `SynapseAccessibilityService.kt` | `collectAllTextNodes()` |
 | Window events | `SynapseAccessibilityService.kt` | `TYPE_WINDOW_CONTENT_CHANGED` |
-| LLM | `LlmProviderFactory.kt` | Route to configured cheap provider |
+| LLM | `LlmProvider.kt` | Route to configured cheap provider |
 | Text query | `TranscriptionService.kt` | `textQuery()` |
-| Bubble | `OverlayService.kt` | Extend with pulse animation |
+| Bubble | `FloatingBubbleManager.kt` | Extend with pulse animation |
 
 ### New Files
 
@@ -203,43 +216,19 @@ implementation("com.google.mlkit:text-recognition:16.0.0")  // More accurate tha
 
 ---
 
-# REMAINING ITEMS (not in a phase)
-
-## Persistent Retry/Sync Queue [COMPLETED]
-
-The persistent sync queue is fully implemented. `SyncStorage` persists a JSON-based work queue at `files/sync/queue.json`, and `SyncRepositoryImpl` processes queued items (PENDING -> IN_PROGRESS -> COMPLETED/FAILED) with `retryFailed()` support.
-
-**Still needed:** Connectivity-triggered queue processing (`NetworkMonitor` triggering `processQueue()` on network restored) is not yet implemented.
-
-## Error Recovery UI
-
-Backend infrastructure exists: `FloatingBubble` supports overlay badges and `SyncRepositoryImpl.retryFailed()` resets FAILED items to PENDING. However, specific UI elements are still needed.
-
-### Changes
-
-| File | Change |
-|------|--------|
-| `FloatingBubble` | Add red badge for sync failure (distinct from amber permission warning) |
-| `ReviewScreen.kt` | Add destination picker (currently a TODO placeholder) |
-
-## Destination Picker
-
-`ReviewScreen.kt` has `onAddDestination = { /* TODO: Open destination picker */ }` — needs implementation.
-
----
-
 # Implementation Order
 
 ```
-PHASE 0 — Ship Blockers (remaining)
-└── 0.3 Play Store Requirements
-         │
-         ──→ v1.0 Launch
-         │
-PHASE 3 — Differentiating Features       ──→ v1.2+
-├── 3.1 Circle to Do
-├── 3.2 TL;DR Overlay
-└── 3.3 Privacy Shield
+PHASE 0 -- Ship Blockers (remaining)
+|-- 0.1 Network-Triggered Sync Retry
+|-- 0.2 Play Store Requirements
+         |
+         --> v1.0 Launch
+         |
+PHASE 3 -- Differentiating Features       --> v1.2+
+|-- 3.1 Circle to Do
+|-- 3.2 TL;DR Overlay
+|-- 3.3 Privacy Shield
 ```
 
 ## Dependencies

@@ -30,12 +30,11 @@ The following areas of the codebase handle sensitive data and are the most likel
 | Certificate pinning | `AppModule.kt` | TLS certificate pins for LLM API endpoints; uses real production SHA-256 certificate pins for all three cloud LLM providers (Anthropic, OpenAI, Google) with both leaf and intermediate CA backup pins |
 | Accessibility service | `SynapseAccessibilityService.kt` | Reads on-screen text; has access to all visible UI content |
 | File I/O | `SessionStorage.kt`, `ChunkStorage.kt` | Path validation to prevent directory traversal |
-| SAF access | `ProjectStorage.kt` | Scoped storage access to user-selected vault folders |
+| SAF access | `ProjectStorage.kt`, `VaultManager.kt` | Scoped storage access to user-selected vault folders |
 | MediaProjection | `ScreenshotManager.kt` | Screenshot capture with explicit user consent per session |
 | Network security config | `network_security_config.xml` | Enforces HTTPS-only globally, allows cleartext only for localhost/127.0.0.1 (Ollama) |
 | Sensitive app exclusion | `SynapseAccessibilityService.kt` | Hardcoded exclusion of banking, password manager, payment, and authenticator apps from accessibility events |
 | Key migration | `SecureKeyStorage.migrateFromDataStore()` | Idempotent migration of plaintext API keys to encrypted storage; failure could leave keys in plaintext |
-| Vault file I/O | `VaultManager.kt` | Handles actual file writes to user-selected vault folders via SAF |
 | Crash reporting | `CrashReporter.kt` | Transmits crash data (stack traces, device info) to Google Firebase servers |
 
 ## Supported Versions

@@ -7,13 +7,11 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 ## Features
 
 - **Floating overlay** — capture notes over any app without switching
-- **Automatic chunking** — configurable timeout (1–10s) creates natural breaks between strokes
-- **Smart transcription** — messy handwriting → clean markdown via LLM
+- **Automatic chunking** — configurable timeout (1-10s) creates natural breaks between strokes
+- **Smart transcription** — messy handwriting to clean markdown via LLM
 - **Mermaid diagrams** — hand-drawn flowcharts converted to Mermaid code (advanced formatting mode)
-- **Intent detection** — auto-classifies notes as plain notes, tasks, questions, or reminders
-- **Question answering** — detected questions are answered inline by the LLM
 - **Context capture** — select text, capture screen regions, or auto-capture active app info
-- **Multiple destinations** — sync to Obsidian vault, local folder, clipboard, or share sheet
+- **Obsidian vault sync** — transcribed notes appended as markdown via SAF
 - **Multi-provider LLM** — Gemini, Claude, OpenAI, or local Ollama
 - **Separate providers** — configure different LLMs for transcription (vision) vs. question answering (text)
 - **Cost tracking** — estimated cost per sync, cumulative usage stats
@@ -22,7 +20,7 @@ Synapse is an Android overlay app that lets you capture handwritten notes withou
 - **Undo support** — undo last stroke while capturing
 - **Palm rejection** — filters accidental palm touches for stylus/tablet users
 - **Stroke smoothing** — Catmull-Rom splines for cleaner ink paths
-- **Two-pass transcription** — fast first pass with detail refinement for cost optimization
+- **Haptic feedback** — vibration feedback on region selection and confirmation dialogs
 - **Encrypted API key storage** — keys stored with AES-256-GCM via EncryptedSharedPreferences
 - **Project/notebook organization** — group sessions into projects for structured note management
 
@@ -70,13 +68,13 @@ Or open in Android Studio and run directly on a connected device.
 | OpenAI | `gpt-4o-mini` | Yes | No | |
 | Ollama | `llava` | No | Yes | Requires Ollama running on local network |
 
-You can configure **separate providers** for transcription (image-based) and question answering (text-based) in Settings → LLM Configuration.
+You can configure **separate providers** for transcription (image-based) and question answering (text-based) in Settings.
 
 <details>
 <summary><strong>Gemini setup</strong></summary>
 
 1. Go to [Google AI Studio](https://aistudio.google.com/apikey) and create an API key
-2. In Synapse, open **Settings → LLM Configuration**
+2. In Synapse, open **Settings**
 3. Select **Google Gemini** as your provider
 4. Paste your API key
 5. Tap **Save**
@@ -87,7 +85,7 @@ You can configure **separate providers** for transcription (image-based) and que
 <summary><strong>Claude setup</strong></summary>
 
 1. Go to [Anthropic Console](https://console.anthropic.com/) and create an API key
-2. In Synapse, open **Settings → LLM Configuration**
+2. In Synapse, open **Settings**
 3. Select **Anthropic Claude** as your provider
 4. Paste your API key
 5. Tap **Save**
@@ -98,7 +96,7 @@ You can configure **separate providers** for transcription (image-based) and que
 <summary><strong>OpenAI setup</strong></summary>
 
 1. Go to [OpenAI Platform](https://platform.openai.com/api-keys) and create an API key
-2. In Synapse, open **Settings → LLM Configuration**
+2. In Synapse, open **Settings**
 3. Select **OpenAI** as your provider
 4. Paste your API key
 5. Tap **Save**
@@ -111,30 +109,20 @@ You can configure **separate providers** for transcription (image-based) and que
 1. Install [Ollama](https://ollama.ai/) on a machine on your local network
 2. Pull the LLaVA model: `ollama pull llava`
 3. Start the Ollama server (default port 11434)
-4. In Synapse, open **Settings → LLM Configuration**
+4. In Synapse, open **Settings**
 5. Select **Ollama (Local)** as your provider
 6. Enter the server URL (e.g. `http://192.168.1.100:11434`)
 7. No API key needed
 
 </details>
 
-### Destinations
-
-| Destination | Description |
-|---|---|
-| **Clipboard** | Copies transcribed markdown to clipboard |
-| **Local Folder** | Appends to a file in a user-selected folder (e.g. Obsidian vault) |
-| **Share to…** | Opens Android share sheet; sends markdown to compatible apps (Obsidian, Notion, Logseq, Discord, Slack) and plain text to others |
-
-Choose default destinations during onboarding, or change per-session in the review screen.
-
 ### Capture Settings
 
 | Setting | Default | Range |
 |---|---|---|
-| Chunk timeout | 1 second | 1–10 seconds |
-| Session auto-end | 15 minutes | 5–60 minutes |
-| Fade animation | 0.3 seconds | 0–1 second |
+| Chunk timeout | 1 second | 1-10 seconds |
+| Session auto-end | 15 minutes | 5-60 minutes |
+| Fade animation | 0.3 seconds | 0-1 second |
 | Rate limiting | Fast | Safe / Fast |
 | Advanced formatting | On | On (Mermaid, LaTeX) / Off |
 
@@ -146,7 +134,6 @@ Choose default destinations during onboarding, or change per-session in the revi
 2. **Write your notes** — use stylus or finger on the canvas
 3. **Auto-chunking** — after the chunk timeout (default 1s of inactivity), a chunk is captured and the canvas clears for more writing
 4. **Tap Done** — ends the session and opens the review screen
-
 
 ### Context Capture
 
@@ -160,16 +147,15 @@ After tapping Done:
 
 1. Review captured chunks (stitched or separate view)
 2. Delete unwanted chunks
-3. Choose destination(s) — Clipboard, Local Folder, Share
-4. Tap **Sync** — the LLM transcribes your handwriting and sends the result to your chosen destinations
-5. Cost estimate shown before sync
+3. Tap **Sync** — the LLM transcribes your handwriting and writes the result to your Obsidian vault
+4. Cost estimate shown before sync
 
 ## Troubleshooting
 
 <details>
 <summary><strong>Floating bubble doesn't appear</strong></summary>
 
-- Go to **Settings → Apps → Synapse → Display over other apps** and make sure it's enabled
+- Go to **Settings > Apps > Synapse > Display over other apps** and make sure it's enabled
 - On some devices, battery optimization can kill the overlay service. Exclude Synapse from battery optimization.
 - Restart the app after granting the permission
 
@@ -180,15 +166,15 @@ After tapping Done:
 
 - Some Android skins (MIUI, OneUI, ColorOS) aggressively kill accessibility services
 - Exclude Synapse from battery optimization
-- Lock the app in the recent apps tray (long-press → Lock)
-- On MIUI: Settings → Apps → Manage apps → Synapse → Autostart → Enable
+- Lock the app in the recent apps tray (long-press > Lock)
+- On MIUI: Settings > Apps > Manage apps > Synapse > Autostart > Enable
 
 </details>
 
 <details>
 <summary><strong>Transcription fails or returns errors</strong></summary>
 
-- Verify your API key is correct in Settings → LLM Configuration
+- Verify your API key is correct in Settings
 - Check your internet connection (or Ollama server reachability)
 - If using rate limiting in **Safe** mode, requests are throttled — switch to **Fast** if you're hitting limits
 - Check that the provider's API isn't down (e.g. Google AI Studio status page)
@@ -209,7 +195,7 @@ After tapping Done:
 
 - Re-select the vault folder in Settings — SAF URI permissions can expire after app updates
 - Make sure the Obsidian vault folder exists on device storage
-- Check that Synapse has storage access (Settings → Apps → Synapse → Permissions)
+- Check that Synapse has storage access (Settings > Apps > Synapse > Permissions)
 
 </details>
 
@@ -235,14 +221,14 @@ Only to the LLM provider you configure, and only when you tap Sync. Synapse also
 <details>
 <summary><strong>Can I use Synapse without an Obsidian vault?</strong></summary>
 
-Yes. You can sync to any local folder, copy to clipboard, or share to any app. The Obsidian vault is optional.
+Yes. You can sync to any local folder selected via SAF. The Obsidian vault is the primary use case but any folder works.
 
 </details>
 
 <details>
 <summary><strong>Can I customize the transcription prompt?</strong></summary>
 
-Yes. Go to **Settings → Edit Prompt**. The editor validates that required placeholders (`{cleanup_enabled}`, `{advanced_formatting}`) are present. You can reset to the default template at any time.
+Yes. Go to **Settings > Edit Prompt**. The editor validates that required placeholders (`{cleanup_enabled}`, `{advanced_formatting}`) are present. You can reset to the default template at any time.
 
 </details>
 
@@ -256,7 +242,7 @@ Synapse's accessibility service automatically excludes sensitive apps: banking a
 <details>
 <summary><strong>Does it work offline?</strong></summary>
 
-Capture works fully offline — you can scribble and save chunks without a connection. Transcription requires either an internet connection (for cloud providers) or a local Ollama server. Failed syncs are queued and retried automatically when connectivity returns.
+Capture works fully offline — you can scribble and save chunks without a connection. Transcription requires either an internet connection (for cloud providers) or a local Ollama server. Failed syncs are queued and can be retried manually.
 
 </details>
 
@@ -288,83 +274,115 @@ Capture works fully offline — you can scribble and save chunks without a conne
 
 ```
 app/src/main/java/com/synapse/
-├── api/                          # LLM service layer
-│   ├── TranscriptionService.kt   # Interface (transcribe images + text query)
-│   ├── GeminiService.kt          # Google Gemini implementation
-│   ├── ClaudeService.kt          # Anthropic Claude implementation
-│   ├── OpenAiService.kt          # OpenAI implementation
-│   ├── OllamaService.kt          # Local Ollama implementation
-│   ├── LlmProviderFactory.kt     # Routes to correct provider by task type
+├── SynapseApplication.kt          # Application class, Koin initialization
+├── api/                            # LLM service layer
+│   ├── TranscriptionService.kt     # Interface (transcribe, textQuery, visionQuery)
+│   ├── BaseLlmService.kt          # Base class with retry, rate limiting, error handling
+│   ├── GeminiService.kt           # Google Gemini implementation
+│   ├── ClaudeService.kt           # Anthropic Claude implementation
+│   ├── OpenAiService.kt           # OpenAI implementation
+│   ├── OllamaService.kt           # Local Ollama implementation
+│   ├── LlmProvider.kt            # Provider enum and factory routing
 │   ├── QuestionAnswerService.kt   # Q&A via text-based LLM calls
 │   ├── PromptTemplate.kt         # Base transcription prompt
-│   ├── BaseLlmService.kt         # Base class for LLM services
-│   ├── TwoPassTranscriptionService.kt # Two-pass transcription pipeline
 │   ├── TranscriptionServiceFactory.kt # Factory for TranscriptionService instances
-│   ├── TranscriptionJsonParser.kt # JSON response parser
-│   ├── HttpErrorHandler.kt       # HTTP error classification
-│   ├── RetryHelper.kt            # Retry/backoff logic
 │   └── TranscriptionModels.kt    # TranscribedNote, ProcessedResult, ChunkData
 ├── data/
+│   ├── LlmSettingsProvider.kt    # Reads LLM config from DataStore + SecureKeyStorage
 │   ├── cost/
-│   │   ├── LlmCostCalculator.kt  # Token pricing per model
-│   │   └── UsageTracker.kt       # DataStore-backed usage statistics
-│   ├── destination/
-│   │   ├── ClipboardDestination.kt
-│   │   ├── ShareIntentDestination.kt
-│   │   ├── LocalFolderDestination.kt
-│   │   └── DestinationRepository.kt
-│   ├── repository/                # Business logic (sessions, projects)
-│   └── storage/                   # File I/O (WebP, metadata, stitching)
+│   │   └── LlmCostCalculator.kt  # Token pricing per model
+│   ├── repository/
+│   │   ├── ChunkRepository.kt    # Chunk CRUD and image operations
+│   │   ├── SessionRepository.kt  # Session lifecycle management
+│   │   ├── ProjectRepository.kt  # Project CRUD
+│   │   ├── SyncRepository.kt     # Sync orchestration (segmentation, transcription, file write)
+│   │   ├── SessionSegmenter.kt   # Groups chunks/contexts into segments by timeline
+│   │   └── SyncPrompts.kt        # Sync-related prompt templates
+│   └── storage/
+│       ├── ChunkStorage.kt       # WebP image storage with atomic writes
+│       ├── SessionStorage.kt     # Session metadata JSON persistence
+│       ├── ProjectStorage.kt     # Project configuration persistence
+│       ├── SyncStorage.kt        # Persistent sync queue
+│       ├── SecureKeyStorage.kt   # AES-256-GCM encrypted API key storage
+│       ├── ImageProcessor.kt     # WebP conversion, stitching, thumbnails
+│       ├── VaultManager.kt       # Obsidian vault file I/O via SAF
+│       ├── StorageHelper.kt      # Common storage utilities
+│       └── StorageJson.kt        # JSON serialization models
 ├── di/
-│   └── AppModule.kt              # Koin DI modules
+│   └── AppModule.kt              # Koin DI modules (7 module groups)
 ├── model/
-│   ├── CapturedContext.kt         # Sealed class: SelectedText, RegionText, RegionImage, AutoContext
-│   ├── CostModels.kt             # CostEstimate, UsageStats, TokenPricing
-│   ├── Destination.kt            # Destination interface + SyncContent, SyncResult
-│   ├── IntentType.kt             # NOTE, TASK, QUESTION, REMINDER + DetectedIntent
-│   ├── LlmConfig.kt              # Multi-provider configuration
-│   ├── QueuedSync.kt             # Offline queue data model
-│   └── SessionSyncConfig.kt      # Per-session destination selection
+│   ├── CapturedContext.kt        # Sealed class: SelectedText, RegionText, RegionImage, AutoContext
+│   ├── Chunk.kt                  # Chunk data model
+│   ├── Session.kt                # Session data model
+│   ├── Project.kt                # Project data model
+│   ├── CostModels.kt            # CostEstimate, UsageStats, TokenPricing
+│   ├── LlmConfig.kt             # Multi-provider configuration
+│   ├── QueuedSync.kt            # Offline queue item
+│   └── SyncStatus.kt            # Sealed class: Idle, Queued, InProgress, Success, PartialSuccess, Error
 ├── service/
-│   ├── OverlayService.kt         # Floating bubble + capture canvas + region mode
-│   ├── CaptureService.kt         # Stroke capture and chunking
-│   ├── SynapseAccessibilityService.kt  # Screen text extraction
-│   ├── RegionCaptureManager.kt   # Region text/image extraction pipeline
-│   ├── ScreenshotManager.kt      # MediaProjection screen capture
-│   ├── MediaProjectionHolder.kt  # Activity-Service bridge for projection consent
-│   ├── ReminderManager.kt        # Alarm and calendar intent creation
-│   ├── NotificationHelper.kt     # Foreground service notifications
+│   ├── OverlayService.kt         # Main floating overlay service (bubble + canvas + region mode)
+│   ├── CaptureOverlayManager.kt  # Overlay lifecycle management
+│   ├── FloatingBubbleManager.kt  # Draggable bubble widget with chunk badge
 │   ├── OverlaySessionManager.kt  # Capture session lifecycle
 │   ├── InputDispatcher.kt        # Touch/stylus input dispatch
-│   ├── SynapseCapabilities.kt    # Device capability detection
-│   └── PermissionHealthMonitor.kt # Permission state monitoring
+│   ├── SynapseAccessibilityService.kt # Screen text extraction
+│   ├── ScreenshotManager.kt      # MediaProjection screen capture
+│   ├── MediaProjectionHolder.kt  # Activity-Service bridge for projection consent
+│   ├── NotificationHelper.kt     # Foreground service notifications
+│   ├── PermissionHealthMonitor.kt # Permission state monitoring
+│   └── SynapseCapabilities.kt    # Device capability detection
 ├── ui/
+│   ├── MainActivity.kt           # Main activity entry point
+│   ├── ProcessTextActivity.kt    # Android ACTION_PROCESS_TEXT handler
 │   ├── components/
 │   │   ├── ContextCard.kt        # Context display cards in review
 │   │   ├── CostDisplay.kt        # Cost banner and usage stats
-│   │   ├── DestinationSelector.kt # Destination picker chips
-│   │   ├── IntentDialogs.kt      # Intent confirmation, Q&A, reminder dialogs
 │   │   ├── LlmSettingsSection.kt # Multi-provider settings UI
 │   │   └── SyncStatusIndicator.kt # Queue status display
-│   ├── navigation/               # NavGraph, Screen sealed class
-│   ├── onboarding/               # Welcome, permissions, vault, destination, API key
+│   ├── navigation/
+│   │   ├── MainScreen.kt         # Main navigation host
+│   │   └── NavGraph.kt           # Navigation graph definition
+│   ├── onboarding/
+│   │   ├── OnboardingScreen.kt   # Main onboarding pager
+│   │   ├── OnboardingPage.kt     # Individual onboarding page
+│   │   ├── OnboardingViewModel.kt # Onboarding logic
+│   │   ├── OnboardingState.kt    # Onboarding state management
+│   │   ├── AccessibilityPermissionScreen.kt # Accessibility permission request
+│   │   └── DestinationSetupScreen.kt # Destination configuration
 │   ├── overlay/
 │   │   ├── CaptureCanvas.kt      # Drawing surface + region gesture detection
+│   │   ├── CaptureViewModel.kt   # Capture overlay ViewModel
 │   │   ├── RegionGestureDetector.kt # Hold-drag gesture recognizer
 │   │   ├── StrokeManager.kt      # Stroke data management
 │   │   ├── PalmRejectionFilter.kt # Palm rejection for stylus
-│   │   ├── StrokeSmoother.kt     # Stroke path smoothing
-│   │   └── CaptureViewModel.kt   # Capture overlay ViewModel
-│   ├── review/                   # Session list, chunk management, sync
-│   ├── settings/                 # Provider config, capture options, projects
-│   └── ProcessTextActivity.kt    # Android ACTION_PROCESS_TEXT handler
-├── util/
-│   ├── OutputFormatter.kt        # Context-aware markdown formatting
-│   ├── PermissionHelper.kt       # Runtime permission utilities
-│   ├── NetworkMonitor.kt         # Connectivity state tracking
-│   ├── ApiKeyValidator.kt        # API key format validation
-│   ├── OutputSanitizer.kt        # LLM output sanitization
-│   └── CrashReporter.kt          # Firebase Crashlytics wrapper
+│   │   └── StrokeSmoother.kt     # Catmull-Rom stroke smoothing
+│   ├── review/
+│   │   ├── ReviewScreen.kt       # Session list and sync management
+│   │   ├── ReviewViewModel.kt    # Review screen state
+│   │   ├── SessionCard.kt        # Session card component
+│   │   ├── ChunkThumbnail.kt     # Chunk thumbnail display
+│   │   └── SyncStatusBar.kt      # Sync progress indicator
+│   ├── settings/
+│   │   ├── SettingsScreen.kt     # Main settings UI
+│   │   ├── SettingsViewModel.kt  # Settings state
+│   │   ├── ProjectManagerScreen.kt # Project CRUD UI
+│   │   ├── PromptEditorScreen.kt # Custom prompt editor
+│   │   ├── AccessibilitySettingsActivity.kt # Accessibility service settings
+│   │   └── components/
+│   │       ├── SettingsDropdown.kt
+│   │       ├── SettingsSlider.kt
+│   │       ├── SettingsTextField.kt
+│   │       └── SettingsToggle.kt
+│   └── theme/
+│       ├── Theme.kt              # Material 3 theme
+│       └── Typography.kt         # Typography definitions
+└── util/
+    ├── ApiKeyValidator.kt        # API key format validation
+    ├── CrashReporter.kt          # Firebase Crashlytics wrapper
+    ├── HapticFeedbackHelper.kt   # Haptic feedback on region selection
+    ├── NetworkMonitor.kt         # Connectivity state tracking
+    ├── OutputSanitizer.kt        # LLM output sanitization
+    └── PermissionHelper.kt       # Runtime permission utilities
 ```
 
 </details>
@@ -374,18 +392,20 @@ app/src/main/java/com/synapse/
 
 | Component | Technology |
 |---|---|
-| Language | Kotlin |
+| Language | Kotlin 2.2.10 |
 | UI | Jetpack Compose + Material 3 |
-| DI | Koin |
+| DI | Koin 3.5.6 |
 | State | ViewModel + StateFlow |
 | Storage | DataStore, SAF, WebP |
-| Networking | OkHttp |
-| Images | Coil |
-| Serialization | Kotlinx Serialization JSON |
+| Networking | OkHttp 4.12.0 |
+| Images | Coil 2.5.0 |
+| Serialization | Kotlinx Serialization JSON 1.6.3 |
 | Security | AndroidX Security Crypto (EncryptedSharedPreferences) |
+| Crash Reporting | Firebase Crashlytics (BOM 33.7.0) |
 | Min SDK | API 26 (Android 8.0) |
 | Target SDK | API 35 (Android 15) |
 | JVM | Java 17 |
+| Build | AGP 9.0, Gradle Kotlin DSL |
 
 </details>
 

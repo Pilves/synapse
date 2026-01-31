@@ -2,7 +2,7 @@
 
 ## What is Synapse?
 
-Android overlay app (API 26+) for zero-friction handwriting capture. Users draw on a floating transparent canvas without leaving their current app. Strokes are batched into "chunks," sent to an LLM for transcription, and the resulting markdown is synced to Obsidian vaults, local folders, clipboard, or share sheets.
+Android overlay app (API 26+) for zero-friction handwriting capture. Users draw on a floating transparent canvas without leaving their current app. Strokes are batched into "chunks," sent to an LLM for transcription, and the resulting markdown is synced to Obsidian vaults via SAF.
 
 ## Tech Stack
 
@@ -47,27 +47,26 @@ Overlay, accessibility, and stylus features require a **physical device** — th
 **Clean Architecture + MVVM** with these layers:
 
 ```
-api/           → LLM provider implementations (Gemini, Claude, OpenAI, Ollama)
+api/           -> LLM provider implementations (Gemini, Claude, OpenAI, Ollama)
 data/
-  cost/        → Token pricing & usage tracking
-  preferences/ → DataStore preferences
-  repository/  → Business logic (Chunk, Session, Project, Sync repos)
-  storage/     → File I/O, image processing, vault management
-di/            → Koin DI modules (7 modules, loaded in explicit order)
-model/         → Data classes & sealed classes
-service/       → Android services (overlay, capture, accessibility) + helpers
-ui/            → Compose screens, ViewModels, components
-util/          → Permission helpers, networking, validation
+  cost/        -> Token pricing (LlmCostCalculator)
+  repository/  -> Business logic (Chunk, Session, Project, Sync repos)
+  storage/     -> File I/O, image processing, vault management
+di/            -> Koin DI modules (7 modules, loaded in explicit order)
+model/         -> Data classes & sealed classes
+service/       -> Android services (overlay, accessibility) + helpers
+ui/            -> Compose screens, ViewModels, components
+util/          -> Permission helpers, networking, validation
 ```
 
 ### Key patterns
 
 - **Repository pattern** for all business logic (`ChunkRepository`, `SessionRepository`, `ProjectRepository`, `SyncRepository`)
-- **Factory pattern** for LLM provider routing (`DefaultTranscriptionServiceFactory`, `LlmProviderFactory`)
-- **Sealed classes** for type-safe variants (`CapturedContext`, `SyncResult`, `TranscriptionError`)
+- **Factory pattern** for LLM provider routing (`DefaultTranscriptionServiceFactory`)
+- **Sealed classes** for type-safe variants (`CapturedContext`, `SyncStatus`)
 - **StateFlow** for all ViewModel state; `SharedFlow` for one-shot events
 - **Atomic file writes** with RIFF/WEBP header verification for chunk images
-- **Exponential backoff** retry logic for LLM API calls (3 retries)
+- **Exponential backoff** retry logic for LLM API calls (3 retries, in `BaseLlmService`)
 
 ## LLM Providers
 
@@ -83,9 +82,29 @@ Each provider implements `TranscriptionService`. Common logic lives in `BaseLlmS
 ## Key Services
 
 - **`OverlayService`** — Floating bubble + transparent capture canvas (Compose UI host)
-- **`CaptureService`** — Processes strokes into chunks, manages sessions
+- **`CaptureOverlayManager`** — Manages overlay lifecycle (canvas creation/teardown)
+- **`FloatingBubbleManager`** — Draggable bubble widget with chunk count badge
+- **`OverlaySessionManager`** — Capture session lifecycle (start/end/save chunks)
 - **`SynapseAccessibilityService`** — Extracts on-screen text for context, filters sensitive apps
 - **`ProcessTextActivity`** — Handles `ACTION_PROCESS_TEXT` for text selection context
+
+## Source Files
+
+91 Kotlin source files in `app/src/main/java/com/synapse/`:
+
+| Package | Files | Description |
+|---------|-------|-------------|
+| `api/` | 11 | LLM services (Gemini, Claude, OpenAI, Ollama), base service, factory, prompt template, models |
+| `data/cost/` | 1 | Token pricing per model |
+| `data/repository/` | 6 | Chunk, Session, Project, Sync repos + session segmenter + sync prompts |
+| `data/storage/` | 8 | File I/O (chunks, sessions, projects, sync queue, images, vault, secure keys) |
+| `data/` | 1 | LlmSettingsProvider |
+| `di/` | 1 | Koin DI modules |
+| `model/` | 8 | Data classes (Chunk, Session, Project, CapturedContext, CostModels, LlmConfig, QueuedSync, SyncStatus) |
+| `service/` | 11 | OverlayService, accessibility, screenshot, bubble, input, notifications, permissions |
+| `ui/` | 36 | Compose screens, ViewModels, components (overlay, review, settings, onboarding, navigation) |
+| `util/` | 6 | API key validation, crash reporting, haptic feedback, network monitor, output sanitizer, permissions |
+| root | 1 | SynapseApplication |
 
 ## Security
 
@@ -103,16 +122,25 @@ The app requests: `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVI
 
 ## Testing
 
-10 unit test files in `app/src/test/java/com/synapse/` covering:
-- HTTP error handling, prompt template validation, JSON response parsing
-- Cost calculation, repository logic
-- ViewModel state, onboarding state
+24 unit test files in `app/src/test/java/com/synapse/` covering:
+
+| Package | Files | Coverage |
+|---------|-------|----------|
+| `api/` | 7 | ClaudeService, GeminiService, OllamaService, OpenAiService, HttpErrorHandler, PromptTemplate, TranscriptionJsonParser |
+| `data/cost/` | 1 | LlmCostCalculator |
+| `data/repository/` | 5 | ChunkRepository, ProjectRepository, SessionRepository, SyncRepository, SyncRepositoryFormatContext |
+| `data/storage/` | 3 | ChunkStorage, SessionStorage, SyncStorage |
+| `ui/onboarding/` | 1 | OnboardingState |
+| `ui/overlay/` | 3 | CaptureViewModel, PalmRejectionFilter, StrokeSmoother |
+| `ui/review/` | 1 | ReviewViewModel |
+| `ui/settings/` | 1 | SettingsViewModel |
+| `util/` | 2 | ApiKeyValidator, OutputSanitizer |
 
 Manual testing on a physical device is required for overlay, accessibility, and stylus input.
 
 ## Partially Implemented / Future Work
 
-- **Offline sync auto-retry:** Queue (`SyncStorage`) exists but background retry not wired
+- **Offline sync auto-retry:** Queue (`SyncStorage`) exists but network-triggered background retry not wired
 
 ## Conventions
 
@@ -126,4 +154,4 @@ Manual testing on a physical device is required for overlay, accessibility, and 
 
 ## CI/CD
 
-GitHub Actions (`.github/workflows/android.yml`) — manual trigger, runs tests + lint + builds debug APK + creates GitHub release. Requires `GOOGLE_SERVICES_JSON` secret (base64-encoded).
+GitHub Actions (`.github/workflows/android.yml`) — triggers on push to `main`, pull requests to `main`, and manual dispatch. Runs tests + lint + builds debug APK. Manual dispatch also creates a GitHub release with the APK. Requires `GOOGLE_SERVICES_JSON` secret (base64-encoded).

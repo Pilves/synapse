@@ -5,6 +5,10 @@ All notable changes to Synapse are documented here.
 ## [Unreleased]
 
 ### Added
+- **Haptic feedback** -- `HapticFeedbackHelper` provides vibration feedback on region selection and confirmation dialogs
+- **Confirmation dialogs** -- delete session and delete chunk actions now require confirmation
+- **Offline indicator** -- network status shown in UI
+- **Expanded test suite** -- 24 unit test files covering API services, repositories, storage, ViewModels, and utilities
 - **Context capture** -- select text in any app and share to Synapse via Android text processing; auto-capture active app info via accessibility service
 - **Region capture** -- hold-and-drag gesture to select screen regions; extract text via accessibility or screenshot via MediaProjection
 - **Multi-provider LLM routing** -- configure separate providers for transcription (image-based) vs. question answering (text-based)
@@ -13,23 +17,23 @@ All notable changes to Synapse are documented here.
 - **Session management** -- queue processing with retry for capture sessions
 - **Rate limiting** -- request rate management for LLM API calls
 - **Onboarding improvements** -- accessibility permission step, destination setup step, vault project sync during folder selection
-- **Review screen enhancements** -- context section, cost display, destination selector, sync status indicator
+- **Review screen enhancements** -- context section, cost display, sync status indicator
 - **Settings screen enhancements** -- LLM settings section for multi-provider configuration
 - **Screen capture permission flow** -- MediaProjection permission request dialog in MainActivity
-- **Output formatting** -- context-aware markdown formatter with source attribution
 - **Firebase Crashlytics** -- crash reporting integration
-- **GitHub Actions CI/CD pipeline** -- automated build and test workflow
+- **GitHub Actions CI/CD pipeline** -- automated build and test workflow (triggers on push, PR, and manual dispatch)
 - **In-memory LRU session cache** -- session cache for improved performance
 - **JSON schema versioning** -- storage migration safety via schema version tracking
 - **Output sanitization and API key validation utilities** -- input/output validation helpers
-- **Unit test suite** -- tests for cost calculator, output sanitizer, API key validator, stroke smoother, palm rejection filter
 
 ### Changed
 - License changed from MIT to GPL v3
-- OverlayService decomposed into InputDispatcher and OverlaySessionManager
+- OverlayService decomposed into `InputDispatcher`, `OverlaySessionManager`, `CaptureOverlayManager`, and `FloatingBubbleManager`
 - Consolidated dual DataStore instances into single store
 - Upgraded targetSdk to 35 with dependency updates
 - ProGuard rules tightened with log stripping
+- Overlay settings eagerly loaded to prevent default-value flash on startup
+- LLM parsers now throw `InvalidResponse` consistently instead of returning null
 
 ### Security
 - Filename sanitization for vault writes (prevents path traversal)
@@ -37,13 +41,6 @@ All notable changes to Synapse are documented here.
 - 5MB response body size limit for LLM API responses
 - Accessibility service scoped with sensitive app exclusions (banking, password managers, payment apps)
 - Network security config enforces HTTPS-only (except localhost for Ollama)
-
-### Scaffolded (not yet active)
-- **Multi-destination sync** -- destination code exists (clipboard, share sheet, local folder) but sync flow writes only to project files; destination routing not yet invoked
-- **Intent detection** -- models, V2 prompt template, and confirmation UI defined but sync flow uses V1 prompt; intent classification not invoked
-- **Offline sync queue auto-retry** -- queue with status tracking exists but automatic background processing and network-triggered retry are not wired
-- **Usage tracking** -- `UsageTracker` with DataStore persistence exists but is not called from the sync flow after completion
-- **Intent type model defined** -- IntentType enum with NOTE, TASK, QUESTION, REMINDER types defined but not used by sync flow
 
 ### Fixed
 - Stale MediaProjection causing screenshot failures after app restart
@@ -60,6 +57,8 @@ All notable changes to Synapse are documented here.
 - API-level-safe WebP compression for API 26+
 - Receiver registered with RECEIVER_NOT_EXPORTED flag
 - Sessions not loading from disk on startup
+- Compilation errors in ChunkRepository and AppModule
+- ReviewViewModel.refreshCostEstimate now logs exceptions instead of swallowing them
 
 ## [1.0.0] - 2025-01-01
 

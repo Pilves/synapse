@@ -3,16 +3,16 @@
 Current state of every feature in the codebase. Each item is marked:
 - **Implemented** — fully functional
 - **Partial** — code exists but not wired into the main flow
-- **Stub** — classes/models defined but feature inactive
 
 ---
 
 ## Capture System — Implemented
 
 **Floating overlay**
-- Draggable bubble with pending-chunk count badge
+- Draggable bubble with pending-chunk count badge (`FloatingBubbleManager`)
 - Drag to bottom 15% of screen to dismiss
 - Tap to open fullscreen transparent canvas
+- Overlay lifecycle managed by `CaptureOverlayManager`
 
 **Toolbar** (during capture)
 - Minimize, Undo, Region mode toggle, Done, Discard — all functional
@@ -21,7 +21,7 @@ Current state of every feature in the codebase. Each item is marked:
 - Smooth quadratic bezier paths
 - White strokes with dark outline (`#282828`)
 - Three input modes: stylus-write/finger-scroll, both-write, stylus-only
-- Region selection overlay (hold-and-drag with dashed border, corner handles, haptic feedback)
+- Region selection overlay (hold-and-drag with dashed border, corner handles, haptic feedback via `HapticFeedbackHelper`)
 
 **Chunk capture**
 - Configurable inactivity timeout (default 1s, range 1-10s)
@@ -51,17 +51,15 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 
 > **Note:** Daily rate limits shown above are imposed by the API provider, not enforced in application code. Only RPM limits are enforced client-side.
 
-**Retry logic** — exponential backoff, 3 retries, handles 429/5xx errors per provider.
+**Retry logic** — exponential backoff, 3 retries, handles 429/5xx errors per provider. Implemented in `BaseLlmService`.
 
 **Rate limiting** — two modes: Safe (pre-check + backoff for free tiers) and Fast (send immediately, handle 429).
 
-**Service factory** — caches service instances per provider, supports cache invalidation and API key updates.
+**Service factory** — `DefaultTranscriptionServiceFactory` caches service instances per provider, supports cache invalidation and API key updates.
 
-**`HttpErrorHandler`** — Shared HTTP error classifier (401/403 `ApiKeyInvalid`, 429 `RateLimitError` with Retry-After, 529 `ServiceUnavailable`, 5xx `ServerError`).
+**`LlmProvider`** — Supports separate transcription/answering providers with flexible name resolution.
 
-**`LlmProviderFactory`** — Supports separate transcription/answering providers with flexible name resolution.
-
-**Prompt template** — V1 prompt active in sync flow. Three-phase process: Transcribe, Group, Format. Supports cleanup mode and advanced formatting (Mermaid diagrams, LaTeX equations, markdown tables). User-editable via settings.
+**Prompt template** — Three-phase process: Transcribe, Group, Format. Supports cleanup mode and advanced formatting (Mermaid diagrams, LaTeX equations, markdown tables). User-editable via settings.
 
 **JSON parser** — extracts `notes` array from LLM response, maps chunk indices, handles Ollama boundary extraction. Falls back to failure list on parse errors.
 
@@ -69,8 +67,8 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 
 ## Sync System — Implemented
 
-**Session segmentation** — `SyncRepository.syncSession()` groups chunks and contexts into segments by timestamp:
-- Context-only segments: rendered as markdown blockquotes
+**Session segmentation** — `SessionSegmenter` groups chunks and contexts into segments by timestamp:
+- Context-only segments: rendered as markdown blockquotes (or routed through LLM formatting)
 - Chunk-only segments: transcribed via LLM in batches of up to 10
 - Context + Chunk segments: Q&A flow via `QuestionAnswerService`
 
@@ -86,7 +84,7 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 
 **Progress reporting** — granular 0.1 to 1.0 progress during sync.
 
-**Status tracking** — Idle, Queued, InProgress, Success, PartialSuccess, Error.
+**Status tracking** — `SyncStatus` sealed class: Idle, Queued, InProgress, Success, PartialSuccess, Error.
 
 ---
 
@@ -137,14 +135,14 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 - Node caching for performance
 
 **Region capture**
-- Hold-and-drag gesture detection with haptic feedback
+- Hold-and-drag gesture detection with haptic feedback (`HapticFeedbackHelper`)
 - Text extraction via accessibility service first
 - Screenshot fallback via MediaProjection (`ScreenshotManager`)
 - Region images saved as WebP in app cache
 
 **Process text intent**
 - `ProcessTextActivity` handles `ACTION_PROCESS_TEXT` from other apps
-- Stores selected text in `ContextHolder` for overlay to consume
+- Stores selected text for overlay to consume
 - Auto-creates session with captured context
 
 **MediaProjection**
@@ -165,7 +163,7 @@ All four providers fully implement `transcribe()`, `textQuery()`, and `visionQue
 - Delete session and individual chunk with confirmation dialogs
 - Context display for all pending sessions
 - Cost estimate display before sync
-- Sync progress and status indicators
+- Sync progress and status indicators (`SyncStatusBar`)
 
 ---
 
@@ -196,7 +194,7 @@ Accessibility permission link.
 
 ## Onboarding — Implemented
 
-7-page first-run flow:
+Multi-page first-run flow:
 1. Welcome screen
 2. Overlay permission request
 3. Accessibility permission with link to system settings
@@ -246,28 +244,12 @@ Bottom bar navigation with Review and Settings tabs. FAB starts overlay service.
 
 **`LlmSettingsProvider`** — Reads LLM config from DataStore + `SecureKeyStorage`; supports separate transcription/answering providers.
 
+**`HapticFeedbackHelper`** — Provides haptic feedback for region selection and confirmation dialogs.
+
 ---
 
 ## Partial / Not Wired
 
 These features have real code but are not connected to the active sync flow:
 
-**Multi-destination sync** — `ClipboardDestination`, `ShareIntentDestination`, `LocalFolderDestination`, and `DestinationRepository` are implemented. Destination selection UI exists. However, `SyncRepository.syncSession()` writes only to the selected project file. The destination abstraction is not invoked during sync.
-
-**Sync queue processing** — `SyncStorage` implements a persistent queue with status tracking. Background queue processing is wired and functional: `queueForSync()`, `processQueue()`, and `retryFailed()` all work. Only network-triggered automatic retry remains unimplemented.
-
-**`TwoPassTranscriptionService`** — Cost-optimization wrapper routing to text-only LLM when accessibility context is sufficient (not yet wired into sync flow).
-
-**`OutputFormatter`** — Formats notes with context metadata (exists but sync flow handles formatting inline).
-
-**Usage tracking** — `UsageTracker` with DataStore persistence exists. Monthly reset logic implemented. Not called from the sync flow — cost is estimated but not recorded after sync completes.
-
----
-
-## Stub / Inactive
-
-These are defined as code but the feature is not activated:
-
-**Intent detection** — `IntentType` enum (NOTE, TASK, QUESTION, REMINDER, REACTION), `DetectedIntent`, and `IntentData` sealed classes are defined in `IntentType.kt`. `IntentDialogs.kt` has confirmation UI for tasks, Q&A, and reminders. `ReminderManager` can create alarms and calendar events. No V2 prompt template has been created. None of this is invoked — the sync flow uses `PromptTemplate` (V1) which does not detect intents.
-
-**Notion / Google Docs destinations** — referenced in the original design spec only. No implementation exists.
+**Sync queue auto-retry** — `SyncStorage` implements a persistent queue with status tracking. `queueForSync()`, `processQueue()`, and `retryFailed()` all work. Network-triggered automatic retry remains unimplemented — `NetworkMonitor` exists but is not connected to trigger `processQueue()` on connectivity restore.

@@ -87,15 +87,14 @@ Before submitting a PR, run the following locally:
 ./gradlew lint
 ```
 
-Run `./gradlew test` and `./gradlew lint` locally before submitting. CI can also be triggered manually via GitHub Actions.
+The project has 24 unit test files covering API services, repositories, storage managers, ViewModels, and utilities. CI runs these automatically on push to `main` and on pull requests.
 
-For overlay, accessibility, and MediaProjection features, manual testing on a physical device is required — emulators do not support these.
+For overlay, accessibility, and MediaProjection features, manual testing on a physical device is required -- emulators do not support these.
 
 ## Code Review
 
 - All PRs require at least one approving review before merge
 - The maintainer will review PRs in the order they are submitted
-- Expect feedback within a few days; complex changes may take longer
 - Address review comments by pushing new commits (don't force-push during review)
 - Once approved, the maintainer will merge the PR
 
@@ -111,11 +110,11 @@ For overlay, accessibility, and MediaProjection features, manual testing on a ph
 
 ```
 app/src/main/java/com/synapse/
-├── api/          # LLM provider implementations
-├── data/         # Repositories, storage, cost tracking, destinations
+├── api/          # LLM provider implementations (4 providers + base service + factory)
+├── data/         # Repositories, storage, cost tracking
 ├── di/           # Koin dependency injection modules
 ├── model/        # Data classes and sealed classes
-├── service/      # Android services (overlay, capture, accessibility)
+├── service/      # Android services (overlay, accessibility) + helpers
 ├── ui/           # Jetpack Compose screens and components
 └── util/         # Helpers and utilities
 ```

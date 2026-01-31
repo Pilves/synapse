@@ -42,12 +42,12 @@ Synapse is a local-first Android app. Your data stays on your device unless you 
 - URI permissions persist across app restarts so you don't have to re-select your vault
 
 ### Android Permissions
-- `INTERNET` — Used for LLM API calls and crash reporting
-- `FOREGROUND_SERVICE` — Required for the persistent overlay and capture services
-- `SYSTEM_ALERT_WINDOW` — Draw-over-other-apps permission for the floating overlay
-- `POST_NOTIFICATIONS` — Required on Android 13+ for foreground service notifications
-- `WAKE_LOCK` — Keeps CPU active during sync processing
-- `VIBRATE` — Haptic feedback during region selection
+- `INTERNET` -- Used for LLM API calls and crash reporting
+- `FOREGROUND_SERVICE` -- Required for the persistent overlay and capture services
+- `SYSTEM_ALERT_WINDOW` -- Draw-over-other-apps permission for the floating overlay
+- `POST_NOTIFICATIONS` -- Required on Android 13+ for foreground service notifications
+- `WAKE_LOCK` -- Keeps CPU active during sync processing
+- `VIBRATE` -- Haptic feedback during region selection and confirmation dialogs
 
 ## What Synapse Does NOT Do
 
