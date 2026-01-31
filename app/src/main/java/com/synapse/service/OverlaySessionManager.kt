@@ -157,19 +157,19 @@ class OverlaySessionManager(
                         val bitmap = screenshotManager.captureRegion(region)
                         if (bitmap != null) {
                             try {
-                            Log.d(TAG, "Screenshot captured: ${bitmap.width}x${bitmap.height}")
-                            val imagePath = saveScreenshot(bitmap)
-                            if (imagePath != null) {
-                                val imageContext = CapturedContext.RegionImage(
-                                    imagePath = imagePath,
-                                    bounds = region,
-                                    description = null
-                                )
-                                sessionRepository.addContext(sessionId, imageContext)
-                                capturedTextPreview.value = "[Screenshot captured]"
-                            } else {
-                                capturedTextPreview.value = "[Failed to save screenshot]"
-                            }
+                                Log.d(TAG, "Screenshot captured: ${bitmap.width}x${bitmap.height}")
+                                val imagePath = saveScreenshot(bitmap)
+                                if (imagePath != null) {
+                                    val imageContext = CapturedContext.RegionImage(
+                                        imagePath = imagePath,
+                                        bounds = region,
+                                        description = null
+                                    )
+                                    sessionRepository.addContext(sessionId, imageContext)
+                                    capturedTextPreview.value = "[Screenshot captured]"
+                                } else {
+                                    capturedTextPreview.value = "[Failed to save screenshot]"
+                                }
                             } finally {
                                 bitmap.recycle()
                             }
