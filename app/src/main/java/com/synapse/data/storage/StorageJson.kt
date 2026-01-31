@@ -7,7 +7,6 @@ import kotlinx.serialization.json.Json
  */
 object StorageJson {
     val instance: Json = Json {
-        prettyPrint = true
         ignoreUnknownKeys = true
         encodeDefaults = true
     }
