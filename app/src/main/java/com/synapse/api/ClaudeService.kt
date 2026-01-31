@@ -11,7 +11,7 @@ import org.json.JSONObject
  * Uses the claude-3-5-haiku model for vision-based handwriting transcription.
  * Requires a valid API key from Anthropic.
  */
-class ClaudeService(
+open class ClaudeService(
     apiKey: String? = null,
     customPrompt: String? = null,
     rateLimitingSafe: Boolean = true,

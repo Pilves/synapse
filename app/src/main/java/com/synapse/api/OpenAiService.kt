@@ -11,7 +11,7 @@ import org.json.JSONObject
  * Uses the gpt-4o-mini model with Vision API for handwriting transcription.
  * Requires a valid API key from OpenAI.
  */
-class OpenAiService(
+open class OpenAiService(
     apiKey: String? = null,
     customPrompt: String? = null,
     rateLimitingSafe: Boolean = true,

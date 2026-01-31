@@ -348,7 +348,7 @@ class ReviewViewModelTest {
         vm.syncAll()
         advanceUntilIdle()
 
-        assertEquals("Please enter a filename", vm.uiState.value.error)
+        assertEquals("Please enter a valid filename", vm.uiState.value.error)
     }
 
     @Test

@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
  * Uses the llava model (or other vision-capable models) for handwriting transcription.
  * Runs locally, no API key required. Requires Ollama to be running on localhost.
  */
-class OllamaService(
+open class OllamaService(
     @Volatile private var baseUrl: String = DEFAULT_BASE_URL,
     private var model: String = DEFAULT_MODEL,
     customPrompt: String? = null,
