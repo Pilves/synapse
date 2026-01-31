@@ -18,11 +18,11 @@ import org.junit.Before
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class ProjectRepositoryImplTest {
+class ProjectRepositoryTest {
 
     private lateinit var projectStorage: ProjectStorage
     private lateinit var vaultManager: VaultManager
-    private lateinit var repo: ProjectRepositoryImpl
+    private lateinit var repo: ProjectRepository
 
     private val testProject = Project(
         id = "p1",
@@ -35,7 +35,7 @@ class ProjectRepositoryImplTest {
     fun setup() {
         projectStorage = mockk(relaxed = true)
         vaultManager = mockk(relaxed = true)
-        repo = ProjectRepositoryImpl(projectStorage, vaultManager)
+        repo = ProjectRepository(projectStorage, vaultManager)
     }
 
     // --- addProject ---

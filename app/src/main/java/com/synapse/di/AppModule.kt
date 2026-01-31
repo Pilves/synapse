@@ -8,11 +8,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import com.synapse.data.cost.LlmCostCalculator
 import com.synapse.data.repository.ChunkRepository
-import com.synapse.data.repository.ChunkRepositoryImpl
 import com.synapse.data.repository.ProjectRepository
-import com.synapse.data.repository.ProjectRepositoryImpl
 import com.synapse.data.repository.SessionRepository
-import com.synapse.data.repository.SessionRepositoryImpl
 import com.synapse.data.repository.SyncRepository
 import com.synapse.data.repository.SyncRepositoryImpl
 import com.synapse.data.storage.ChunkStorage
@@ -160,24 +157,24 @@ val apiModule = module {
  */
 val repositoryModule = module {
     // ChunkRepository - requires ChunkStorage and SessionStorage
-    single<ChunkRepository> {
-        ChunkRepositoryImpl(
+    single {
+        ChunkRepository(
             chunkStorage = get(),
             sessionStorage = get()
         )
     }
 
     // SessionRepository - requires SessionStorage and ChunkStorage
-    single<SessionRepository> {
-        SessionRepositoryImpl(
+    single {
+        SessionRepository(
             sessionStorage = get(),
             chunkStorage = get()
         )
     }
 
     // ProjectRepository - requires ProjectStorage and VaultManager
-    single<ProjectRepository> {
-        ProjectRepositoryImpl(
+    single {
+        ProjectRepository(
             projectStorage = get(),
             vaultManager = get()
         )

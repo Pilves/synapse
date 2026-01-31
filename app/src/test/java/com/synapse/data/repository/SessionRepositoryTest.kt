@@ -18,11 +18,11 @@ import org.junit.Before
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class SessionRepositoryImplTest {
+class SessionRepositoryTest {
 
     private lateinit var sessionStorage: SessionStorage
     private lateinit var chunkStorage: ChunkStorage
-    private lateinit var repo: SessionRepositoryImpl
+    private lateinit var repo: SessionRepository
 
     private val testSession = Session(
         id = "s1",
@@ -36,7 +36,7 @@ class SessionRepositoryImplTest {
     fun setup() {
         sessionStorage = mockk(relaxed = true)
         chunkStorage = mockk(relaxed = true)
-        repo = SessionRepositoryImpl(sessionStorage, chunkStorage)
+        repo = SessionRepository(sessionStorage, chunkStorage)
     }
 
     // --- createSession ---

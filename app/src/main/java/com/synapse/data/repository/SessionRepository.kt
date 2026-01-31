@@ -7,109 +7,27 @@ import com.synapse.model.Session
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Repository interface for managing capture sessions.
+ * Repository for managing capture sessions.
  *
  * A session represents a recording period where handwriting is being captured.
  * Sessions track start/end times and contain multiple chunks.
+ *
+ * Uses SessionStorage for metadata and ChunkStorage for cleanup operations.
  */
-interface SessionRepository {
+class SessionRepository(
+    private val sessionStorage: SessionStorage,
+    private val chunkStorage: ChunkStorage
+) {
 
     /**
      * Creates a new capture session.
      *
-     * Only one session can be active at a time. Creating a new session
-     * while one is active will throw an exception.
+     * Only one session can be active at a time. If a session is already active,
+     * it will be returned instead of creating a new one.
      *
-     * @return The newly created session
-     * @throws IllegalStateException if a session is already active
+     * @return The newly created or existing active session
      */
-    suspend fun createSession(): Session
-
-    /**
-     * Ends the current active session.
-     *
-     * @param sessionId The session ID to end
-     * @throws IllegalArgumentException if session not found
-     */
-    suspend fun endSession(sessionId: String)
-
-    /**
-     * Gets a session by ID.
-     *
-     * @param sessionId The session ID
-     * @return The session, or null if not found
-     */
-    suspend fun getSession(sessionId: String): Session?
-
-    /**
-     * Gets all sessions that are pending sync.
-     *
-     * Pending sessions are those that have ended but haven't been
-     * successfully synced to a project file yet.
-     *
-     * @return List of pending sessions
-     */
-    suspend fun getPendingSessions(): List<Session>
-
-    /**
-     * Deletes a session and all its associated data.
-     *
-     * This includes all chunks and their image files.
-     *
-     * @param sessionId The session ID to delete
-     */
-    suspend fun deleteSession(sessionId: String)
-
-    /**
-     * Deletes a single chunk from a session.
-     *
-     * @param sessionId The session ID
-     * @param chunkId The chunk ID to delete
-     */
-    suspend fun deleteChunk(sessionId: String, chunkId: String)
-
-    /**
-     * Observes all sessions.
-     *
-     * @return Flow of session list, sorted by start time descending
-     */
-    fun observeSessions(): Flow<List<Session>>
-
-    /**
-     * Gets the currently active session.
-     *
-     * @return The active session, or null if none
-     */
-    suspend fun getActiveSession(): Session?
-
-    /**
-     * Adds a captured context to a session.
-     *
-     * @param sessionId The session ID
-     * @param context The captured context to add
-     */
-    suspend fun addContext(sessionId: String, context: CapturedContext)
-
-    /**
-     * Removes a captured context from a session.
-     *
-     * @param sessionId The session ID
-     * @param contextId The context ID to remove
-     */
-    suspend fun removeContext(sessionId: String, contextId: String)
-}
-
-/**
- * Default implementation of SessionRepository.
- *
- * Uses SessionStorage for metadata and ChunkStorage for cleanup operations.
- */
-class SessionRepositoryImpl(
-    private val sessionStorage: SessionStorage,
-    private val chunkStorage: ChunkStorage
-) : SessionRepository {
-
-    override suspend fun createSession(): Session {
+    suspend fun createSession(): Session {
         // Return existing active session if one exists, otherwise create new
         val activeSession = sessionStorage.getActiveSession()
         if (activeSession != null) {
@@ -119,7 +37,13 @@ class SessionRepositoryImpl(
         return sessionStorage.createSession()
     }
 
-    override suspend fun endSession(sessionId: String) {
+    /**
+     * Ends the current active session.
+     *
+     * @param sessionId The session ID to end
+     * @throws IllegalArgumentException if session not found
+     */
+    suspend fun endSession(sessionId: String) {
         val session = sessionStorage.getSession(sessionId)
             ?: throw IllegalArgumentException("Session not found: $sessionId")
 
@@ -131,15 +55,36 @@ class SessionRepositoryImpl(
         sessionStorage.endSession(sessionId)
     }
 
-    override suspend fun getSession(sessionId: String): Session? {
+    /**
+     * Gets a session by ID.
+     *
+     * @param sessionId The session ID
+     * @return The session, or null if not found
+     */
+    suspend fun getSession(sessionId: String): Session? {
         return sessionStorage.getSession(sessionId)
     }
 
-    override suspend fun getPendingSessions(): List<Session> {
+    /**
+     * Gets all sessions that are pending sync.
+     *
+     * Pending sessions are those that have ended but haven't been
+     * successfully synced to a project file yet.
+     *
+     * @return List of pending sessions
+     */
+    suspend fun getPendingSessions(): List<Session> {
         return sessionStorage.getPendingSessions()
     }
 
-    override suspend fun deleteSession(sessionId: String) {
+    /**
+     * Deletes a session and all its associated data.
+     *
+     * This includes all chunks and their image files.
+     *
+     * @param sessionId The session ID to delete
+     */
+    suspend fun deleteSession(sessionId: String) {
         // Delete all chunk files first
         chunkStorage.deleteSessionChunks(sessionId)
 
@@ -147,7 +92,13 @@ class SessionRepositoryImpl(
         sessionStorage.deleteSession(sessionId)
     }
 
-    override suspend fun deleteChunk(sessionId: String, chunkId: String) {
+    /**
+     * Deletes a single chunk from a session.
+     *
+     * @param sessionId The session ID
+     * @param chunkId The chunk ID to delete
+     */
+    suspend fun deleteChunk(sessionId: String, chunkId: String) {
         // Delete chunk file
         chunkStorage.deleteChunk(sessionId, chunkId)
 
@@ -155,19 +106,41 @@ class SessionRepositoryImpl(
         sessionStorage.removeChunk(sessionId, chunkId)
     }
 
-    override fun observeSessions(): Flow<List<Session>> {
+    /**
+     * Observes all sessions.
+     *
+     * @return Flow of session list, sorted by start time descending
+     */
+    fun observeSessions(): Flow<List<Session>> {
         return sessionStorage.observeSessions()
     }
 
-    override suspend fun getActiveSession(): Session? {
+    /**
+     * Gets the currently active session.
+     *
+     * @return The active session, or null if none
+     */
+    suspend fun getActiveSession(): Session? {
         return sessionStorage.getActiveSession()
     }
 
-    override suspend fun addContext(sessionId: String, context: CapturedContext) {
+    /**
+     * Adds a captured context to a session.
+     *
+     * @param sessionId The session ID
+     * @param context The captured context to add
+     */
+    suspend fun addContext(sessionId: String, context: CapturedContext) {
         sessionStorage.addContext(sessionId, context)
     }
 
-    override suspend fun removeContext(sessionId: String, contextId: String) {
+    /**
+     * Removes a captured context from a session.
+     *
+     * @param sessionId The session ID
+     * @param contextId The context ID to remove
+     */
+    suspend fun removeContext(sessionId: String, contextId: String) {
         sessionStorage.removeContext(sessionId, contextId)
     }
 }
