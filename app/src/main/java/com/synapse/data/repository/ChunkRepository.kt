@@ -109,7 +109,7 @@ class ChunkRepository(
         if (bitmap != null) {
             imageCache.put(chunkId, bitmap)
         }
-        return bitmap?.copy(bitmap.config, false)
+        return bitmap?.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
     }
 
     /**
