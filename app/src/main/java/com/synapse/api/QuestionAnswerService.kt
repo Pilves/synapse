@@ -7,13 +7,13 @@ import java.io.File
 /**
  * Service that answers user questions using the configured LLM provider.
  *
- * Uses [LlmProviderFactory] to route requests to the appropriate LLM backend
+ * Uses [DefaultTranscriptionServiceFactory] to route requests to the appropriate LLM backend
  * (Gemini, Claude, OpenAI, or Ollama) based on the user's configuration.
  * Supports optional context from captured screen content, selected text,
  * and region images (diagrams, screenshots, etc.).
  */
 class QuestionAnswerService(
-    private val llmProviderFactory: LlmProviderFactory,
+    private val llmProviderFactory: DefaultTranscriptionServiceFactory,
     private val appFilesDir: File? = null
 ) {
 
