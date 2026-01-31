@@ -8,6 +8,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
 import java.net.ConnectException
@@ -96,6 +97,128 @@ abstract class BaseLlmService(
      */
     protected fun buildChunkContextString(prompt: String, chunkContext: String?): String {
         return if (chunkContext.isNullOrBlank()) prompt else "$prompt\n\n$chunkContext"
+    }
+
+    // ── JSON content-building helpers (Claude / OpenAI message format) ──
+
+    /**
+     * Creates a text content part: `{"type": "text", "text": "..."}`.
+     * Used by Claude and OpenAI multipart content arrays.
+     */
+    protected fun buildTextContentPart(text: String): JSONObject =
+        JSONObject().apply {
+            put("type", "text")
+            put("text", text)
+        }
+
+    /**
+     * Creates a Claude-style image content part with base64 source.
+     * `{"type": "image", "source": {"type": "base64", "media_type": ..., "data": ...}}`
+     */
+    protected fun buildClaudeImagePart(imageBytes: ByteArray, mimeType: String): JSONObject =
+        JSONObject().apply {
+            put("type", "image")
+            put("source", JSONObject().apply {
+                put("type", "base64")
+                put("media_type", mimeType)
+                put("data", encodeImageToBase64(imageBytes))
+            })
+        }
+
+    /**
+     * Creates an OpenAI-style image_url content part with a base64 data URI.
+     * `{"type": "image_url", "image_url": {"url": "data:...;base64,...", "detail": "high"}}`
+     */
+    protected fun buildOpenAiImagePart(imageBytes: ByteArray, mimeType: String): JSONObject =
+        JSONObject().apply {
+            put("type", "image_url")
+            put("image_url", JSONObject().apply {
+                put("url", "data:$mimeType;base64,${encodeImageToBase64(imageBytes)}")
+                put("detail", "high")
+            })
+        }
+
+    /**
+     * Creates a Gemini-style inline_data part.
+     * `{"inline_data": {"mime_type": ..., "data": ...}}`
+     */
+    protected fun buildGeminiImagePart(imageBytes: ByteArray, mimeType: String): JSONObject =
+        JSONObject().apply {
+            put("inline_data", JSONObject().apply {
+                put("mime_type", mimeType)
+                put("data", encodeImageToBase64(imageBytes))
+            })
+        }
+
+    /**
+     * Creates a message object: `{"role": role, "content": content}`.
+     * Works for both string content and JSONArray content.
+     */
+    protected fun buildMessage(role: String, content: Any): JSONObject =
+        JSONObject().apply {
+            put("role", role)
+            put("content", content)
+        }
+
+    /**
+     * Builds a standard chat-completion request body with model, messages, and max_tokens.
+     * Caller can add extra fields to the returned JSONObject.
+     */
+    protected fun buildChatRequestBody(
+        model: String,
+        messages: JSONArray,
+        maxTokens: Int = 8192
+    ): JSONObject = JSONObject().apply {
+        put("model", model)
+        put("messages", messages)
+        put("max_tokens", maxTokens)
+    }
+
+    // ── Response parsing helpers ────────────────────────────────────────
+
+    /**
+     * Extracts the first text block from a Claude-style content array.
+     * Iterates the array looking for `{"type": "text", "text": "..."}` entries.
+     *
+     * @return The first non-blank text value, or null if none found.
+     */
+    protected fun extractFirstTextBlock(contentArray: JSONArray?): String? {
+        if (contentArray == null || contentArray.length() == 0) return null
+        for (i in 0 until contentArray.length()) {
+            val block = contentArray.getJSONObject(i)
+            if (block.optString("type") == "text") {
+                val text = block.optString("text", "")
+                if (text.isNotBlank()) return text
+            }
+        }
+        return null
+    }
+
+    /**
+     * Extracts content from an OpenAI-style choices array.
+     * Path: `choices[0].message.content`
+     *
+     * @return The content string, or null if choices is missing/empty.
+     */
+    protected fun extractChoiceMessageContent(choices: JSONArray?): String? {
+        if (choices == null || choices.length() == 0) return null
+        val message = choices.getJSONObject(0).optJSONObject("message") ?: return null
+        return message.optString("content", "")
+    }
+
+    /**
+     * Extracts content from a Gemini-style candidates array.
+     * Path: `candidates[0].content.parts[0].text`
+     *
+     * @return The text string, or null if candidates is missing/empty.
+     */
+    protected fun extractCandidatePartText(candidates: JSONArray?): String? {
+        if (candidates == null || candidates.length() == 0) return null
+        return candidates.getJSONObject(0)
+            .optJSONObject("content")
+            ?.optJSONArray("parts")
+            ?.getJSONObject(0)
+            ?.optString("text", "")
     }
 
     /**

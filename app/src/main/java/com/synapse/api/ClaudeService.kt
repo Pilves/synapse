@@ -61,51 +61,26 @@ class ClaudeService(
         val contentArray = JSONArray()
 
         chunks.forEach { chunk ->
-            contentArray.put(JSONObject().apply {
-                put("type", "image")
-                put("source", JSONObject().apply {
-                    put("type", "base64")
-                    put("media_type", "image/webp")
-                    put("data", encodeImageToBase64(chunk.image))
-                })
-            })
+            contentArray.put(buildClaudeImagePart(chunk.image, "image/webp"))
         }
 
-        contentArray.put(JSONObject().apply {
-            put("type", "text")
-            put("text", buildChunkContextString(prompt, chunkContext))
-        })
+        contentArray.put(buildTextContentPart(buildChunkContextString(prompt, chunkContext)))
 
-        val messages = JSONArray().put(JSONObject().apply {
-            put("role", "user")
-            put("content", contentArray)
-        })
+        val messages = JSONArray().put(buildMessage("user", contentArray))
 
-        return JSONObject().apply {
-            put("model", modelId)
-            put("max_tokens", 8192)
+        return buildChatRequestBody(modelId, messages).apply {
             put("system", PromptTemplate.SYSTEM_PROMPT)
-            put("messages", messages)
         }
     }
 
     override fun buildTextQueryRequestBody(prompt: String, systemPrompt: String?): JSONObject {
         val contentArray = JSONArray()
-        contentArray.put(JSONObject().apply {
-            put("type", "text")
-            put("text", prompt)
-        })
+        contentArray.put(buildTextContentPart(prompt))
 
-        val messages = JSONArray().put(JSONObject().apply {
-            put("role", "user")
-            put("content", contentArray)
-        })
+        val messages = JSONArray().put(buildMessage("user", contentArray))
 
-        return JSONObject().apply {
-            put("model", modelId)
-            put("max_tokens", 8192)
+        return buildChatRequestBody(modelId, messages).apply {
             if (systemPrompt != null) put("system", systemPrompt)
-            put("messages", messages)
         }
     }
 
@@ -117,31 +92,15 @@ class ClaudeService(
         val contentArray = JSONArray()
 
         images.forEach { imageBytes ->
-            contentArray.put(JSONObject().apply {
-                put("type", "image")
-                put("source", JSONObject().apply {
-                    put("type", "base64")
-                    put("media_type", "image/png")
-                    put("data", encodeImageToBase64(imageBytes))
-                })
-            })
+            contentArray.put(buildClaudeImagePart(imageBytes, "image/png"))
         }
 
-        contentArray.put(JSONObject().apply {
-            put("type", "text")
-            put("text", prompt)
-        })
+        contentArray.put(buildTextContentPart(prompt))
 
-        val messages = JSONArray().put(JSONObject().apply {
-            put("role", "user")
-            put("content", contentArray)
-        })
+        val messages = JSONArray().put(buildMessage("user", contentArray))
 
-        return JSONObject().apply {
-            put("model", modelId)
-            put("max_tokens", 8192)
+        return buildChatRequestBody(modelId, messages).apply {
             if (systemPrompt != null) put("system", systemPrompt)
-            put("messages", messages)
         }
     }
 
@@ -151,19 +110,11 @@ class ClaudeService(
         checkTruncation(jsonResponse.optString("stop_reason", ""), "max_tokens")
 
         val content = jsonResponse.optJSONArray("content")
-        if (content == null || content.length() == 0) {
+        val text = extractFirstTextBlock(content)
+        if (text == null) {
             Log.w(tag, "No content in response")
-            return null
         }
-
-        for (i in 0 until content.length()) {
-            val block = content.getJSONObject(i)
-            if (block.optString("type") == "text") {
-                val text = block.optString("text", "")
-                if (text.isNotBlank()) return text
-            }
-        }
-        return null
+        return text
     }
 
     override fun parseQueryContent(responseBody: String): String {
@@ -171,19 +122,16 @@ class ClaudeService(
 
         val jsonResponse = JSONObject(responseBody)
         val content = jsonResponse.optJSONArray("content")
-        if (content == null || content.length() == 0) {
-            throw TranscriptionError.InvalidResponse("No content in response")
-        }
+        val text = extractFirstTextBlock(content)
 
-        for (i in 0 until content.length()) {
-            val block = content.getJSONObject(i)
-            if (block.optString("type") == "text") {
-                val text = block.optString("text", "")
-                if (text.isNotBlank()) return text.trim()
-            }
+        if (text.isNullOrBlank()) {
+            throw TranscriptionError.InvalidResponse(
+                if (content == null || content.length() == 0)
+                    "No content in response"
+                else "Empty text content in response"
+            )
         }
-
-        throw TranscriptionError.InvalidResponse("Empty text content in response")
+        return text.trim()
     }
 
     override fun handleErrorResponse(responseBody: String) {

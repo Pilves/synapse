@@ -57,10 +57,7 @@ class GeminiService(
         parts.put(JSONObject().put("text", buildChunkContextString(prompt, chunkContext)))
 
         chunks.forEach { chunk ->
-            parts.put(JSONObject().put("inline_data", JSONObject().apply {
-                put("mime_type", "image/webp")
-                put("data", encodeImageToBase64(chunk.image))
-            }))
+            parts.put(buildGeminiImagePart(chunk.image, "image/webp"))
         }
 
         val contents = JSONArray().put(JSONObject().apply {
@@ -108,10 +105,7 @@ class GeminiService(
         parts.put(JSONObject().put("text", fullPrompt))
 
         images.forEach { imageBytes ->
-            parts.put(JSONObject().put("inline_data", JSONObject().apply {
-                put("mime_type", "image/png")
-                put("data", encodeImageToBase64(imageBytes))
-            }))
+            parts.put(buildGeminiImagePart(imageBytes, "image/png"))
         }
 
         val contents = JSONArray().put(JSONObject().apply {
@@ -132,15 +126,11 @@ class GeminiService(
     override fun parseTranscriptionContent(responseBody: String): String? {
         val jsonResponse = JSONObject(responseBody)
         val candidates = jsonResponse.optJSONArray("candidates")
-        if (candidates == null || candidates.length() == 0) {
+        val text = extractCandidatePartText(candidates)
+        if (text == null) {
             Log.w(tag, "No candidates in response")
-            return null
         }
-        return candidates.getJSONObject(0)
-            .optJSONObject("content")
-            ?.optJSONArray("parts")
-            ?.getJSONObject(0)
-            ?.optString("text", "")
+        return text
     }
 
     override fun parseQueryContent(responseBody: String): String {
@@ -148,18 +138,14 @@ class GeminiService(
 
         val jsonResponse = JSONObject(responseBody)
         val candidates = jsonResponse.optJSONArray("candidates")
-        if (candidates == null || candidates.length() == 0) {
-            throw TranscriptionError.InvalidResponse("No candidates in response")
-        }
-
-        val content = candidates.getJSONObject(0)
-            .optJSONObject("content")
-            ?.optJSONArray("parts")
-            ?.getJSONObject(0)
-            ?.optString("text", "") ?: ""
+        val content = extractCandidatePartText(candidates) ?: ""
 
         if (content.isBlank()) {
-            throw TranscriptionError.InvalidResponse("Empty content in response")
+            throw TranscriptionError.InvalidResponse(
+                if (candidates == null || candidates.length() == 0)
+                    "No candidates in response"
+                else "Empty content in response"
+            )
         }
         return content.trim()
     }

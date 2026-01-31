@@ -57,40 +57,18 @@ class OpenAiService(
     ): JSONObject {
         val contentArray = JSONArray()
 
-        contentArray.put(JSONObject().apply {
-            put("type", "text")
-            put("text", buildChunkContextString(prompt, chunkContext))
-        })
+        contentArray.put(buildTextContentPart(buildChunkContextString(prompt, chunkContext)))
 
         chunks.forEach { chunk ->
-            contentArray.put(JSONObject().apply {
-                put("type", "image_url")
-                put("image_url", JSONObject().apply {
-                    put("url", "data:image/webp;base64,${encodeImageToBase64(chunk.image)}")
-                    put("detail", "high")
-                })
-            })
-        }
-
-        val userMessage = JSONObject().apply {
-            put("role", "user")
-            put("content", contentArray)
-        }
-
-        val systemMessage = JSONObject().apply {
-            put("role", "system")
-            put("content", PromptTemplate.SYSTEM_PROMPT)
+            contentArray.put(buildOpenAiImagePart(chunk.image, "image/webp"))
         }
 
         val messages = JSONArray().apply {
-            put(systemMessage)
-            put(userMessage)
+            put(buildMessage("system", PromptTemplate.SYSTEM_PROMPT))
+            put(buildMessage("user", contentArray))
         }
 
-        return JSONObject().apply {
-            put("model", modelId)
-            put("messages", messages)
-            put("max_tokens", 8192)
+        return buildChatRequestBody(modelId, messages).apply {
             put("temperature", 0.2)
             put("top_p", 0.8)
             put("response_format", JSONObject().put("type", "json_object"))
@@ -101,21 +79,12 @@ class OpenAiService(
         val messages = JSONArray()
 
         if (systemPrompt != null) {
-            messages.put(JSONObject().apply {
-                put("role", "system")
-                put("content", systemPrompt)
-            })
+            messages.put(buildMessage("system", systemPrompt))
         }
 
-        messages.put(JSONObject().apply {
-            put("role", "user")
-            put("content", prompt)
-        })
+        messages.put(buildMessage("user", prompt))
 
-        return JSONObject().apply {
-            put("model", modelId)
-            put("messages", messages)
-            put("max_tokens", 8192)
+        return buildChatRequestBody(modelId, messages).apply {
             put("temperature", 0.3)
             put("top_p", 0.9)
         }
@@ -129,37 +98,19 @@ class OpenAiService(
         val messages = JSONArray()
 
         if (systemPrompt != null) {
-            messages.put(JSONObject().apply {
-                put("role", "system")
-                put("content", systemPrompt)
-            })
+            messages.put(buildMessage("system", systemPrompt))
         }
 
         val contentArray = JSONArray()
-        contentArray.put(JSONObject().apply {
-            put("type", "text")
-            put("text", prompt)
-        })
+        contentArray.put(buildTextContentPart(prompt))
 
         images.forEach { imageBytes ->
-            contentArray.put(JSONObject().apply {
-                put("type", "image_url")
-                put("image_url", JSONObject().apply {
-                    put("url", "data:image/png;base64,${encodeImageToBase64(imageBytes)}")
-                    put("detail", "high")
-                })
-            })
+            contentArray.put(buildOpenAiImagePart(imageBytes, "image/png"))
         }
 
-        messages.put(JSONObject().apply {
-            put("role", "user")
-            put("content", contentArray)
-        })
+        messages.put(buildMessage("user", contentArray))
 
-        return JSONObject().apply {
-            put("model", modelId)
-            put("messages", messages)
-            put("max_tokens", 8192)
+        return buildChatRequestBody(modelId, messages).apply {
             put("temperature", 0.3)
         }
     }
@@ -174,8 +125,7 @@ class OpenAiService(
 
         checkTruncation(choices.getJSONObject(0).optString("finish_reason", ""), "length")
 
-        val message = choices.getJSONObject(0).optJSONObject("message")
-        return message?.optString("content", "")
+        return extractChoiceMessageContent(choices)
     }
 
     override fun parseQueryContent(responseBody: String): String {
@@ -183,15 +133,14 @@ class OpenAiService(
 
         val jsonResponse = JSONObject(responseBody)
         val choices = jsonResponse.optJSONArray("choices")
-        if (choices == null || choices.length() == 0) {
-            throw TranscriptionError.InvalidResponse("No choices in response")
-        }
-
-        val message = choices.getJSONObject(0).optJSONObject("message")
-        val content = message?.optString("content", "") ?: ""
+        val content = extractChoiceMessageContent(choices) ?: ""
 
         if (content.isBlank()) {
-            throw TranscriptionError.InvalidResponse("Empty content in response")
+            throw TranscriptionError.InvalidResponse(
+                if (choices == null || choices.length() == 0)
+                    "No choices in response"
+                else "Empty content in response"
+            )
         }
         return content.trim()
     }
