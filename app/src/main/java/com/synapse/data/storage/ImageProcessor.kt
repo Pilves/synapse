@@ -357,8 +357,8 @@ class ImageProcessor {
                     MAX_STITCHED_DIMENSION.toFloat() / totalHeight
                 )
             }
-            // Also check memory allocation (4 bytes per ARGB_8888 pixel)
-            val allocationBytes = maxWidth.toLong() * totalHeight * 4
+            // Also check memory allocation (2 bytes per RGB_565 pixel)
+            val allocationBytes = maxWidth.toLong() * totalHeight * 2
             if (allocationBytes > MAX_BITMAP_ALLOCATION_BYTES) {
                 val memScale = Math.sqrt(MAX_BITMAP_ALLOCATION_BYTES.toDouble() / allocationBytes).toFloat()
                 scaleFactor = minOf(scaleFactor, memScale)
@@ -368,11 +368,12 @@ class ImageProcessor {
                 totalHeight = ceil(totalHeight * scaleFactor).toInt()
             }
 
-            // Create output bitmap
+            // Create output bitmap - use RGB_565 (2 bytes/pixel) since handwriting
+            // is monochrome and doesn't need alpha; halves memory vs ARGB_8888
             val stitchedBitmap = Bitmap.createBitmap(
                 maxWidth,
                 totalHeight,
-                Bitmap.Config.ARGB_8888
+                Bitmap.Config.RGB_565
             )
             val canvas = Canvas(stitchedBitmap)
             canvas.drawColor(Color.WHITE)

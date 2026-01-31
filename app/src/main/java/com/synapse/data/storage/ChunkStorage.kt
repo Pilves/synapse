@@ -331,7 +331,7 @@ class ChunkStorage(
      */
     private fun saveThumbnail(sessionDir: File, sessionId: String, index: Int, bitmap: Bitmap) {
         try {
-            val thumbnail = createThumbnail(bitmap)
+            val thumbnail = createThumbnail(bitmap) ?: return
             val thumbFilename = "${CHUNK_PREFIX}${sessionId}${CHUNK_MIDDLE}${index}${THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION"
             val thumbFile = File(sessionDir, thumbFilename)
 
@@ -781,14 +781,19 @@ class ChunkStorage(
             ?: emptySet()
     }
 
-    private fun createThumbnail(bitmap: Bitmap): Bitmap {
-        val ratio = minOf(
-            THUMBNAIL_SIZE.toFloat() / bitmap.width,
-            THUMBNAIL_SIZE.toFloat() / bitmap.height
-        )
-        val width = (bitmap.width * ratio).toInt().coerceAtLeast(1)
-        val height = (bitmap.height * ratio).toInt().coerceAtLeast(1)
-        return Bitmap.createScaledBitmap(bitmap, width, height, true)
+    private fun createThumbnail(bitmap: Bitmap): Bitmap? {
+        return try {
+            val ratio = minOf(
+                THUMBNAIL_SIZE.toFloat() / bitmap.width,
+                THUMBNAIL_SIZE.toFloat() / bitmap.height
+            )
+            val width = (bitmap.width * ratio).toInt().coerceAtLeast(1)
+            val height = (bitmap.height * ratio).toInt().coerceAtLeast(1)
+            Bitmap.createScaledBitmap(bitmap, width, height, true)
+        } catch (e: OutOfMemoryError) {
+            Log.e(TAG, "OOM creating thumbnail, skipping", RuntimeException(e))
+            null
+        }
     }
 
 }
