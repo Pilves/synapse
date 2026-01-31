@@ -473,7 +473,7 @@ class SessionStorage(
                 // Binary search for correct insertion position (list is sorted descending by startedAt)
                 val list = sessions.toMutableList()
                 var insertAt = list.binarySearch {
-                    updatedSession.startedAt.compareTo(it.startedAt)
+                    it.startedAt.compareTo(updatedSession.startedAt)
                 }
                 if (insertAt < 0) insertAt = -(insertAt + 1)
                 list.add(insertAt, updatedSession)
