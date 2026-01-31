@@ -1,7 +1,6 @@
 package com.synapse.di
 
 import com.synapse.api.DefaultTranscriptionServiceFactory
-import com.synapse.api.LlmProviderFactory
 import com.synapse.api.QuestionAnswerService
 
 import kotlinx.coroutines.CoroutineScope
@@ -44,9 +43,11 @@ import org.koin.dsl.module
 import java.util.concurrent.TimeUnit
 
 /**
- * Storage module - File storage and image processing
+ * Storage module - File storage, image processing, and app-level preferences
  *
  * Provides singleton instances of all storage-related classes:
+ * - DataStore: Settings preferences
+ * - SecureKeyStorage: Encrypted API key storage
  * - ChunkStorage: Manages chunk image files
  * - SessionStorage: Manages session metadata
  * - ProjectStorage: Manages project configurations
@@ -55,6 +56,9 @@ import java.util.concurrent.TimeUnit
  * - ImageProcessor: Handles image conversion and manipulation
  */
 val storageModule = module {
+    // DataStore preferences for settings
+    single { androidContext().settingsDataStore }
+
     // SecureKeyStorage - encrypted API key storage
     single { SecureKeyStorage(androidContext()) }
 
@@ -78,13 +82,81 @@ val storageModule = module {
 }
 
 /**
- * Repository module - Business logic layer
+ * API/Network module - HTTP clients, API services, and LLM routing
  *
- * Provides singleton instances of repository implementations:
+ * Provides singleton instances of:
+ * - CertificatePinner: TLS certificate pinning for LLM APIs
+ * - OkHttpClient: Configured HTTP client with timeouts
+ * - DefaultTranscriptionServiceFactory: Factory for creating LLM service instances
+ * - QuestionAnswerService: Q&A over LLM providers
+ * - NetworkMonitor: Network connectivity monitoring
+ */
+val apiModule = module {
+    // Certificate pinner for cloud LLM APIs.
+    // Each host has two pins: the leaf certificate pin and an intermediate CA backup pin.
+    // If a provider rotates their leaf certificate (common every 90 days–1 year),
+    // the intermediate CA pin keeps connections working until the app is updated.
+    //
+    // PIN ROTATION: When a pin mismatch occurs, OkHttp throws SSLPeerUnverifiedException.
+    // To update pins, run:
+    //   openssl s_client -connect <host>:443 | openssl x509 -pubkey -noout \
+    //     | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
+    // Then ship an app update. Intermediate CA pins change rarely (years).
+    single {
+        CertificatePinner.Builder()
+            // Anthropic — leaf + intermediate CA backup
+            .add("api.anthropic.com",
+                "sha256/60QDDZy98CjK1XTBTlPbInyzJzi+817KvW+usCk6r+o=",
+                "sha256/kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=")
+            // OpenAI — leaf + intermediate CA backup
+            .add("api.openai.com",
+                "sha256/y5npFVdBuoqCSOdQa42qiUSPqwMpoei7NK0rQWGUaSU=",
+                "sha256/kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=")
+            // Google Gemini — leaf + intermediate CA backup
+            .add("generativelanguage.googleapis.com",
+                "sha256/ePd8DjIPDZVBxKmWbWHXy+wZjO75a6PEiRzXE7mbzZ0=",
+                "sha256/YPtHaftLw6/0vnc2BnNKGF54xiCA28WFcccjkA4ypCM=")
+            .build()
+    }
+
+    // OkHttpClient with timeout configuration and certificate pinning
+    single {
+        OkHttpClient.Builder()
+            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            .certificatePinner(get())
+            .connectionPool(ConnectionPool(2, 30, TimeUnit.SECONDS))
+            .retryOnConnectionFailure(true)
+            .build()
+    }
+
+    // DefaultTranscriptionServiceFactory - singleton instance, shares OkHttpClient
+    single<DefaultTranscriptionServiceFactory> {
+        DefaultTranscriptionServiceFactory(get())
+    }
+
+    // QuestionAnswerService - Q&A over LLM providers
+    single { QuestionAnswerService(get<DefaultTranscriptionServiceFactory>(), androidContext().filesDir) }
+
+    // NetworkMonitor - network connectivity monitoring
+    single { NetworkMonitor(androidContext()) }
+}
+
+/**
+ * Repository module - Business logic layer and service helpers
+ *
+ * Provides singleton instances of:
  * - ChunkRepository: Chunk management operations
  * - SessionRepository: Session lifecycle management
  * - ProjectRepository: Project CRUD operations
  * - SyncRepository: Sync queue and transcription operations
+ * - LlmCostCalculator: Token pricing and usage tracking
+ * - NotificationHelper: Notification creation and management
+ * - PermissionHelper: Permission checking and requesting
+ * - SynapseCapabilities: Capability mode detection
+ * - PermissionHealthMonitor: Reactive permission state monitoring
+ * - ScreenshotManager: Screenshot and region capture
  */
 val repositoryModule = module {
     // ChunkRepository - requires ChunkStorage and SessionStorage
@@ -133,59 +205,24 @@ val repositoryModule = module {
             llmConfigProvider = suspend { settings.readFullLlmConfig() }
         )
     }
-}
 
-/**
- * API/Network module - HTTP clients and API services
- *
- * Provides singleton instances of:
- * - OkHttpClient: Configured HTTP client with timeouts
- * - DefaultTranscriptionServiceFactory: Factory for creating LLM service instances
- */
-val apiModule = module {
-    // Certificate pinner for cloud LLM APIs.
-    // Each host has two pins: the leaf certificate pin and an intermediate CA backup pin.
-    // If a provider rotates their leaf certificate (common every 90 days–1 year),
-    // the intermediate CA pin keeps connections working until the app is updated.
-    //
-    // PIN ROTATION: When a pin mismatch occurs, OkHttp throws SSLPeerUnverifiedException.
-    // To update pins, run:
-    //   openssl s_client -connect <host>:443 | openssl x509 -pubkey -noout \
-    //     | openssl pkey -pubin -outform der | openssl dgst -sha256 -binary | openssl enc -base64
-    // Then ship an app update. Intermediate CA pins change rarely (years).
-    single {
-        CertificatePinner.Builder()
-            // Anthropic — leaf + intermediate CA backup
-            .add("api.anthropic.com",
-                "sha256/60QDDZy98CjK1XTBTlPbInyzJzi+817KvW+usCk6r+o=",
-                "sha256/kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=")
-            // OpenAI — leaf + intermediate CA backup
-            .add("api.openai.com",
-                "sha256/y5npFVdBuoqCSOdQa42qiUSPqwMpoei7NK0rQWGUaSU=",
-                "sha256/kIdp6NNEd8wsugYyyIYFsi1ylMCED3hZbSR8ZFsa/A4=")
-            // Google Gemini — leaf + intermediate CA backup
-            .add("generativelanguage.googleapis.com",
-                "sha256/ePd8DjIPDZVBxKmWbWHXy+wZjO75a6PEiRzXE7mbzZ0=",
-                "sha256/YPtHaftLw6/0vnc2BnNKGF54xiCA28WFcccjkA4ypCM=")
-            .build()
-    }
+    // Cost tracking
+    single { LlmCostCalculator }
 
-    // OkHttpClient with timeout configuration and certificate pinning
-    single {
-        OkHttpClient.Builder()
-            .connectTimeout(CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-            .certificatePinner(get())
-            .connectionPool(ConnectionPool(2, 30, TimeUnit.SECONDS))
-            .retryOnConnectionFailure(true)
-            .build()
-    }
+    // NotificationHelper - requires Context
+    single { NotificationHelper(androidContext()) }
 
-    // DefaultTranscriptionServiceFactory - singleton instance, shares OkHttpClient
-    single<DefaultTranscriptionServiceFactory> {
-        DefaultTranscriptionServiceFactory(get())
-    }
+    // PermissionHelper - requires Context
+    single { PermissionHelper(androidContext()) }
+
+    // SynapseCapabilities - capability mode detection
+    single { SynapseCapabilities(androidContext()) }
+
+    // PermissionHealthMonitor - reactive permission state monitoring
+    single { PermissionHealthMonitor(androidContext()) }
+
+    // ScreenshotManager - screenshot and region capture
+    single { ScreenshotManager(androidContext()) }
 }
 
 /**
@@ -218,62 +255,6 @@ val viewModelModule = module {
     viewModel { OnboardingViewModel(androidApplication(), get(), get()) }
 }
 
-/**
- * Service helpers module - Utility classes for services
- *
- * Provides singleton instances of:
- * - NotificationHelper: Notification creation and management
- * - PermissionHelper: Permission checking and requesting
- */
-val serviceHelpersModule = module {
-    // NotificationHelper - requires Context
-    single { NotificationHelper(androidContext()) }
-
-    // PermissionHelper - requires Context
-    single { PermissionHelper(androidContext()) }
-
-    // SynapseCapabilities - capability mode detection
-    single { SynapseCapabilities(androidContext()) }
-
-    // PermissionHealthMonitor - reactive permission state monitoring
-    single { PermissionHealthMonitor(androidContext()) }
-}
-
-/**
- * V2 features module - Cost, context, Q&A, and LLM services
- *
- * Provides singleton instances of:
- * - Cost: LlmCostCalculator
- * - Context: ScreenshotManager
- * - Q&A: QuestionAnswerService
- * - Network: NetworkMonitor
- * - LLM: LlmProviderFactory
- */
-val v2Module = module {
-    // Cost tracking
-    single { LlmCostCalculator }
-
-    // Network
-    single { NetworkMonitor(androidContext()) }
-
-    // Screenshot & region capture
-    single { ScreenshotManager(androidContext()) }
-    // LLM routing
-    single { LlmProviderFactory(get()) }
-    single { QuestionAnswerService(get<LlmProviderFactory>(), androidContext().filesDir) }
-}
-
-/**
- * Main application module - Core dependencies
- *
- * This module combines DataStore configuration with any additional
- * application-level dependencies not covered by other modules.
- */
-val appModule = module {
-    // DataStore preferences for settings
-    single { androidContext().settingsDataStore }
-}
-
 // Timeout configuration constants
 private const val CONNECT_TIMEOUT_SECONDS = 30L
 private const val READ_TIMEOUT_SECONDS = 60L
@@ -283,19 +264,14 @@ private const val WRITE_TIMEOUT_SECONDS = 60L
  * Returns all Koin modules in the correct order for dependency resolution.
  *
  * The order ensures that dependencies are available when needed:
- * 1. appModule - Core application dependencies
- * 2. storageModule - Storage layer (no repository dependencies)
- * 3. apiModule - Network layer
- * 4. repositoryModule - Business logic (depends on storage and API)
- * 5. serviceHelpersModule - Service utilities
- * 6. viewModelModule - UI layer (depends on all other modules)
+ * 1. storageModule - Storage layer and preferences (no dependencies on other app modules)
+ * 2. apiModule - Network layer and LLM services
+ * 3. repositoryModule - Business logic and service helpers (depends on storage and API)
+ * 4. viewModelModule - UI layer (depends on all other modules)
  */
 fun getAllModules() = listOf(
-    appModule,
     storageModule,
     apiModule,
     repositoryModule,
-    v2Module,
-    serviceHelpersModule,
     viewModelModule
 )

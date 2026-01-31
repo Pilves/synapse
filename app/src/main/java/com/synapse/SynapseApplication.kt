@@ -5,11 +5,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.synapse.di.apiModule
-import com.synapse.di.appModule
 import com.synapse.di.repositoryModule
-import com.synapse.di.serviceHelpersModule
 import com.synapse.di.storageModule
-import com.synapse.di.v2Module
 import com.synapse.di.viewModelModule
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -28,13 +25,10 @@ import org.koin.java.KoinJavaComponent.get
  * Initializes Koin dependency injection and sets up notification channels.
  *
  * Koin modules are loaded in dependency order:
- * 1. appModule - Core application dependencies (DataStore)
- * 2. storageModule - File storage layer (ChunkStorage, SessionStorage, etc.)
- * 3. apiModule - Network layer (OkHttpClient, TranscriptionServiceFactory)
- * 4. repositoryModule - Business logic (ChunkRepository, SessionRepository, etc.)
- * 5. serviceHelpersModule - Service utilities (NotificationHelper, PermissionHelper)
- * 6. viewModelModule - UI ViewModels
- * 7. Legacy modules for backward compatibility (dataModule, networkModule)
+ * 1. storageModule - Storage layer and preferences (DataStore, ChunkStorage, etc.)
+ * 2. apiModule - Network layer and LLM services (OkHttpClient, TranscriptionServiceFactory)
+ * 3. repositoryModule - Business logic and service helpers (repositories, helpers)
+ * 4. viewModelModule - UI ViewModels
  */
 class SynapseApplication : Application() {
 
@@ -86,23 +80,14 @@ class SynapseApplication : Application() {
 
             // Load Koin modules in dependency order
             modules(
-                // Core application module
-                appModule,
-
-                // Storage layer - no dependencies on other app modules
+                // Storage layer and preferences - no dependencies on other app modules
                 storageModule,
 
-                // API/Network layer
+                // API/Network layer and LLM services
                 apiModule,
 
-                // Repository layer - depends on storage and API
+                // Repository layer and service helpers - depends on storage and API
                 repositoryModule,
-
-                // V2 features - destinations, cost, capture, intent services
-                v2Module,
-
-                // Service helpers
-                serviceHelpersModule,
 
                 // ViewModel layer - depends on all other modules
                 viewModelModule
