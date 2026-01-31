@@ -114,7 +114,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     private val permissionHealthMonitor: PermissionHealthMonitor by inject()
 
     // Coroutine scope for the service
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     // Managers
     private var bubbleManager: FloatingBubbleManager? = null
