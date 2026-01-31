@@ -519,9 +519,17 @@ class SessionStorage(
         _sessionsFlow.update { sessions ->
             val index = sessions.indexOfFirst { it.id == updatedSession.id }
             if (index >= 0) {
+                // Replace in-place without re-sorting (position unchanged for existing sessions)
                 sessions.toMutableList().apply { set(index, updatedSession) }
             } else {
-                (sessions + updatedSession).sortedByDescending { it.startedAt }
+                // Binary search for correct insertion position (list is sorted descending by startedAt)
+                val list = sessions.toMutableList()
+                var insertAt = list.binarySearch {
+                    updatedSession.startedAt.compareTo(it.startedAt)
+                }
+                if (insertAt < 0) insertAt = -(insertAt + 1)
+                list.add(insertAt, updatedSession)
+                list
             }
         }
     }

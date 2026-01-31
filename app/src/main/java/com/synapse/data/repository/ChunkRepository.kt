@@ -93,7 +93,8 @@ class ChunkRepositoryImpl(
 ) : ChunkRepository {
 
     private val imageCache = object : LruCache<String, Bitmap>(
-        (Runtime.getRuntime().maxMemory() / 16).toInt()
+        // Cap at 48MB to prevent excessive heap usage on high-end devices
+        minOf((Runtime.getRuntime().maxMemory() / 16).toInt(), 48 * 1024 * 1024)
     ) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
         override fun entryRemoved(evicted: Boolean, key: String, oldValue: Bitmap, newValue: Bitmap?) {

@@ -34,8 +34,7 @@ class ProjectStorage(private val context: Context) {
     private val mutex = Mutex()
     private val _projectsFlow = MutableStateFlow<List<Project>>(emptyList())
 
-    /** In-memory cache of projects, invalidated on write operations. */
-    @Volatile
+    /** In-memory cache of projects, guarded by [mutex]. */
     private var cachedProjects: List<Project>? = null
 
     private val projectsDir: File
