@@ -119,13 +119,13 @@ class OpenAiService(
         val jsonResponse = JSONObject(responseBody)
         val choices = jsonResponse.optJSONArray("choices")
         if (choices == null || choices.length() == 0) {
-            Log.w(tag, "No choices in response")
-            return null
+            throw TranscriptionError.InvalidResponse("No choices in OpenAI response")
         }
 
         checkTruncation(choices.getJSONObject(0).optString("finish_reason", ""), "length")
 
         return extractChoiceMessageContent(choices)
+            ?: throw TranscriptionError.InvalidResponse("Empty content in OpenAI response")
     }
 
     override fun parseQueryContent(responseBody: String): String {

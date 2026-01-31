@@ -110,11 +110,8 @@ class ClaudeService(
         checkTruncation(jsonResponse.optString("stop_reason", ""), "max_tokens")
 
         val content = jsonResponse.optJSONArray("content")
-        val text = extractFirstTextBlock(content)
-        if (text == null) {
-            Log.w(tag, "No content in response")
-        }
-        return text
+        return extractFirstTextBlock(content)
+            ?: throw TranscriptionError.InvalidResponse("No content in Claude response")
     }
 
     override fun parseQueryContent(responseBody: String): String {

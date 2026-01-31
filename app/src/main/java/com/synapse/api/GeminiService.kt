@@ -126,11 +126,8 @@ class GeminiService(
     override fun parseTranscriptionContent(responseBody: String): String? {
         val jsonResponse = JSONObject(responseBody)
         val candidates = jsonResponse.optJSONArray("candidates")
-        val text = extractCandidatePartText(candidates)
-        if (text == null) {
-            Log.w(tag, "No candidates in response")
-        }
-        return text
+        return extractCandidatePartText(candidates)
+            ?: throw TranscriptionError.InvalidResponse("No candidates in Gemini response")
     }
 
     override fun parseQueryContent(responseBody: String): String {
