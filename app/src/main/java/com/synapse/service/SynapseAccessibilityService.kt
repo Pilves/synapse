@@ -16,6 +16,7 @@ class SynapseAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val MAX_NODE_DEPTH = 50
+        private const val MAX_CACHED_NODES = 2000
 
         @Volatile
         private var instance: SynapseAccessibilityService? = null
@@ -168,13 +169,14 @@ class SynapseAccessibilityService : AccessibilityService() {
         result: MutableList<AccessibilityNodeInfo>,
         depth: Int
     ) {
-        if (depth >= MAX_NODE_DEPTH) return
+        if (depth >= MAX_NODE_DEPTH || result.size >= MAX_CACHED_NODES) return
 
         if (!node.text.isNullOrBlank()) {
             result.add(node)
         }
 
         for (i in 0 until node.childCount) {
+            if (result.size >= MAX_CACHED_NODES) return
             node.getChild(i)?.let { child ->
                 collectAllTextNodes(child, result, depth + 1)
             }
