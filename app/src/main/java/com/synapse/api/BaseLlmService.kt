@@ -320,9 +320,16 @@ abstract class BaseLlmService(
 
     /**
      * Reads the response body with a size limit to prevent OOM on malformed responses.
+     * Checks Content-Length header first to reject oversized responses early.
      */
     private fun readResponseBody(response: okhttp3.Response): String {
         val body = response.body ?: return ""
+        // Early reject if Content-Length exceeds limit (avoids reading into memory)
+        val contentLength = body.contentLength()
+        if (contentLength > MAX_RESPONSE_BODY_BYTES) {
+            Log.w(tag, "Response Content-Length ($contentLength) exceeds ${MAX_RESPONSE_BODY_BYTES / 1024 / 1024}MB limit, rejecting")
+            throw TranscriptionError.InvalidResponse("Response too large: $contentLength bytes")
+        }
         val source = body.source()
         source.request(MAX_RESPONSE_BODY_BYTES)
         val buffer = source.buffer

@@ -112,23 +112,21 @@ data class RateLimitConfig(
 )
 
 data class RateLimitState(
-    val requestTimestamps: MutableList<Long> = java.util.Collections.synchronizedList(mutableListOf())
+    // Plain mutable list — all access is guarded by synchronized(lock)
+    val requestTimestamps: MutableList<Long> = mutableListOf()
 ) {
-    fun canMakeRequest(config: RateLimitConfig): Boolean {
-        synchronized(requestTimestamps) {
-            cleanOldTimestamps()
-            val oneMinuteAgo = System.currentTimeMillis() - 60_000
-            val recentRequests = requestTimestamps.count { it > oneMinuteAgo }
-            return recentRequests < config.requestsPerMinute
-        }
+    private val lock = Any()
+
+    fun canMakeRequest(config: RateLimitConfig): Boolean = synchronized(lock) {
+        cleanOldTimestamps()
+        val oneMinuteAgo = System.currentTimeMillis() - 60_000
+        val recentRequests = requestTimestamps.count { it > oneMinuteAgo }
+        recentRequests < config.requestsPerMinute
     }
 
-    fun recordRequest() {
-        synchronized(requestTimestamps) {
-            val now = System.currentTimeMillis()
-            requestTimestamps.add(now)
-            cleanOldTimestamps()
-        }
+    fun recordRequest(): Unit = synchronized(lock) {
+        requestTimestamps.add(System.currentTimeMillis())
+        cleanOldTimestamps()
     }
 
     private fun cleanOldTimestamps() {
@@ -136,16 +134,14 @@ data class RateLimitState(
         requestTimestamps.removeAll { it < oneMinuteAgo }
     }
 
-    fun getWaitTimeMs(config: RateLimitConfig): Long {
-        synchronized(requestTimestamps) {
-            val now = System.currentTimeMillis()
-            val oneMinuteAgo = now - 60_000
-            val oldestRecentRequest = requestTimestamps.filter { it > oneMinuteAgo }.minOrNull()
-            return if (oldestRecentRequest != null) {
-                (oldestRecentRequest + 60_000) - now
-            } else {
-                0
-            }
+    fun getWaitTimeMs(config: RateLimitConfig): Long = synchronized(lock) {
+        val now = System.currentTimeMillis()
+        val oneMinuteAgo = now - 60_000
+        val oldestRecentRequest = requestTimestamps.filter { it > oneMinuteAgo }.minOrNull()
+        if (oldestRecentRequest != null) {
+            (oldestRecentRequest + 60_000) - now
+        } else {
+            0
         }
     }
 }
