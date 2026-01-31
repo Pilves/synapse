@@ -334,7 +334,6 @@ app/src/main/java/com/synapse/
 │   ├── MediaProjectionHolder.kt  # Activity-Service bridge for projection consent
 │   ├── ReminderManager.kt        # Alarm and calendar intent creation
 │   ├── NotificationHelper.kt     # Foreground service notifications
-│   ├── OverlayUiHost.kt          # Compose UI host for overlay
 │   ├── OverlaySessionManager.kt  # Capture session lifecycle
 │   ├── InputDispatcher.kt        # Touch/stylus input dispatch
 │   ├── SynapseCapabilities.kt    # Device capability detection

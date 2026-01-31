@@ -26,7 +26,7 @@ All notable changes to Synapse are documented here.
 
 ### Changed
 - License changed from MIT to GPL v3
-- OverlayService decomposed into InputDispatcher, OverlaySessionManager, and OverlayUiHost
+- OverlayService decomposed into InputDispatcher and OverlaySessionManager
 - Consolidated dual DataStore instances into single store
 - Upgraded targetSdk to 35 with dependency updates
 - ProGuard rules tightened with log stripping
