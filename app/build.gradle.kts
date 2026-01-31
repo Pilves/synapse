@@ -70,6 +70,12 @@ android {
             isIncludeAndroidResources = true
         }
     }
+
+    lint {
+        warningsAsErrors = false
+        abortOnError = true
+        baseline = file("lint-baseline.xml")
+    }
 }
 
 dependencies {
@@ -120,6 +126,9 @@ dependencies {
 
     // Kotlin Serialization
     implementation(libs.kotlinx.serialization.json)
+
+    // Memory leak detection (debug only)
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 
     // Testing
     testImplementation(libs.junit)
