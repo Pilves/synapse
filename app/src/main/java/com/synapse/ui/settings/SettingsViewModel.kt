@@ -20,6 +20,7 @@ import com.synapse.model.LlmConfig
 import com.synapse.model.Project
 import com.synapse.ui.overlay.InputMode
 import com.synapse.util.ApiKeyValidator
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -130,9 +131,16 @@ class SettingsViewModel(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Defaults.LLM_PROVIDER)
 
-    private val _apiKey = MutableStateFlow(secureKeyStorage.getKey("transcription")
-        ?: secureKeyStorage.getKey("legacy") ?: "")
+    private val _apiKey = MutableStateFlow("")
     val apiKey: StateFlow<String> = _apiKey.asStateFlow()
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val key = secureKeyStorage.getKey("transcription")
+                ?: secureKeyStorage.getKey("legacy") ?: ""
+            _apiKey.value = key
+        }
+    }
 
     val cleanupMode: StateFlow<Boolean> = dataStore.data
         .map { it[PreferenceKeys.CLEANUP_MODE] ?: Defaults.CLEANUP_MODE }

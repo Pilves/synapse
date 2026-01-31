@@ -160,6 +160,7 @@ class SynapseAccessibilityService : AccessibilityService() {
 
     private fun updateNodeCache() {
         val root = rootInActiveWindow ?: return
+        nodeCache = emptyList()
         val result = mutableListOf<AccessibilityNodeInfo>()
         collectAllTextNodes(root, result, 0)
         nodeCache = result
