@@ -68,6 +68,19 @@ class CaptureOverlayManager(
     private val chunkTimeoutKey = floatPreferencesKey("chunk_timeout_seconds")
     private var chunkTimeoutMs: Long = 1000L
 
+    init {
+        // Eagerly load settings so the first show() uses real values
+        scope.launch(Dispatchers.IO) {
+            try {
+                val prefs = dataStore.data.first()
+                val chunkTimeoutSeconds = prefs[chunkTimeoutKey] ?: 1f
+                chunkTimeoutMs = (chunkTimeoutSeconds * 1000).toLong()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to pre-load settings", e)
+            }
+        }
+    }
+
     // ------------------------------------------------------------------
     // Public API
     // ------------------------------------------------------------------
@@ -143,6 +156,9 @@ class CaptureOverlayManager(
                         onDone = onDone,
                         onDiscard = onDiscard,
                         onToggleRegionMode = {
+                            if (!isRegionMode) {
+                                capturedTextPreview.value = "Draw a rectangle around text"
+                            }
                             isRegionMode = !isRegionMode
                             Log.d(TAG, "Region mode toggled: $isRegionMode")
                             refresh()
