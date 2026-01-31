@@ -1,22 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
    Data extraction rules for Android 12+ backup.
-   Excludes sensitive directories from cloud backup and device transfer.
-   SharedPreferences and databases are NOT included (no include rule = not backed up).
+   Uses explicit inclusion to prevent accidental leakage of sensitive data.
+   Only non-sensitive user preferences are backed up.
+   Excluded: sessions/, chunks/, screenshots/, datastore/, projects/, sync/, keys.
 -->
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapabilities="true">
-        <include domain="file" path="." />
-        <exclude domain="file" path="sessions/" />
-        <exclude domain="file" path="datastore/" />
-        <exclude domain="file" path="projects/" />
-        <exclude domain="file" path="sync/" />
+        <!-- Only back up non-sensitive shared preferences -->
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="synapse_secure_keys.xml" />
     </cloud-backup>
     <device-transfer>
-        <include domain="file" path="." />
-        <exclude domain="file" path="sessions/" />
-        <exclude domain="file" path="datastore/" />
-        <exclude domain="file" path="projects/" />
-        <exclude domain="file" path="sync/" />
+        <include domain="sharedpref" path="." />
+        <exclude domain="sharedpref" path="synapse_secure_keys.xml" />
     </device-transfer>
 </data-extraction-rules>
