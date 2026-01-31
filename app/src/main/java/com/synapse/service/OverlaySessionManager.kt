@@ -26,7 +26,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Manages session lifecycle and chunk/context persistence for the overlay capture system.
@@ -58,11 +57,8 @@ class OverlaySessionManager(
     /** Preview text shown after a region text or selected text capture. Shared with CaptureOverlayManager. */
     val capturedTextPreview: MutableState<String?>
 
-    /** Whether region selection mode is active. Shared with CaptureOverlayManager. */
-    var isRegionMode: Boolean = false
-
     // Current active session ID
-    private val currentSessionId = AtomicReference<String?>(null)
+    private var currentSessionId: String? = null
     private val sessionMutex = Mutex()
 
     init {
@@ -78,14 +74,14 @@ class OverlaySessionManager(
             try {
                 // Create session if not exists (synchronized)
                 sessionMutex.withLock {
-                    if (currentSessionId.get() == null) {
+                    if (currentSessionId == null) {
                         val session = sessionRepository.createSession()
-                        currentSessionId.set(session.id)
+                        currentSessionId = session.id
                         Log.d(TAG, "Created new session: ${session.id}")
                     }
                 }
 
-                val sessionId = currentSessionId.get() ?: return@launch
+                val sessionId = currentSessionId ?: return@launch
 
                 // Calculate timestamp in seconds from epoch
                 val timestampSeconds = capturedChunk.timestamp / 1000f
@@ -127,13 +123,13 @@ class OverlaySessionManager(
             try {
                 // Create session if needed (synchronized)
                 sessionMutex.withLock {
-                    if (currentSessionId.get() == null) {
+                    if (currentSessionId == null) {
                         val session = sessionRepository.createSession()
-                        currentSessionId.set(session.id)
+                        currentSessionId = session.id
                         Log.d(TAG, "Created new session for region select: ${session.id}")
                     }
                 }
-                val sessionId = currentSessionId.get() ?: return@launch
+                val sessionId = currentSessionId ?: return@launch
 
                 // Try text extraction via accessibility service first
                 var regionText: CapturedContext.RegionText? = null
@@ -160,6 +156,7 @@ class OverlaySessionManager(
                     if (screenshotManager.hasPermission()) {
                         val bitmap = screenshotManager.captureRegion(region)
                         if (bitmap != null) {
+                            try {
                             Log.d(TAG, "Screenshot captured: ${bitmap.width}x${bitmap.height}")
                             val imagePath = saveScreenshot(bitmap)
                             if (imagePath != null) {
@@ -172,6 +169,9 @@ class OverlaySessionManager(
                                 capturedTextPreview.value = "[Screenshot captured]"
                             } else {
                                 capturedTextPreview.value = "[Failed to save screenshot]"
+                            }
+                            } finally {
+                                bitmap.recycle()
                             }
                         } else {
                             Log.w(TAG, "Screenshot capture returned null — projection may be dead")
@@ -198,7 +198,6 @@ class OverlaySessionManager(
 
                 // Auto-switch back to write mode
                 withContext(Dispatchers.Main) {
-                    isRegionMode = false
                     onRefreshOverlay()
                 }
             } catch (e: IOException) {
@@ -211,7 +210,6 @@ class OverlaySessionManager(
                 Log.e(TAG, "Invalid state capturing region", e)
                 capturedTextPreview.value = "[Selection failed]"
                 withContext(Dispatchers.Main) {
-                    isRegionMode = false
                     onRefreshOverlay()
                 }
             }
@@ -251,12 +249,12 @@ class OverlaySessionManager(
 
         scope.launch(Dispatchers.IO) {
             try {
-                if (currentSessionId.get() == null) {
+                if (currentSessionId == null) {
                     val session = sessionRepository.createSession()
-                    currentSessionId.set(session.id)
+                    currentSessionId = session.id
                     Log.d(TAG, "Created new session for pending context: ${session.id}")
                 }
-                val sessionId = currentSessionId.get() ?: return@launch
+                val sessionId = currentSessionId ?: return@launch
                 sessionRepository.addContext(sessionId, pendingContext)
                 Log.d(TAG, "Added pending context to session $sessionId")
 
@@ -287,7 +285,7 @@ class OverlaySessionManager(
             return
         }
 
-        val sessionId = currentSessionId.get()
+        val sessionId = currentSessionId
         if (sessionId == null) {
             Log.d(TAG, "No active session, nothing to delete")
             return
@@ -306,7 +304,7 @@ class OverlaySessionManager(
 
                 if (chunkTs == 0L && contextTs == 0L) {
                     Log.d(TAG, "Session is empty, discarding")
-                    currentSessionId.set(null)
+                    currentSessionId = null
                     return@launch
                 }
 
@@ -330,7 +328,7 @@ class OverlaySessionManager(
                 val updated = sessionRepository.getSession(sessionId)
                 if (updated != null && updated.chunks.isEmpty() && updated.contexts.isEmpty()) {
                     sessionRepository.deleteSession(sessionId)
-                    currentSessionId.set(null)
+                    currentSessionId = null
                     Log.d(TAG, "Session now empty, discarded")
                 }
             } catch (e: Exception) {
@@ -344,12 +342,12 @@ class OverlaySessionManager(
      * The session is finalized in the repository and the session ID is cleared.
      */
     fun endCurrentSession() {
-        val sessionId = currentSessionId.get() ?: return
+        val sessionId = currentSessionId ?: return
         scope.launch(Dispatchers.IO) {
             try {
                 sessionRepository.endSession(sessionId)
                 Log.d(TAG, "Ended session: $sessionId")
-                currentSessionId.set(null)
+                currentSessionId = null
                 // Don't clean up screenshots here — they're needed by SyncRepository
                 // Cleanup happens after sync in finishSessionAndOpenReview or on next service start
             } catch (e: IOException) {
@@ -386,15 +384,15 @@ class OverlaySessionManager(
                 // Ensure session exists for the pending chunk
                 if (pendingChunk != null) {
                     sessionMutex.withLock {
-                        if (currentSessionId.get() == null) {
+                        if (currentSessionId == null) {
                             val session = sessionRepository.createSession()
-                            currentSessionId.set(session.id)
+                            currentSessionId = session.id
                             Log.d(TAG, "Created session for final chunk: ${session.id}")
                         }
                     }
                 }
 
-                val sessionId = currentSessionId.get()
+                val sessionId = currentSessionId
 
                 // Save pending chunk to the correct session
                 if (pendingChunk != null) {
@@ -419,7 +417,7 @@ class OverlaySessionManager(
                 if (sessionId != null) {
                     sessionRepository.endSession(sessionId)
                     Log.d(TAG, "Ended session: $sessionId")
-                    currentSessionId.set(null)
+                    currentSessionId = null
                 }
 
                 // Don't clean up screenshots here — sync hasn't happened yet.

@@ -201,7 +201,7 @@ val repositoryModule = module {
             questionAnswerService = get<QuestionAnswerService>(),
             llmConfigProvider = suspend { settings.readFullLlmConfig() }
         )
-    }
+    } onClose { (it as? java.io.Closeable)?.close() }
 
     // Cost tracking
     single { LlmCostCalculator }
