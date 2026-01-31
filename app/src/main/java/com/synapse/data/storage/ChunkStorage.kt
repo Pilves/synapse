@@ -54,8 +54,8 @@ class ChunkStorage(
         /** Thumbnail size in pixels */
         private const val THUMBNAIL_SIZE = 150
 
-        /** WebP quality for full images (85%) */
-        private const val IMAGE_QUALITY = 85
+        /** WebP quality for full images — 75 is sufficient for handwriting OCR */
+        private const val IMAGE_QUALITY = 75
 
         /** WebP quality for thumbnails */
         private const val THUMBNAIL_QUALITY = 70
@@ -371,7 +371,9 @@ class ChunkStorage(
                 return@withContext null
             }
 
-            val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+            val bitmap = BitmapFactory.decodeFile(file.absolutePath, BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            })
             if (bitmap == null) {
                 // Mark as corrupted
                 markAsCorrupted(file.path)
@@ -445,7 +447,9 @@ class ChunkStorage(
                 return@withContext null
             }
 
-            BitmapFactory.decodeFile(thumbFile.absolutePath)
+            BitmapFactory.decodeFile(thumbFile.absolutePath, BitmapFactory.Options().apply {
+                inPreferredConfig = Bitmap.Config.RGB_565
+            })
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load thumbnail $chunkId", e)
             null
