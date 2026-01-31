@@ -17,6 +17,7 @@ class SynapseAccessibilityService : AccessibilityService() {
     companion object {
         private const val MAX_NODE_DEPTH = 50
         private const val MAX_CACHED_NODES = 2000
+        private const val MAX_COMBINED_TEXT_LENGTH = 10_000
 
         @Volatile
         private var instance: SynapseAccessibilityService? = null
@@ -229,9 +230,17 @@ class SynapseAccessibilityService : AccessibilityService() {
             compareBy({ getBounds(it).top }, { getBounds(it).left })
         )
 
-        val combinedText = sortedNodes
-            .mapNotNull { it.text?.toString() }
-            .joinToString(" ")
+        val combinedText = buildString {
+            for (node in sortedNodes) {
+                val text = node.text?.toString() ?: continue
+                if (length + text.length + 1 > MAX_COMBINED_TEXT_LENGTH) {
+                    append(text.take(MAX_COMBINED_TEXT_LENGTH - length))
+                    break
+                }
+                if (isNotEmpty()) append(' ')
+                append(text)
+            }
+        }
 
         if (combinedText.isBlank()) return null
 
@@ -288,6 +297,13 @@ class SynapseAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         instance = null
+        nodeCache = emptyList()
+        currentSelectedText = null
+        currentSourceUrl = null
+        currentPageTitle = null
+        currentSourceApp = null
+        onWindowChanged = null
+        onBackPressed = null
         broadcastHealthState(false)
         super.onDestroy()
     }
