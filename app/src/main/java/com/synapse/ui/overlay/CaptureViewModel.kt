@@ -168,6 +168,7 @@ class CaptureViewModel : ViewModel() {
      *
      * @return The captured chunk, or null if no strokes to capture
      */
+    @Synchronized
     fun captureRemainingStrokes(): CapturedChunk? {
         if (strokeManager.isEmpty() || canvasWidth <= 0 || canvasHeight <= 0) return null
 
@@ -361,6 +362,7 @@ class CaptureViewModel : ViewModel() {
         captureChunkInternal(withFade = false)
     }
 
+    @Synchronized
     private fun captureChunkInternal(withFade: Boolean) {
         if (strokeManager.isEmpty()) return
 

@@ -186,7 +186,10 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             onBadgeUpdate = { count -> bubbleManager?.updateBubbleBadge(count) },
             onOpenReview = { openReviewScreen() },
             onHideOverlay = { overlayManager?.hide() },
-            onRefreshOverlay = { overlayManager?.refresh() },
+            onRefreshOverlay = {
+                overlayManager?.isRegionMode = false
+                overlayManager?.refresh()
+            },
             onRequestPermission = { requestScreenCapturePermission() }
         )
 
@@ -285,8 +288,8 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
     override fun onDestroy() {
         permissionHealthMonitor.stopMonitoring()
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         serviceScope.cancel()
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
         overlayManager?.hide()
         bubbleManager?.hideFloatingBubble()
         screenshotManager.releaseProjection()
