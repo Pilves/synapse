@@ -279,11 +279,12 @@ class ChunkStorage(
      * @return The generated chunk ID and file path, or null if saving failed
      */
     suspend fun saveChunk(sessionId: String, bitmap: Bitmap): Pair<String, String>? = withContext(Dispatchers.IO) {
-        // Get next available index
-        val existingChunks = listChunksForSession(sessionId)
-        val nextIndex = (existingChunks.maxOfOrNull { it.index } ?: -1) + 1
-
         try {
+            val mutex = getSessionMutex(sessionId)
+            val nextIndex = mutex.withLock {
+                val existingChunks = listChunksForSession(sessionId)
+                (existingChunks.maxOfOrNull { it.index } ?: -1) + 1
+            }
             saveChunk(sessionId, nextIndex, bitmap)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to save chunk: ${e.message}")
