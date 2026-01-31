@@ -6,6 +6,6 @@
     android:settingsActivity="com.synapse.ui.settings.AccessibilitySettingsActivity"
     android:accessibilityEventTypes="typeViewTextSelectionChanged|typeWindowStateChanged|typeWindowContentChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
-    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
-    android:notificationTimeout="100"
+    android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagRequestFilterKeyEvents"
+    android:notificationTimeout="300"
     android:canRetrieveWindowContent="true" />

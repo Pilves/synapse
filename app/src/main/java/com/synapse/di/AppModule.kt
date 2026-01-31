@@ -123,7 +123,7 @@ val apiModule = module {
             .readTimeout(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .certificatePinner(get())
-            .connectionPool(ConnectionPool(2, 30, TimeUnit.SECONDS))
+            .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
             .retryOnConnectionFailure(true)
             .build()
     }
