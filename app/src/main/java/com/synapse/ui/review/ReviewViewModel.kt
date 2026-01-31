@@ -107,7 +107,9 @@ class ReviewViewModel(
                 val (provider, _, _) = llmSettingsProvider?.readLlmSettings()
                     ?: return@launch
                 updateCostEstimate(provider.defaultModel)
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                android.util.Log.w("ReviewViewModel", "Failed to refresh cost estimate", e)
+            }
         }
     }
 
