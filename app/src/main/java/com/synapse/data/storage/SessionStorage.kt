@@ -492,7 +492,7 @@ class SessionStorage(
         }
 
         Log.d(TAG, "Cleaned up $cleanedCount orphaned sessions")
-        cleanedCount
+        return cleanedCount
     }
 
     private suspend fun saveSessionInternal(session: Session) {
