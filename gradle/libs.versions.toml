@@ -28,6 +28,9 @@ okhttp = "4.12.0"
 # Data
 datastorePreferences = "1.0.0"
 documentfile = "1.0.1"
+# Note: 1.1.0-alpha06 is the latest available release of AndroidX Security Crypto.
+# No stable release exists. Pinned here; consider migrating to Tink directly if
+# a stable alternative becomes available.
 securityCrypto = "1.1.0-alpha06"
 
 # Image Loading
