@@ -156,7 +156,7 @@ fun OnboardingScreen(
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Go back"
+                                contentDescription = stringResource(R.string.cd_go_back)
                             )
                         }
                     },
@@ -543,7 +543,7 @@ private fun ApiKeyPage(
                             } else {
                                 Icons.Filled.Visibility
                             },
-                            contentDescription = if (showApiKey) "Hide API key" else "Show API key"
+                            contentDescription = if (showApiKey) stringResource(R.string.cd_hide_api_key) else stringResource(R.string.cd_show_api_key)
                         )
                     }
                 },

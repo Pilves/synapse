@@ -7,7 +7,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.synapse.R
 import com.synapse.model.QueueStatus
 
 @Composable
@@ -31,7 +33,7 @@ fun SyncStatusIndicator(
             ) {
                 Icon(
                     Icons.Default.CloudOff,
-                    contentDescription = "Queued offline",
+                    contentDescription = stringResource(R.string.cd_queued_offline),
                     tint = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(20.dp)
                 )
@@ -61,7 +63,7 @@ fun SyncStatusIndicator(
         QueueStatus.SUCCESS -> {
             Icon(
                 Icons.Default.CheckCircle,
-                contentDescription = "Synced",
+                contentDescription = stringResource(R.string.cd_synced),
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = modifier.size(24.dp)
             )
@@ -74,7 +76,7 @@ fun SyncStatusIndicator(
             ) {
                 Icon(
                     Icons.Default.Error,
-                    contentDescription = "Failed",
+                    contentDescription = stringResource(R.string.cd_failed),
                     tint = MaterialTheme.colorScheme.error,
                     modifier = Modifier.size(20.dp)
                 )
@@ -88,7 +90,7 @@ fun SyncStatusIndicator(
         null -> {
             Icon(
                 Icons.Default.CloudUpload,
-                contentDescription = "Ready to sync",
+                contentDescription = stringResource(R.string.cd_ready_to_sync),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = modifier.size(24.dp)
             )
@@ -132,7 +134,7 @@ fun SyncQueueSummary(
             }
             if (failedCount > 0) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Error, contentDescription = "Sync failed", modifier = Modifier.size(14.dp),
+                    Icon(Icons.Default.Error, contentDescription = stringResource(R.string.cd_sync_failed), modifier = Modifier.size(14.dp),
                         tint = MaterialTheme.colorScheme.error)
                     Spacer(Modifier.width(4.dp))
                     Text("$failedCount failed", style = MaterialTheme.typography.bodySmall)
