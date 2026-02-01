@@ -123,6 +123,18 @@ fun ReviewScreen(
     // Confirmation dialog state
     var showSyncConfirmation by remember { mutableStateOf(false) }
 
+    // Memoize selected count to avoid recalculating on every recomposition
+    val selectedCount by remember {
+        derivedStateOf {
+            val contextOnlySessions = uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
+            if (uiState.viewMode == ViewMode.SEPARATE) {
+                uiState.selectedChunkIds.size + contextOnlySessions
+            } else {
+                uiState.sessions.sumOf { it.chunks.size } + contextOnlySessions
+            }
+        }
+    }
+
     // Pre-resolve strings for use in non-composable scopes (LaunchedEffect)
     val undoLabel = stringResource(R.string.action_undo)
 
@@ -239,18 +251,6 @@ fun ReviewScreen(
                 failedChunkIds = uiState.failedChunkIds,
                 onRetryFailed = viewModel::retryFailedChunks
             )
-
-            // Memoize selected count to avoid recalculating on every recomposition
-            val selectedCount by remember {
-                derivedStateOf {
-                    val contextOnlySessions = uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
-                    if (uiState.viewMode == ViewMode.SEPARATE) {
-                        uiState.selectedChunkIds.size + contextOnlySessions
-                    } else {
-                        uiState.sessions.sumOf { it.chunks.size } + contextOnlySessions
-                    }
-                }
-            }
 
             // Bottom controls (project, filename, sync button)
             BottomControls(
