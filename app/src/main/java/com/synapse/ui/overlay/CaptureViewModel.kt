@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 
 /**
  * Represents a captured chunk of handwriting.
@@ -58,6 +60,8 @@ sealed class CaptureEvent {
  * session timing, and fade animations.
  */
 class CaptureViewModel : ViewModel() {
+
+    private val captureLock = ReentrantLock()
 
     companion object {
         /** Default timeout after pen lift before creating a chunk (in milliseconds) */
@@ -168,9 +172,8 @@ class CaptureViewModel : ViewModel() {
      *
      * @return The captured chunk, or null if no strokes to capture
      */
-    @Synchronized
-    fun captureRemainingStrokes(): CapturedChunk? {
-        if (strokeManager.isEmpty() || canvasWidth <= 0 || canvasHeight <= 0) return null
+    fun captureRemainingStrokes(): CapturedChunk? = captureLock.withLock {
+        if (strokeManager.isEmpty() || canvasWidth <= 0 || canvasHeight <= 0) return@withLock null
 
         val bitmap = strokeManager.toBitmapForOcr(canvasWidth, canvasHeight)
         val chunk = CapturedChunk(
@@ -185,7 +188,7 @@ class CaptureViewModel : ViewModel() {
         strokeManager.clear()
         _strokes.value = emptyList()
 
-        return chunk
+        chunk
     }
 
     /**
@@ -362,9 +365,8 @@ class CaptureViewModel : ViewModel() {
         captureChunkInternal(withFade = false)
     }
 
-    @Synchronized
-    private fun captureChunkInternal(withFade: Boolean) {
-        if (strokeManager.isEmpty()) return
+    private fun captureChunkInternal(withFade: Boolean) = captureLock.withLock {
+        if (strokeManager.isEmpty()) return@withLock
 
         val bitmap = strokeManager.toBitmapForOcr(canvasWidth, canvasHeight)
         val chunk = CapturedChunk(
