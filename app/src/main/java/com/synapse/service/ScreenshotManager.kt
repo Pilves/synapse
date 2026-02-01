@@ -213,7 +213,9 @@ class ScreenshotManager(private val context: Context) {
             if (callbackRegistered) {
                 try {
                     mediaProjection?.unregisterCallback(projectionCallback)
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to unregister projection callback", e)
+                }
                 callbackRegistered = false
             }
             tearDownVirtualDisplay()
