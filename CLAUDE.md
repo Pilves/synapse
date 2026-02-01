@@ -52,7 +52,7 @@ data/
   cost/        -> Token pricing (LlmCostCalculator)
   repository/  -> Business logic (Chunk, Session, Project, Sync repos)
   storage/     -> File I/O, image processing, vault management
-di/            -> Koin DI modules (7 modules, loaded in explicit order)
+di/            -> Koin DI modules (4 modules, loaded in explicit order)
 model/         -> Data classes & sealed classes
 service/       -> Android services (overlay, accessibility) + helpers
 ui/            -> Compose screens, ViewModels, components
@@ -122,7 +122,7 @@ The app requests: `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVI
 
 ## Testing
 
-24 unit test files in `app/src/test/java/com/synapse/` covering:
+27 unit test files in `app/src/test/java/com/synapse/` covering:
 
 | Package | Files | Coverage |
 |---------|-------|----------|
@@ -130,17 +130,14 @@ The app requests: `SYSTEM_ALERT_WINDOW`, `FOREGROUND_SERVICE`, `FOREGROUND_SERVI
 | `data/cost/` | 1 | LlmCostCalculator |
 | `data/repository/` | 5 | ChunkRepository, ProjectRepository, SessionRepository, SyncRepository, SyncRepositoryFormatContext |
 | `data/storage/` | 3 | ChunkStorage, SessionStorage, SyncStorage |
-| `ui/onboarding/` | 1 | OnboardingState |
+| `service/` | 2 | OverlaySessionManager, ScreenshotManager |
+| `ui/onboarding/` | 2 | OnboardingState, OnboardingViewModel |
 | `ui/overlay/` | 3 | CaptureViewModel, PalmRejectionFilter, StrokeSmoother |
 | `ui/review/` | 1 | ReviewViewModel |
 | `ui/settings/` | 1 | SettingsViewModel |
 | `util/` | 2 | ApiKeyValidator, OutputSanitizer |
 
 Manual testing on a physical device is required for overlay, accessibility, and stylus input.
-
-## Partially Implemented / Future Work
-
-- **Offline sync auto-retry:** Queue (`SyncStorage`) exists but network-triggered background retry not wired
 
 ## Conventions
 
