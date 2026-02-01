@@ -26,6 +26,7 @@ class SyncStorage(private val context: Context) {
         private const val TAG = "SyncStorage"
         private const val SYNC_DIR = "sync"
         private const val QUEUE_FILE = "queue.json"
+        private const val MAX_QUEUE_SIZE = 100
     }
 
     private val mutex = Mutex()
@@ -100,6 +101,31 @@ class SyncStorage(private val context: Context) {
             return@withLock existing
         }
 
+        val queue = _queueFlow.value.toMutableList()
+
+        // Enforce queue size cap: evict oldest FAILED item to make room
+        if (queue.size >= MAX_QUEUE_SIZE) {
+            val oldestFailed = queue.filter { it.status == SyncItemStatus.FAILED }
+                .minByOrNull { it.createdAt }
+            if (oldestFailed != null) {
+                queue.removeAll { it.id == oldestFailed.id }
+                Log.w(TAG, "Queue full ($MAX_QUEUE_SIZE), evicted oldest failed item: ${oldestFailed.id}")
+            } else {
+                Log.w(TAG, "Queue full ($MAX_QUEUE_SIZE) with no failed items to evict, rejecting enqueue for session $sessionId")
+                return@withLock SyncQueueItem(
+                    id = "",
+                    sessionId = sessionId,
+                    projectId = projectId,
+                    filename = filename,
+                    status = SyncItemStatus.FAILED,
+                    createdAt = System.currentTimeMillis(),
+                    lastAttemptAt = null,
+                    attemptCount = 0,
+                    errorMessage = "Queue full"
+                )
+            }
+        }
+
         val item = SyncQueueItem(
             id = UUID.randomUUID().toString(),
             sessionId = sessionId,
@@ -112,7 +138,6 @@ class SyncStorage(private val context: Context) {
             errorMessage = null
         )
 
-        val queue = _queueFlow.value.toMutableList()
         queue.add(item)
         saveQueueToDisk(queue)
         _queueFlow.value = queue
