@@ -105,11 +105,10 @@ class ChunkRepository(
 
         if (chunk.isCorrupted) return null
 
-        val bitmap = chunkStorage.loadChunk(sessionId, chunkId)
-        if (bitmap != null) {
-            imageCache.put(chunkId, bitmap)
-        }
-        return bitmap?.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
+        val bitmap = chunkStorage.loadChunk(sessionId, chunkId) ?: return null
+        val copy = bitmap.copy(bitmap.config ?: Bitmap.Config.ARGB_8888, false)
+        imageCache.put(chunkId, bitmap)
+        return copy
     }
 
     /**
