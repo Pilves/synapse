@@ -13,6 +13,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -38,6 +39,7 @@ jobs:
 
       - name: Run unit tests
         if: github.event_name != 'workflow_dispatch'
+        timeout-minutes: 15
         run: ./gradlew test
 
       - name: Run lint
@@ -45,6 +47,7 @@ jobs:
         run: ./gradlew lint
 
       - name: Build debug APK
+        timeout-minutes: 10
         run: ./gradlew assembleDebug
 
       - name: Get version name
