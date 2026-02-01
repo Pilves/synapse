@@ -244,13 +244,6 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             hideBubble = { hideFloatingBubble() }
         )
 
-        // Share mutable state between overlay and session managers
-        overlayManager?.let { om ->
-            sessionManager?.let { sm ->
-                // The capturedTextPreview is shared: session manager writes it, overlay displays it
-                // We wire them together by making overlay read from session manager's state
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
