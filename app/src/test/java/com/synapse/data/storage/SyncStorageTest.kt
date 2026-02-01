@@ -194,4 +194,44 @@ class SyncStorageTest {
         val queue = storage2.getQueue()
         assertTrue(queue.isEmpty())
     }
+
+    @Test
+    fun `addToQueue evicts oldest failed item when queue is full`() = runTest {
+        // Fill queue to capacity (100 items)
+        for (i in 1..100) {
+            storage.addToQueue("s$i", "p1", "notes.md")
+        }
+        // Mark the first item as FAILED so it can be evicted
+        val queue = storage.getQueue()
+        storage.markFailed(queue[0].id, "old error")
+
+        // Adding a new item should evict the failed one
+        val newItem = storage.addToQueue("s_new", "p1", "notes.md")
+
+        assertEquals(SyncItemStatus.PENDING, newItem.status)
+        assertTrue(newItem.id.isNotEmpty())
+        val updatedQueue = storage.getQueue()
+        assertEquals(100, updatedQueue.size)
+        // The failed item (s1) should be gone
+        assertNull(updatedQueue.find { it.sessionId == "s1" })
+        // The new item should be present
+        assertNotNull(updatedQueue.find { it.sessionId == "s_new" })
+    }
+
+    @Test
+    fun `addToQueue rejects when queue is full with no failed items`() = runTest {
+        // Fill queue to capacity with all PENDING items
+        for (i in 1..100) {
+            storage.addToQueue("s$i", "p1", "notes.md")
+        }
+
+        // Adding a new item should return a rejected placeholder
+        val rejected = storage.addToQueue("s_overflow", "p1", "notes.md")
+
+        assertEquals(SyncItemStatus.FAILED, rejected.status)
+        assertEquals("Queue full", rejected.errorMessage)
+        assertEquals("", rejected.id)
+        // Queue should still be 100
+        assertEquals(100, storage.getQueue().size)
+    }
 }
