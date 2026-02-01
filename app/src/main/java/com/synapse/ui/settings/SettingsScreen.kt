@@ -41,8 +41,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.synapse.BuildConfig
+import com.synapse.R
 import com.synapse.api.LlmProvider
 import com.synapse.ui.components.LlmSettingsSection
 
@@ -97,7 +99,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Settings",
+                        text = stringResource(R.string.settings_title),
                         style = MaterialTheme.typography.titleLarge
                     )
                 },
@@ -124,11 +126,11 @@ fun SettingsScreen(
                 .verticalScroll(scrollState)
         ) {
             // CAPTURE Section
-            SettingsSection(title = "CAPTURE")
+            SettingsSection(title = stringResource(R.string.settings_capture_header))
 
             var localChunkTimeout by remember(chunkTimeout) { mutableFloatStateOf(chunkTimeout) }
             SettingsSlider(
-                label = "Chunk timeout",
+                label = stringResource(R.string.settings_chunk_timeout),
                 value = localChunkTimeout,
                 onValueChange = { localChunkTimeout = it },
                 onValueChangeFinished = { viewModel.setChunkTimeout(localChunkTimeout) },
@@ -139,7 +141,7 @@ fun SettingsScreen(
 
             var localFadeAnimation by remember(fadeAnimation) { mutableFloatStateOf(fadeAnimation) }
             SettingsSlider(
-                label = "Fade animation",
+                label = stringResource(R.string.settings_fade_animation),
                 value = localFadeAnimation,
                 onValueChange = { localFadeAnimation = it },
                 onValueChangeFinished = { viewModel.setFadeAnimation(localFadeAnimation) },
@@ -151,11 +153,11 @@ fun SettingsScreen(
             SettingsDivider()
 
             // REVIEW Section
-            SettingsSection(title = "REVIEW")
+            SettingsSection(title = stringResource(R.string.settings_review_header))
 
             SettingsSegmentedToggle(
-                label = "Default view",
-                options = listOf("Stitched", "Separate"),
+                label = stringResource(R.string.settings_default_view),
+                options = listOf(stringResource(R.string.review_view_stitched), stringResource(R.string.review_view_separate)),
                 selectedIndex = if (defaultViewStitched) 0 else 1,
                 onSelectionChange = { viewModel.setDefaultViewStitched(it == 0) }
             )
@@ -163,7 +165,7 @@ fun SettingsScreen(
             SettingsDivider()
 
             // TRANSCRIPTION Section
-            SettingsSection(title = "TRANSCRIPTION")
+            SettingsSection(title = stringResource(R.string.settings_transcription_header))
 
             // Multi-provider LLM configuration section
             LlmSettingsSection(
@@ -175,54 +177,54 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             SettingsSwitch(
-                label = "Cleanup mode",
+                label = stringResource(R.string.settings_cleanup_mode),
                 checked = cleanupMode,
                 onCheckedChange = { viewModel.setCleanupMode(it) },
-                description = "Fix spelling and grammar errors"
+                description = stringResource(R.string.settings_cleanup_mode_description)
             )
 
             SettingsSwitch(
-                label = "Advanced formatting",
+                label = stringResource(R.string.settings_advanced_formatting),
                 checked = advancedFormatting,
                 onCheckedChange = { viewModel.setAdvancedFormatting(it) },
-                description = "Convert diagrams to Mermaid, equations to LaTeX"
+                description = stringResource(R.string.settings_advanced_formatting_description)
             )
 
             SettingsSegmentedToggle(
-                label = "Rate limiting",
-                options = listOf("Safe", "Fast"),
+                label = stringResource(R.string.settings_rate_limiting),
+                options = listOf(stringResource(R.string.settings_rate_safe), stringResource(R.string.settings_rate_fast)),
                 selectedIndex = if (rateLimitingSafe) 0 else 1,
                 onSelectionChange = { viewModel.setRateLimitingSafe(it == 0) }
             )
 
             NavigationRow(
-                label = "Edit prompt template",
+                label = stringResource(R.string.settings_edit_prompt),
                 onClick = onNavigateToPromptEditor
             )
 
             SettingsDivider()
 
             // VAULT Section
-            SettingsSection(title = "VAULT")
+            SettingsSection(title = stringResource(R.string.settings_vault_header))
 
             ClickableSettingsRow(
-                label = "Vault location",
-                value = vaultLocation.ifEmpty { "Tap to select folder" },
+                label = stringResource(R.string.settings_vault_location),
+                value = vaultLocation.ifEmpty { stringResource(R.string.settings_vault_tap_to_select) },
                 onClick = onSelectVaultLocation
             )
 
             NavigationRow(
-                label = "Manage projects",
+                label = stringResource(R.string.settings_manage_projects),
                 onClick = onNavigateToProjectManager
             )
 
             SettingsDivider()
 
             // ABOUT Section
-            SettingsSection(title = "ABOUT")
+            SettingsSection(title = stringResource(R.string.settings_about_header))
 
             LinkRow(
-                label = "How to use",
+                label = stringResource(R.string.settings_how_to_use),
                 icon = Icons.AutoMirrored.Filled.Help,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -233,12 +235,12 @@ fun SettingsScreen(
             )
 
             AboutRow(
-                label = "Version",
+                label = stringResource(R.string.settings_version),
                 value = BuildConfig.VERSION_NAME
             )
 
             LinkRow(
-                label = "Source code",
+                label = stringResource(R.string.settings_source_code),
                 icon = Icons.Default.Code,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
@@ -430,26 +432,26 @@ private fun SettingsScreenPreview() {
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
             ) {
-                SettingsSection(title = "CAPTURE")
+                SettingsSection(title = stringResource(R.string.settings_capture_header))
                 SettingsSlider(
-                    label = "Chunk timeout",
+                    label = stringResource(R.string.settings_chunk_timeout),
                     value = 3f,
                     onValueChange = {},
                     valueRange = 1f..10f,
                     valueFormatter = ::formatSeconds
                 )
                 SettingsSlider(
-                    label = "Fade animation",
+                    label = stringResource(R.string.settings_fade_animation),
                     value = 0.3f,
                     onValueChange = {},
                     valueRange = 0f..1f,
                     valueFormatter = ::formatDecimalSeconds
                 )
                 SettingsDivider()
-                SettingsSection(title = "REVIEW")
+                SettingsSection(title = stringResource(R.string.settings_review_header))
                 SettingsSegmentedToggle(
-                    label = "Default view",
-                    options = listOf("Stitched", "Separate"),
+                    label = stringResource(R.string.settings_default_view),
+                    options = listOf(stringResource(R.string.review_view_stitched), stringResource(R.string.review_view_separate)),
                     selectedIndex = 0,
                     onSelectionChange = {}
                 )

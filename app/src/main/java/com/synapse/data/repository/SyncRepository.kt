@@ -20,11 +20,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.synapse.util.NetworkMonitor
 import java.io.Closeable
 import com.synapse.util.OutputSanitizer
 import java.io.File
@@ -93,17 +97,44 @@ class SyncRepositoryImpl(
     private val syncStorage: SyncStorage,
     private val transcriptionServiceProvider: suspend () -> TranscriptionService?,
     private val questionAnswerService: QuestionAnswerService? = null,
-    private val llmConfigProvider: (suspend () -> LlmConfig?)? = null
+    private val llmConfigProvider: (suspend () -> LlmConfig?)? = null,
+    private val networkMonitor: NetworkMonitor? = null
 ) : SyncRepository, Closeable {
 
     companion object {
         private const val TAG = "SyncRepository"
         private const val MAX_CHUNKS_PER_REQUEST = 10
         private const val MAX_BATCH_BYTES = 50L * 1024 * 1024 // 50MB
+        private const val NETWORK_STABILIZATION_DELAY_MS = 3000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
+
+    init {
+        observeNetwork()
+    }
+
+    /**
+     * Observes network connectivity and retries failed syncs when
+     * connectivity is restored (offline -> online transition).
+     *
+     * A small delay is added after reconnection to let the network stabilize
+     * before attempting retries.
+     */
+    private fun observeNetwork() {
+        val monitor = networkMonitor ?: return
+        scope.launch {
+            monitor.isOnline
+                .distinctUntilChanged()
+                .filter { it }
+                .collect {
+                    delay(NETWORK_STABILIZATION_DELAY_MS)
+                    Log.d(TAG, "Network restored, retrying failed syncs")
+                    retryFailed()
+                }
+        }
+    }
 
     override suspend fun syncSession(sessionId: String, projectId: String, filename: String): SyncStatus = withContext(Dispatchers.IO) {
         _syncStatus.value = SyncStatus.InProgress(0f)
@@ -244,7 +275,7 @@ class SyncRepositoryImpl(
                             Log.d(TAG, "Segment $segIndex: llmConfig=${llmConfig != null}")
                             if (llmConfig != null) {
                                 val question = notes.joinToString(" ")
-                                val sendImages = if (hasImageContext && chunkImageBytes.isNotEmpty()) chunkImageBytes.toList() else emptyList()
+                                val sendImages = if (hasImageContext && chunkImageBytes.isNotEmpty()) chunkImageBytes.map { it.copyOf() } else emptyList()
                                 Log.d(TAG, "Segment $segIndex: question='${question.take(80)}', sendImages=${sendImages.size}, hasImageCtx=$hasImageContext")
 
                                 if (question.isNotBlank() || sendImages.isNotEmpty()) {
@@ -274,6 +305,8 @@ class SyncRepositoryImpl(
                             }
                         }
                         } finally {
+                            // Safe to clear now — sendImages holds deep copies of the byte arrays,
+                            // so the QuestionAnswerService is not affected by this clear.
                             chunkImageBytes.clear()
                         }
 

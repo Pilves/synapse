@@ -78,23 +78,40 @@ class ChunkStorage(
         }
     }
 
-    /** LRU-bounded mutex map to prevent unbounded growth */
-    private val sessionMutexes = object : LinkedHashMap<String, Mutex>(16, 0.75f, true) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Mutex>): Boolean {
-            return size > MAX_MUTEX_ENTRIES && !eldest.value.isLocked
-        }
-    }
+    /** Mutex map for per-session locking. Cleaned up manually to avoid race conditions. */
+    private val sessionMutexes = LinkedHashMap<String, Mutex>(16, 0.75f, true)
     private val mutexMapLock = Any()
 
     private val chunksDir: File
         get() = File(context.cacheDir, CHUNKS_DIR).also { it.mkdirs() }
 
     /**
-     * Get or create a mutex for a specific session (LRU-bounded).
+     * Get or create a mutex for a specific session.
+     *
+     * Unlike an LRU with removeEldestEntry, this never auto-evicts mutexes.
+     * Instead, cleanup happens after operations complete via [pruneUnlockedMutexes].
      */
     private fun getSessionMutex(sessionId: String): Mutex {
         synchronized(mutexMapLock) {
             return sessionMutexes.getOrPut(sessionId) { Mutex() }
+        }
+    }
+
+    /**
+     * Prune unlocked mutexes when the map exceeds [MAX_MUTEX_ENTRIES].
+     * Only removes mutexes that are not currently locked, iterating from
+     * eldest to newest (LinkedHashMap access order) until we are at the limit.
+     */
+    private fun pruneUnlockedMutexes() {
+        synchronized(mutexMapLock) {
+            if (sessionMutexes.size <= MAX_MUTEX_ENTRIES) return
+            val iterator = sessionMutexes.entries.iterator()
+            while (iterator.hasNext() && sessionMutexes.size > MAX_MUTEX_ENTRIES) {
+                val entry = iterator.next()
+                if (!entry.value.isLocked) {
+                    iterator.remove()
+                }
+            }
         }
     }
 
@@ -196,78 +213,82 @@ class ChunkStorage(
         validateId(sessionId)
         val mutex = getSessionMutex(sessionId)
 
-        mutex.withLock {
-            // 1. Pre-flight storage check
-            checkStorageAvailable()
+        try {
+            mutex.withLock {
+                // 1. Pre-flight storage check
+                checkStorageAvailable()
 
-            // 2. Setup files
-            val sessionDir = File(chunksDir, sessionId).also { it.mkdirs() }
-            val chunkFilename = generateChunkFilename(sessionId, index)
-            val finalFile = File(sessionDir, chunkFilename)
-            val tempFile = File(sessionDir, "${chunkFilename}$StorageHelper.TEMP_EXTENSION")
+                // 2. Setup files
+                val sessionDir = File(chunksDir, sessionId).also { it.mkdirs() }
+                val chunkFilename = generateChunkFilename(sessionId, index)
+                val finalFile = File(sessionDir, chunkFilename)
+                val tempFile = File(sessionDir, "${chunkFilename}$StorageHelper.TEMP_EXTENSION")
 
-            try {
-                // 3. Write to temp file
-                FileOutputStream(tempFile).use { out ->
-                    val success = bitmap.compress(
-                        ImageProcessor.WEBP_FORMAT,
-                        IMAGE_QUALITY,
-                        out
-                    )
-                    if (!success) {
-                        tempFile.delete()
-                        throw IOException("Failed to compress bitmap to WebP")
+                try {
+                    // 3. Write to temp file
+                    FileOutputStream(tempFile).use { out ->
+                        val success = bitmap.compress(
+                            ImageProcessor.WEBP_FORMAT,
+                            IMAGE_QUALITY,
+                            out
+                        )
+                        if (!success) {
+                            tempFile.delete()
+                            throw IOException("Failed to compress bitmap to WebP")
+                        }
+                        out.flush()
                     }
-                    out.flush()
-                }
 
-                // 4. Verify the written file
-                if (!verifyImageFile(tempFile)) {
-                    tempFile.delete()
-                    throw IOException("Written chunk failed verification")
-                }
-
-                // 5. Atomic rename (delete existing first if needed)
-                if (finalFile.exists()) {
-                    finalFile.delete()
-                }
-
-                val renameSuccess = tempFile.renameTo(finalFile)
-                if (!renameSuccess) {
-                    // Fallback: copy and delete
-                    try {
-                        tempFile.copyTo(finalFile, overwrite = true)
+                    // 4. Verify the written file
+                    if (!verifyImageFile(tempFile)) {
                         tempFile.delete()
-                    } catch (e: Exception) {
-                        tempFile.delete()
-                        throw IOException("Failed to finalize chunk file: ${e.message}", e)
+                        throw IOException("Written chunk failed verification")
                     }
-                }
 
-                // 6. Save thumbnail asynchronously (non-critical)
-                if (scope != null) {
-                    scope.launch(Dispatchers.IO) {
+                    // 5. Atomic rename (delete existing first if needed)
+                    if (finalFile.exists()) {
+                        finalFile.delete()
+                    }
+
+                    val renameSuccess = tempFile.renameTo(finalFile)
+                    if (!renameSuccess) {
+                        // Fallback: copy and delete
+                        try {
+                            tempFile.copyTo(finalFile, overwrite = true)
+                            tempFile.delete()
+                        } catch (e: Exception) {
+                            tempFile.delete()
+                            throw IOException("Failed to finalize chunk file: ${e.message}", e)
+                        }
+                    }
+
+                    // 6. Save thumbnail asynchronously (non-critical)
+                    if (scope != null) {
+                        scope.launch(Dispatchers.IO) {
+                            saveThumbnail(sessionDir, sessionId, index, bitmap)
+                        }
+                    } else {
                         saveThumbnail(sessionDir, sessionId, index, bitmap)
                     }
-                } else {
-                    saveThumbnail(sessionDir, sessionId, index, bitmap)
+
+                    val chunkId = "${sessionId}_$index"
+                    Log.d(TAG, "Saved chunk $chunkId at ${finalFile.absolutePath}")
+
+                    Pair(chunkId, finalFile.absolutePath)
+
+                } catch (e: SecurityException) {
+                    tempFile.delete()
+                    throw e
+                } catch (e: IOException) {
+                    tempFile.delete()
+                    throw e
+                } catch (e: Exception) {
+                    tempFile.delete()
+                    throw IOException("Unexpected error saving chunk: ${e.message}", e)
                 }
-
-                val chunkId = "${sessionId}_$index"
-                Log.d(TAG, "Saved chunk $chunkId at ${finalFile.absolutePath}")
-
-                Pair(chunkId, finalFile.absolutePath)
-
-            } catch (e: SecurityException) {
-                tempFile.delete()
-                throw e
-            } catch (e: IOException) {
-                tempFile.delete()
-                throw e
-            } catch (e: Exception) {
-                tempFile.delete()
-                throw IOException("Unexpected error saving chunk: ${e.message}", e)
             }
+        } finally {
+            pruneUnlockedMutexes()
         }
     }
 
@@ -281,9 +302,13 @@ class ChunkStorage(
     suspend fun saveChunk(sessionId: String, bitmap: Bitmap): Pair<String, String>? = withContext(Dispatchers.IO) {
         try {
             val mutex = getSessionMutex(sessionId)
-            val nextIndex = mutex.withLock {
-                val existingChunks = listChunksForSession(sessionId)
-                (existingChunks.maxOfOrNull { it.index } ?: -1) + 1
+            val nextIndex = try {
+                mutex.withLock {
+                    val existingChunks = listChunksForSession(sessionId)
+                    (existingChunks.maxOfOrNull { it.index } ?: -1) + 1
+                }
+            } finally {
+                pruneUnlockedMutexes()
             }
             saveChunk(sessionId, nextIndex, bitmap)
         } catch (e: Exception) {
@@ -570,22 +595,26 @@ class ChunkStorage(
     suspend fun deleteSessionChunks(sessionId: String): Boolean = withContext(Dispatchers.IO) {
         val mutex = getSessionMutex(sessionId)
 
-        mutex.withLock {
-            try {
-                val sessionDir = File(chunksDir, sessionId)
-                if (sessionDir.exists()) {
-                    sessionDir.deleteRecursively()
+        try {
+            mutex.withLock {
+                try {
+                    val sessionDir = File(chunksDir, sessionId)
+                    if (sessionDir.exists()) {
+                        sessionDir.deleteRecursively()
+                    }
+
+                    // Clean up mutex for this session explicitly
+                    synchronized(mutexMapLock) { sessionMutexes.remove(sessionId) }
+
+                    Log.d(TAG, "Deleted all chunks for session $sessionId")
+                    true
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to delete session chunks $sessionId", e)
+                    false
                 }
-
-                // Clean up mutex
-                synchronized(mutexMapLock) { sessionMutexes.remove(sessionId) }
-
-                Log.d(TAG, "Deleted all chunks for session $sessionId")
-                true
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to delete session chunks $sessionId", e)
-                false
             }
+        } finally {
+            pruneUnlockedMutexes()
         }
     }
 

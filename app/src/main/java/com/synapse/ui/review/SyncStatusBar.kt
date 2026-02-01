@@ -42,7 +42,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.synapse.R
 import com.synapse.model.SyncStatus
 import com.synapse.ui.theme.SynapseTheme
 
@@ -121,7 +123,7 @@ private fun QueuedContent() {
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = "Preparing to sync...",
+            text = stringResource(R.string.sync_preparing),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -161,10 +163,10 @@ private fun InProgressContent(progress: Float) {
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = when {
-                    progress < 0.1f -> "Preparing..."
-                    progress < 0.9f -> "Processing... ${(progress * 100).toInt()}%"
-                    progress < 1.0f -> "Writing to file..."
-                    else -> "Finishing up..."
+                    progress < 0.1f -> stringResource(R.string.sync_progress_preparing)
+                    progress < 0.9f -> stringResource(R.string.sync_progress_processing, (progress * 100).toInt())
+                    progress < 1.0f -> stringResource(R.string.sync_progress_writing)
+                    else -> stringResource(R.string.sync_progress_finishing)
                 },
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
@@ -203,14 +205,14 @@ private fun SuccessContent(onDismiss: () -> Unit) {
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = "All chunks synced successfully!",
+            text = stringResource(R.string.sync_success),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
             modifier = Modifier.weight(1f)
         )
         TextButton(onClick = onDismiss) {
-            Text("Dismiss")
+            Text(stringResource(R.string.action_dismiss_label))
         }
     }
 }
@@ -238,24 +240,24 @@ private fun PartialSuccessContent(
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Partial sync completed",
+                text = stringResource(R.string.sync_partial_completed),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onTertiaryContainer
             )
             Text(
-                text = "$syncedCount synced, $failedCount failed",
+                text = stringResource(R.string.sync_partial_details, syncedCount, failedCount),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.7f)
             )
         }
         if (hasFailedChunks && onRetryFailed != null) {
             TextButton(onClick = onRetryFailed) {
-                Text("Retry Failed")
+                Text(stringResource(R.string.sync_retry_failed))
             }
         }
         TextButton(onClick = onDismiss) {
-            Text("Dismiss")
+            Text(stringResource(R.string.action_dismiss_label))
         }
     }
 }
@@ -280,7 +282,7 @@ private fun ErrorContent(
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "Sync failed",
+                text = stringResource(R.string.sync_failed),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onErrorContainer
@@ -292,7 +294,7 @@ private fun ErrorContent(
             )
         }
         TextButton(onClick = onDismiss) {
-            Text("Dismiss")
+            Text(stringResource(R.string.action_dismiss_label))
         }
     }
 }

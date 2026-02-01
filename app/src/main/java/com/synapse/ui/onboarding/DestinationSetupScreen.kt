@@ -27,7 +27,7 @@ fun DestinationSetupScreen(
     ) {
         Icon(
             Icons.AutoMirrored.Filled.Send,
-            contentDescription = null,
+            contentDescription = "Note destination",
             modifier = Modifier.size(64.dp),
             tint = MaterialTheme.colorScheme.primary
         )

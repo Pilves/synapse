@@ -199,7 +199,8 @@ val repositoryModule = module {
                 factory.create(provider, apiKey, rateLimitingSafe)
             },
             questionAnswerService = get<QuestionAnswerService>(),
-            llmConfigProvider = suspend { settings.readFullLlmConfig() }
+            llmConfigProvider = suspend { settings.readFullLlmConfig() },
+            networkMonitor = get()
         )
     }
 

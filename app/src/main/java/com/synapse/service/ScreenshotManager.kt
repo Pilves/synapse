@@ -240,11 +240,12 @@ class ScreenshotManager(private val context: Context) {
     }
 
     suspend fun captureRegion(bounds: Rect): Bitmap? = withContext(Dispatchers.IO) {
-        // Lazily create virtual display on first capture
-        val projection: MediaProjection?
-        val reader: ImageReader?
+        // Capture local references inside the synchronized block so that another thread
+        // calling releaseProjection() / invalidateProjection() after the delay cannot
+        // null out the references we depend on.
+        val localReader: ImageReader
         synchronized(lock) {
-            projection = mediaProjection
+            val projection = mediaProjection
             if (projection == null) {
                 Log.w(TAG, "No MediaProjection for capture — invalidating stale state")
                 tearDownVirtualDisplay()
@@ -257,7 +258,7 @@ class ScreenshotManager(private val context: Context) {
                 setupVirtualDisplay(projection)
             }
 
-            reader = imageReader
+            val reader = imageReader
             if (reader == null || virtualDisplay == null) {
                 Log.w(TAG, "No active VirtualDisplay — projection is likely dead")
                 tearDownVirtualDisplay()
@@ -271,16 +272,25 @@ class ScreenshotManager(private val context: Context) {
             if (virtualDisplay?.surface == null) {
                 virtualDisplay?.surface = reader.surface
             }
+
+            localReader = reader
         }
 
-        // Wait for a fresh frame after reattaching surface
+        // Wait for a fresh frame after reattaching surface.
+        // The lock is NOT held during this delay to avoid blocking other threads.
         delay(200)
 
-        // Retry acquiring the latest image up to 3 times with increasing delays
+        // Retry acquiring the latest image up to 3 times with increasing delays.
+        // localReader is a local reference captured before the delay, so it remains
+        // valid even if another thread clears the class-level imageReader field.
         var fullBitmap: Bitmap? = null
-        val actualReader = requireNotNull(reader) { "ImageReader not initialized" }
         for (attempt in 1..3) {
-            val image = actualReader.acquireLatestImage()
+            val image = try {
+                localReader.acquireLatestImage()
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "ImageReader closed during capture (attempt $attempt/3)", e)
+                return@withContext null
+            }
             if (image != null) {
                 try {
                     fullBitmap = imageToBitmap(image)

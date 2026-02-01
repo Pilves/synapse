@@ -96,6 +96,10 @@ class CaptureOverlayManager(
         if (captureOverlayView != null || isActive) return
         isActive = true
 
+        // Clear any stale listeners from a previous show() that wasn't followed by hide()
+        // (e.g. after a service restart or crash). This makes show() idempotent.
+        clearAccessibilityListeners()
+
         // If screenshot permission is missing, close the overlay so the user
         // doesn't scribble on the permission dialog, then request permission.
         if (!screenshotManager.hasPermission()) {
@@ -212,16 +216,47 @@ class CaptureOverlayManager(
     }
 
     /**
+     * Clears accessibility-service navigation listeners.
+     * Safe to call multiple times (idempotent).
+     */
+    private fun clearAccessibilityListeners() {
+        SynapseAccessibilityService.getInstance()?.let {
+            it.onWindowChanged = null
+            it.onBackPressed = null
+        }
+    }
+
+    /**
+     * Cleans up all resources held by this manager.
+     *
+     * Should be called when the hosting service is destroyed to prevent
+     * listener leaks on the accessibility service. Safe to call even if
+     * [hide] was already called or [show] was never called.
+     */
+    fun destroy() {
+        clearAccessibilityListeners()
+        captureOverlayView?.let {
+            try {
+                windowManager.removeViewImmediate(it)
+            } catch (e: IllegalArgumentException) {
+                Log.w(TAG, "Capture overlay view not attached on destroy", e)
+            } catch (e: IllegalStateException) {
+                Log.w(TAG, "Invalid state removing capture overlay on destroy", e)
+            }
+            captureOverlayView = null
+        }
+        isActive = false
+        isRegionMode = false
+    }
+
+    /**
      * Hides the capture overlay and restores the floating bubble.
      * Clears accessibility-service navigation listeners and pauses
      * screen mirroring to conserve resources.
      */
     fun hide() {
         // Stop listening for navigation events while not capturing
-        SynapseAccessibilityService.getInstance()?.let {
-            it.onWindowChanged = null
-            it.onBackPressed = null
-        }
+        clearAccessibilityListeners()
 
         captureOverlayView?.let {
             try {

@@ -33,7 +33,7 @@ fun AccessibilityPermissionScreen(
     ) {
         Icon(
             Icons.Default.Visibility,
-            contentDescription = null,
+            contentDescription = "Accessibility permission",
             modifier = Modifier.size(64.dp),
             tint = MaterialTheme.colorScheme.primary
         )

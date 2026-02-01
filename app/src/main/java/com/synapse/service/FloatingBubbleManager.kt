@@ -247,6 +247,10 @@ class FloatingBubbleManager(
                                     windowManager.updateViewLayout(container, params)
                                 } catch (e: IllegalArgumentException) {
                                     Log.w(TAG, "Bubble view not attached during drag update", e)
+                                    // Reset drag state so future drags start clean
+                                    pendingDx = 0f
+                                    pendingDy = 0f
+                                    isDragging = false
                                 }
                             }
                         }

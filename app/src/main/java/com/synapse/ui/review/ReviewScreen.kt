@@ -73,6 +73,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -85,6 +86,7 @@ import com.synapse.model.CostEstimate
 import com.synapse.ui.components.SyncCostBanner
 import com.synapse.ui.components.SyncQueueSummary
 import com.synapse.ui.components.SyncStatusIndicator
+import com.synapse.R
 import com.synapse.ui.theme.SynapseTheme
 
 /**
@@ -121,6 +123,9 @@ fun ReviewScreen(
     // Confirmation dialog state
     var showSyncConfirmation by remember { mutableStateOf(false) }
 
+    // Pre-resolve strings for use in non-composable scopes (LaunchedEffect)
+    val undoLabel = stringResource(R.string.action_undo)
+
     // Show error in snackbar
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
@@ -139,7 +144,7 @@ fun ReviewScreen(
                 is ReviewEvent.ShowUndoSnackbar -> {
                     val result = snackbarHostState.showSnackbar(
                         message = event.message,
-                        actionLabel = "Undo",
+                        actionLabel = undoLabel,
                         duration = SnackbarDuration.Short
                     )
                     if (result == SnackbarResult.ActionPerformed) {
@@ -181,12 +186,12 @@ fun ReviewScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.CloudOff,
-                            contentDescription = null,
+                            contentDescription = "No internet connection",
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.size(18.dp)
                         )
                         Text(
-                            text = "No internet connection \u2014 sync unavailable",
+                            text = stringResource(R.string.review_no_internet),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onErrorContainer
                         )
@@ -286,16 +291,6 @@ fun ReviewScreen(
 
         // Sync confirmation dialog
         if (showSyncConfirmation) {
-            val syncCount by remember {
-                derivedStateOf {
-                    val contextOnlySessions = uiState.sessions.count { it.chunks.isEmpty() && it.contexts.isNotEmpty() }
-                    if (uiState.viewMode == ViewMode.SEPARATE) {
-                        uiState.selectedChunkIds.size + contextOnlySessions
-                    } else {
-                        uiState.sessions.sumOf { it.chunks.size } + contextOnlySessions
-                    }
-                }
-            }
             androidx.compose.material3.AlertDialog(
                 onDismissRequest = { showSyncConfirmation = false },
                 icon = {
@@ -305,21 +300,21 @@ fun ReviewScreen(
                         tint = MaterialTheme.colorScheme.primary
                     )
                 },
-                title = { Text("Sync $syncCount items?") },
+                title = { Text(stringResource(R.string.review_sync_confirm_title, selectedCount)) },
                 text = {
-                    Text("This will use API credits to transcribe all selected items.")
+                    Text(stringResource(R.string.review_sync_confirm_message))
                 },
                 confirmButton = {
                     TextButton(onClick = {
                         showSyncConfirmation = false
                         viewModel.syncAll()
                     }) {
-                        Text("Sync")
+                        Text(stringResource(R.string.action_sync))
                     }
                 },
                 dismissButton = {
                     TextButton(onClick = { showSyncConfirmation = false }) {
-                        Text("Cancel")
+                        Text(stringResource(R.string.action_cancel))
                     }
                 }
             )
@@ -338,7 +333,7 @@ private fun ReviewTopBar(
     TopAppBar(
         title = {
             Text(
-                text = "Review",
+                text = stringResource(R.string.review_title),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold
             )
@@ -366,7 +361,7 @@ private fun ReviewTopBar(
                         )
                     }
                 ) {
-                    Text("Stitched", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.review_view_stitched), style = MaterialTheme.typography.labelMedium)
                 }
                 SegmentedButton(
                     selected = viewMode == ViewMode.SEPARATE,
@@ -380,7 +375,7 @@ private fun ReviewTopBar(
                         )
                     }
                 ) {
-                    Text("Separate", style = MaterialTheme.typography.labelMedium)
+                    Text(stringResource(R.string.review_view_separate), style = MaterialTheme.typography.labelMedium)
                 }
             }
         },
@@ -465,13 +460,13 @@ private fun EmptySessionsView(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "No pending sessions",
+            text = stringResource(R.string.review_no_sessions),
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
         )
         Text(
-            text = "Captured sessions will appear here for review",
+            text = stringResource(R.string.review_no_sessions_description),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
             textAlign = TextAlign.Center,
@@ -521,7 +516,7 @@ private fun BottomControls(
             OutlinedTextField(
                 value = filename,
                 onValueChange = onFilenameChanged,
-                label = { Text("File") },
+                label = { Text(stringResource(R.string.review_file_label)) },
                 singleLine = true,
                 enabled = !isSyncing,
                 isError = filenameError != null,
@@ -561,7 +556,7 @@ private fun BottomControls(
                         strokeWidth = 2.dp
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Syncing...")
+                    Text(stringResource(R.string.review_syncing))
                 } else {
                     Icon(
                         imageVector = Icons.Default.CloudSync,
@@ -570,7 +565,7 @@ private fun BottomControls(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (selectedCount > 0) "Sync All ($selectedCount)" else "Sync All",
+                        text = if (selectedCount > 0) stringResource(R.string.review_sync_all_count, selectedCount) else stringResource(R.string.review_sync_all),
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -579,11 +574,11 @@ private fun BottomControls(
             // Disabled sync button reason
             if (!isSyncEnabled && !isSyncing) {
                 val reason = when {
-                    isOffline -> "No internet connection"
-                    selectedCount == 0 -> "No chunks selected"
-                    selectedProject == null -> "Select a project first"
+                    isOffline -> stringResource(R.string.review_no_internet_reason)
+                    selectedCount == 0 -> stringResource(R.string.review_no_chunks_selected)
+                    selectedProject == null -> stringResource(R.string.review_select_project_first)
                     filenameError != null -> filenameError
-                    filename.isBlank() -> "Enter a filename"
+                    filename.isBlank() -> stringResource(R.string.review_enter_filename)
                     else -> null
                 }
                 reason?.let {
@@ -613,10 +608,10 @@ private fun ProjectDropdown(
 
     Box(modifier = modifier) {
         OutlinedTextField(
-            value = selectedProject?.name ?: "Select Project",
+            value = selectedProject?.name ?: stringResource(R.string.review_select_project),
             onValueChange = {},
             readOnly = true,
-            label = { Text("Project") },
+            label = { Text(stringResource(R.string.review_project_label)) },
             trailingIcon = {
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
@@ -726,7 +721,7 @@ private fun ReviewScreenPreview() {
         ) {
             Column {
                 Text(
-                    text = "Review Screen Preview",
+                    text = stringResource(R.string.review_screen_preview),
                     modifier = Modifier.padding(16.dp),
                     style = MaterialTheme.typography.headlineMedium
                 )

@@ -60,7 +60,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.synapse.R
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -285,9 +287,9 @@ private fun WelcomePage(
 ) {
     OnboardingPage(
         icon = "\u270F\uFE0F",
-        title = "Welcome to Synapse",
-        description = "Capture handwritten notes\nwithout leaving your app",
-        primaryButtonText = "Get Started",
+        title = stringResource(R.string.onboarding_welcome_title),
+        description = stringResource(R.string.onboarding_welcome_description),
+        primaryButtonText = stringResource(R.string.onboarding_get_started),
         onPrimaryClick = onGetStarted
     )
 }
@@ -342,14 +344,14 @@ private fun PermissionsPage(
         )
 
         Text(
-            text = "Permissions",
+            text = stringResource(R.string.onboarding_permissions_title),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
         Text(
-            text = "Synapse needs these permissions\nto capture your handwriting.",
+            text = stringResource(R.string.onboarding_permissions_description),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
@@ -358,8 +360,8 @@ private fun PermissionsPage(
 
         // Overlay permission row
         PermissionRow(
-            label = "Draw over apps",
-            description = "Show capture overlay",
+            label = stringResource(R.string.onboarding_draw_over_apps),
+            description = stringResource(R.string.onboarding_draw_over_apps_description),
             granted = hasOverlayPermission,
             onGrant = onGrantOverlay
         )
@@ -368,8 +370,8 @@ private fun PermissionsPage(
 
         // Accessibility permission row
         PermissionRow(
-            label = "Accessibility",
-            description = "Read on-screen text for context",
+            label = stringResource(R.string.onboarding_accessibility),
+            description = stringResource(R.string.onboarding_accessibility_description),
             granted = hasAccessibilityPermission,
             onGrant = onGrantAccessibility
         )
@@ -383,7 +385,7 @@ private fun PermissionsPage(
                 .height(56.dp)
         ) {
             Text(
-                text = if (allGranted) "Continue" else "Skip for now",
+                text = if (allGranted) stringResource(R.string.action_continue) else stringResource(R.string.action_skip_for_now),
                 style = MaterialTheme.typography.labelLarge
             )
         }
@@ -426,7 +428,7 @@ private fun PermissionRow(
             )
         } else {
             androidx.compose.material3.OutlinedButton(onClick = onGrant) {
-                Text("Grant")
+                Text(stringResource(R.string.action_grant))
             }
         }
     }
@@ -449,17 +451,17 @@ private fun SelectVaultPage(
     ) {
         OnboardingPage(
             icon = "\uD83D\uDCC1",
-            title = "Select Your Vault",
+            title = stringResource(R.string.onboarding_vault_title),
             description = if (hasVaultConfigured && vaultPath != null) {
-                "Vault configured:\n${getDisplayPath(vaultPath)}"
+                stringResource(R.string.onboarding_vault_configured, getDisplayPath(vaultPath))
             } else {
-                "Choose your Obsidian\nvault folder."
+                stringResource(R.string.onboarding_vault_description)
             },
-            primaryButtonText = if (hasVaultConfigured) "Continue" else "Pick Folder",
+            primaryButtonText = if (hasVaultConfigured) stringResource(R.string.action_continue) else stringResource(R.string.onboarding_pick_folder),
             onPrimaryClick = if (hasVaultConfigured) onContinue else onPickFolder,
-            secondaryButtonText = if (hasVaultConfigured) "Change Folder" else null,
+            secondaryButtonText = if (hasVaultConfigured) stringResource(R.string.onboarding_change_folder) else null,
             onSecondaryClick = if (hasVaultConfigured) onPickFolder else null,
-            tertiaryButtonText = if (!hasVaultConfigured) "Skip for now" else null,
+            tertiaryButtonText = if (!hasVaultConfigured) stringResource(R.string.action_skip_for_now) else null,
             onTertiaryClick = if (!hasVaultConfigured) onSkip else null
         )
     }
@@ -497,7 +499,7 @@ private fun ApiKeyPage(
 
         // Title
         Text(
-            text = "API Key",
+            text = stringResource(R.string.onboarding_api_key_title),
             style = MaterialTheme.typography.headlineMedium,
             color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.padding(bottom = 16.dp)
@@ -506,9 +508,9 @@ private fun ApiKeyPage(
         // Description
         Text(
             text = if (hasApiKey) {
-                "API key configured!\nYou're all set."
+                stringResource(R.string.onboarding_api_key_configured)
             } else {
-                "Enter your Gemini API key\nfor transcription."
+                stringResource(R.string.onboarding_api_key_description)
             },
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -525,8 +527,8 @@ private fun ApiKeyPage(
             OutlinedTextField(
                 value = apiKeyInput,
                 onValueChange = { apiKeyInput = it },
-                label = { Text("Gemini API Key") },
-                placeholder = { Text("Enter your API key") },
+                label = { Text(stringResource(R.string.onboarding_gemini_api_key_label)) },
+                placeholder = { Text(stringResource(R.string.onboarding_api_key_placeholder)) },
                 singleLine = true,
                 visualTransformation = if (showApiKey) {
                     VisualTransformation.None
@@ -574,7 +576,7 @@ private fun ApiKeyPage(
                     .height(56.dp)
             ) {
                 Text(
-                    text = "Complete Setup",
+                    text = stringResource(R.string.onboarding_complete_setup),
                     style = MaterialTheme.typography.labelLarge
                 )
             }
@@ -590,7 +592,7 @@ private fun ApiKeyPage(
                         .height(56.dp)
                 ) {
                     Text(
-                        text = "Get free key",
+                        text = stringResource(R.string.onboarding_get_free_key),
                         style = MaterialTheme.typography.labelLarge
                     )
                 }
@@ -613,7 +615,7 @@ private fun ApiKeyPage(
                         )
                     } else {
                         Text(
-                            text = "Enter",
+                            text = stringResource(R.string.onboarding_enter),
                             style = MaterialTheme.typography.labelLarge
                         )
                     }
@@ -627,7 +629,7 @@ private fun ApiKeyPage(
                 enabled = !isValidating
             ) {
                 Text(
-                    text = "Skip for now",
+                    text = stringResource(R.string.action_skip_for_now),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

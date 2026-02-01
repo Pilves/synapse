@@ -283,7 +283,7 @@ private fun StitchedChunksView(
     ) {
         items(
             items = chunks,
-            key = { it.id }
+            key = { "${session.id}_${it.id}" }
         ) { chunk ->
             ChunkThumbnail(
                 chunk = chunk,
@@ -318,7 +318,7 @@ private fun SeparateChunksView(
     ) {
         items(
             items = chunks,
-            key = { it.id }
+            key = { "${session.id}_${it.id}" }
         ) { chunk ->
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally

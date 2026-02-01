@@ -310,7 +310,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         permissionHealthMonitor.stopMonitoring()
         serviceScope.cancel()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
-        overlayManager?.hide()
+        overlayManager?.destroy()
         bubbleManager?.hideFloatingBubble()
         screenshotManager.releaseProjection()
         super.onDestroy()

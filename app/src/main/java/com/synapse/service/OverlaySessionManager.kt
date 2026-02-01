@@ -23,6 +23,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Manages session lifecycle and chunk/context persistence for the overlay capture system.
@@ -49,7 +50,10 @@ class OverlaySessionManager(
     }
 
     /** Number of pending chunks saved in the current session. */
-    var pendingChunkCount: Int = 0
+    private val _pendingChunkCount = AtomicInteger(0)
+    var pendingChunkCount: Int
+        get() = _pendingChunkCount.get()
+        set(value) { _pendingChunkCount.set(value) }
 
     /** Preview text shown after a region text or selected text capture. Shared with CaptureOverlayManager. */
     val capturedTextPreview: MutableState<String?>
@@ -69,16 +73,15 @@ class OverlaySessionManager(
     fun saveChunk(capturedChunk: CapturedChunk) {
         scope.launch(Dispatchers.IO) {
             try {
-                // Create session if not exists (synchronized)
-                sessionMutex.withLock {
+                // Create session if not exists and capture ID atomically
+                val sessionId = sessionMutex.withLock {
                     if (currentSessionId == null) {
                         val session = sessionRepository.createSession()
                         currentSessionId = session.id
                         Log.d(TAG, "Created new session: ${session.id}")
                     }
-                }
-
-                val sessionId = currentSessionId ?: return@launch
+                    currentSessionId
+                } ?: return@launch
 
                 // Calculate timestamp in seconds from epoch
                 val timestampSeconds = capturedChunk.timestamp / 1000f
@@ -97,8 +100,8 @@ class OverlaySessionManager(
 
                 // Update badge count, clear text preview, and provide haptic feedback
                 launch(Dispatchers.Main) {
-                    pendingChunkCount++
-                    onBadgeUpdate(pendingChunkCount)
+                    val newCount = _pendingChunkCount.incrementAndGet()
+                    onBadgeUpdate(newCount)
                     capturedTextPreview.value = null
                     vibrate(30)
                 }
@@ -120,15 +123,15 @@ class OverlaySessionManager(
         Log.d(TAG, "Region selected: $region")
         scope.launch(Dispatchers.IO) {
             try {
-                // Create session if needed (synchronized)
-                sessionMutex.withLock {
+                // Create session if needed and capture ID atomically
+                val sessionId = sessionMutex.withLock {
                     if (currentSessionId == null) {
                         val session = sessionRepository.createSession()
                         currentSessionId = session.id
                         Log.d(TAG, "Created new session for region select: ${session.id}")
                     }
-                }
-                val sessionId = currentSessionId ?: return@launch
+                    currentSessionId
+                } ?: return@launch
 
                 // Try text extraction via accessibility service first
                 var regionText: CapturedContext.RegionText? = null
@@ -248,12 +251,14 @@ class OverlaySessionManager(
 
         scope.launch(Dispatchers.IO) {
             try {
-                if (currentSessionId == null) {
-                    val session = sessionRepository.createSession()
-                    currentSessionId = session.id
-                    Log.d(TAG, "Created new session for pending context: ${session.id}")
-                }
-                val sessionId = currentSessionId ?: return@launch
+                val sessionId = sessionMutex.withLock {
+                    if (currentSessionId == null) {
+                        val session = sessionRepository.createSession()
+                        currentSessionId = session.id
+                        Log.d(TAG, "Created new session for pending context: ${session.id}")
+                    }
+                    currentSessionId
+                } ?: return@launch
                 sessionRepository.addContext(sessionId, pendingContext)
                 Log.d(TAG, "Added pending context to session $sessionId")
 
@@ -284,14 +289,17 @@ class OverlaySessionManager(
             return
         }
 
-        val sessionId = currentSessionId
-        if (sessionId == null) {
-            Log.d(TAG, "No active session, nothing to delete")
-            return
-        }
-
         scope.launch(Dispatchers.IO) {
             try {
+                // Acquire mutex to coordinate with in-flight saveChunk operations
+                val sessionId = sessionMutex.withLock {
+                    currentSessionId
+                }
+                if (sessionId == null) {
+                    Log.d(TAG, "No active session, nothing to delete")
+                    return@launch
+                }
+
                 val session = sessionRepository.getSession(sessionId) ?: return@launch
 
                 // Find the latest item by timestamp
@@ -303,7 +311,11 @@ class OverlaySessionManager(
 
                 if (chunkTs == 0L && contextTs == 0L) {
                     Log.d(TAG, "Session is empty, discarding")
-                    currentSessionId = null
+                    sessionMutex.withLock {
+                        if (currentSessionId == sessionId) {
+                            currentSessionId = null
+                        }
+                    }
                     return@launch
                 }
 
@@ -312,10 +324,10 @@ class OverlaySessionManager(
                     sessionRepository.deleteChunk(sessionId, lastChunk.id)
                     Log.d(TAG, "Deleted last chunk: ${lastChunk.id}")
                     launch(Dispatchers.Main) {
-                        if (pendingChunkCount > 0) {
-                            pendingChunkCount--
-                            onBadgeUpdate(pendingChunkCount)
+                        val newCount = _pendingChunkCount.updateAndGet { current ->
+                            if (current > 0) current - 1 else 0
                         }
+                        onBadgeUpdate(newCount)
                     }
                 } else if (lastContext != null) {
                     // Delete the last context
@@ -327,7 +339,11 @@ class OverlaySessionManager(
                 val updated = sessionRepository.getSession(sessionId)
                 if (updated != null && updated.chunks.isEmpty() && updated.contexts.isEmpty()) {
                     sessionRepository.deleteSession(sessionId)
-                    currentSessionId = null
+                    sessionMutex.withLock {
+                        if (currentSessionId == sessionId) {
+                            currentSessionId = null
+                        }
+                    }
                     Log.d(TAG, "Session now empty, discarded")
                 }
             } catch (e: Exception) {
@@ -346,7 +362,11 @@ class OverlaySessionManager(
             try {
                 sessionRepository.endSession(sessionId)
                 Log.d(TAG, "Ended session: $sessionId")
-                currentSessionId = null
+                sessionMutex.withLock {
+                    if (currentSessionId == sessionId) {
+                        currentSessionId = null
+                    }
+                }
                 // Don't clean up screenshots here — they're needed by SyncRepository
                 // Cleanup happens after sync in finishSessionAndOpenReview or on next service start
             } catch (e: IOException) {
@@ -375,23 +395,20 @@ class OverlaySessionManager(
         captureViewModel.endSession()
 
         // Reset badge count since user is going to review
-        pendingChunkCount = 0
+        _pendingChunkCount.set(0)
         onBadgeUpdate(0)
 
         scope.launch(Dispatchers.IO) {
             try {
-                // Ensure session exists for the pending chunk
-                if (pendingChunk != null) {
-                    sessionMutex.withLock {
-                        if (currentSessionId == null) {
-                            val session = sessionRepository.createSession()
-                            currentSessionId = session.id
-                            Log.d(TAG, "Created session for final chunk: ${session.id}")
-                        }
+                // Ensure session exists for the pending chunk and capture ID atomically
+                val sessionId = sessionMutex.withLock {
+                    if (pendingChunk != null && currentSessionId == null) {
+                        val session = sessionRepository.createSession()
+                        currentSessionId = session.id
+                        Log.d(TAG, "Created session for final chunk: ${session.id}")
                     }
+                    currentSessionId
                 }
-
-                val sessionId = currentSessionId
 
                 // Save pending chunk to the correct session
                 if (pendingChunk != null) {
@@ -416,7 +433,11 @@ class OverlaySessionManager(
                 if (sessionId != null) {
                     sessionRepository.endSession(sessionId)
                     Log.d(TAG, "Ended session: $sessionId")
-                    currentSessionId = null
+                    sessionMutex.withLock {
+                        if (currentSessionId == sessionId) {
+                            currentSessionId = null
+                        }
+                    }
                 }
 
                 // Don't clean up screenshots here — sync hasn't happened yet.
