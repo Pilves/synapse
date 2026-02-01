@@ -59,8 +59,14 @@ object ApiKeyValidator {
                     )
                 }
             }
-            else -> {
+            apiKey.startsWith("AIza") -> {
                 ApiKeyValidationResult(isValid = true)
+            }
+            else -> {
+                ApiKeyValidationResult(
+                    isValid = false,
+                    errorMessage = "Unrecognized API key format. Supported providers: Gemini (AIza…), Claude (sk-ant-…), OpenAI (sk-…)"
+                )
             }
         }
     }
