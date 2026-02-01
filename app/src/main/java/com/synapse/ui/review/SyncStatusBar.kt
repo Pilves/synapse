@@ -117,7 +117,7 @@ private fun QueuedContent() {
     ) {
         Icon(
             imageVector = Icons.Default.HourglassTop,
-            contentDescription = "Sync status: queued",
+            contentDescription = stringResource(R.string.cd_sync_queued),
             modifier = Modifier.size(24.dp),
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -156,7 +156,7 @@ private fun InProgressContent(progress: Float) {
             Spacer(modifier = Modifier.width(12.dp))
             Icon(
                 imageVector = Icons.Default.CloudSync,
-                contentDescription = "Sync status: in progress",
+                contentDescription = stringResource(R.string.cd_sync_in_progress),
                 modifier = Modifier.size(24.dp),
                 tint = MaterialTheme.colorScheme.primary
             )
@@ -199,7 +199,7 @@ private fun SuccessContent(onDismiss: () -> Unit) {
     ) {
         Icon(
             imageVector = Icons.Default.CheckCircle,
-            contentDescription = "Sync status: synced",
+            contentDescription = stringResource(R.string.cd_sync_synced),
             modifier = Modifier.size(24.dp),
             tint = MaterialTheme.colorScheme.primary
         )
@@ -233,7 +233,7 @@ private fun PartialSuccessContent(
     ) {
         Icon(
             imageVector = Icons.Default.Warning,
-            contentDescription = "Sync status: partial success",
+            contentDescription = stringResource(R.string.cd_sync_partial),
             modifier = Modifier.size(24.dp),
             tint = MaterialTheme.colorScheme.tertiary
         )
@@ -275,7 +275,7 @@ private fun ErrorContent(
     ) {
         Icon(
             imageVector = Icons.Default.Error,
-            contentDescription = "Sync status: error",
+            contentDescription = stringResource(R.string.cd_sync_error),
             modifier = Modifier.size(24.dp),
             tint = MaterialTheme.colorScheme.error
         )

@@ -50,7 +50,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.synapse.R
 import com.synapse.model.CapturedContext
 import com.synapse.model.Chunk
 import com.synapse.model.Session
@@ -230,7 +232,7 @@ private fun SessionHeader(
             ) {
                 Icon(
                     imageVector = if (allSelected) Icons.Filled.CheckCircle else Icons.Outlined.CheckCircle,
-                    contentDescription = if (allSelected) "Deselect all" else "Select all",
+                    contentDescription = if (allSelected) stringResource(R.string.cd_deselect_all) else stringResource(R.string.cd_select_all),
                     tint = when {
                         allSelected -> MaterialTheme.colorScheme.primary
                         someSelected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)
@@ -247,7 +249,7 @@ private fun SessionHeader(
         ) {
             Icon(
                 imageVector = Icons.Default.Delete,
-                contentDescription = "Delete session",
+                contentDescription = stringResource(R.string.cd_delete_session),
                 tint = MaterialTheme.colorScheme.error
             )
         }
@@ -259,7 +261,7 @@ private fun SessionHeader(
         ) {
             Icon(
                 imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                contentDescription = if (isExpanded) stringResource(R.string.cd_collapse) else stringResource(R.string.cd_expand),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -340,7 +342,7 @@ private fun SeparateChunksView(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete chunk",
+                        contentDescription = stringResource(R.string.cd_delete_chunk),
                         tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f),
                         modifier = Modifier.size(18.dp)
                     )

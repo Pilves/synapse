@@ -30,10 +30,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
 import coil.request.ImageRequest
+import com.synapse.R
 import com.synapse.model.Chunk
 import com.synapse.ui.theme.SynapseTheme
 
@@ -111,7 +113,11 @@ fun ChunkThumbnail(
                 }
                 AsyncImage(
                     model = imageRequest,
-                    contentDescription = "Chunk ${chunk.index + 1}, ${if (isSelected) "selected" else "not selected"}",
+                    contentDescription = if (isSelected) {
+                        stringResource(R.string.cd_chunk_selected, chunk.index + 1)
+                    } else {
+                        stringResource(R.string.cd_chunk_not_selected, chunk.index + 1)
+                    },
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.matchParentSize()
                 )
@@ -172,7 +178,7 @@ private fun CorruptedThumbnail(
         ) {
             Icon(
                 imageVector = Icons.Default.Warning,
-                contentDescription = "Corrupted",
+                contentDescription = stringResource(R.string.cd_corrupted),
                 tint = MaterialTheme.colorScheme.error,
                 modifier = Modifier.size(24.dp)
             )
@@ -219,7 +225,7 @@ private fun SelectionIndicator(
         if (isSelected) {
             Icon(
                 imageVector = Icons.Default.Check,
-                contentDescription = "Selected",
+                contentDescription = stringResource(R.string.cd_selected),
                 tint = MaterialTheme.colorScheme.onPrimary,
                 modifier = Modifier.size(16.dp)
             )

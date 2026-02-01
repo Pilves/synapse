@@ -198,7 +198,7 @@ fun ReviewScreen(
                     ) {
                         Icon(
                             imageVector = Icons.Default.CloudOff,
-                            contentDescription = "No internet connection",
+                            contentDescription = stringResource(R.string.cd_no_internet),
                             tint = MaterialTheme.colorScheme.onErrorContainer,
                             modifier = Modifier.size(18.dp)
                         )
@@ -616,7 +616,7 @@ private fun ProjectDropdown(
                 IconButton(onClick = { expanded = !expanded }) {
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Select project"
+                        contentDescription = stringResource(R.string.cd_select_project)
                     )
                 }
             },
@@ -686,7 +686,7 @@ private fun ChunkPreviewDialog(
             ) {
                 Icon(
                     imageVector = Icons.Default.Close,
-                    contentDescription = "Close",
+                    contentDescription = stringResource(R.string.cd_close),
                     tint = Color.White,
                     modifier = Modifier.size(28.dp)
                 )
@@ -698,7 +698,7 @@ private fun ChunkPreviewDialog(
                     .data(chunk.filePath)
                     .crossfade(true)
                     .build(),
-                contentDescription = "Chunk preview",
+                contentDescription = stringResource(R.string.cd_chunk_preview),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxSize()
