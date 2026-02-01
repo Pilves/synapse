@@ -367,6 +367,7 @@ abstract class BaseLlmService(
 
     override fun setApiKey(apiKey: String?) {
         this._apiKey = apiKey?.takeIf { it.isNotBlank() }
+        rateLimitState.reset()
     }
 
     override fun setCustomPrompt(template: String?) {

@@ -144,5 +144,9 @@ data class RateLimitState(
             0
         }
     }
+
+    fun reset(): Unit = synchronized(lock) {
+        requestTimestamps.clear()
+    }
 }
 
