@@ -483,8 +483,9 @@ class SyncRepositoryImpl(
             }
         }
 
-        // Batch all segments into a single call with delimiters
-        val delimiter = "---SEGMENT_BREAK---"
+        // Batch all segments into a single call with a UUID-style delimiter
+        // that is extremely unlikely to appear in LLM output
+        val delimiter = "===8f3a9c7b-SEGMENT-BREAK-4e2d1a6f==="
         val combined = rawSegments.joinToString("\n$delimiter\n")
         val batchPrompt = "${SyncPrompts.POLISH_MARKDOWN_SYSTEM_PROMPT}\n\nIMPORTANT: The input contains multiple segments separated by '$delimiter'. Polish each segment independently and keep the '$delimiter' separators in your output."
 
@@ -494,8 +495,15 @@ class SyncRepositoryImpl(
             if (polished.size == rawSegments.size) {
                 polished
             } else {
-                Log.w(TAG, "Polish returned ${polished.size} segments, expected ${rawSegments.size}, using raw")
-                rawSegments
+                Log.w(TAG, "Batch polish returned ${polished.size} segments, expected ${rawSegments.size} — falling back to per-segment polish")
+                rawSegments.map { segment ->
+                    try {
+                        transcriptionService.textQuery(segment, SyncPrompts.POLISH_MARKDOWN_SYSTEM_PROMPT)
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Per-segment polish failed, using raw", e)
+                        segment
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.w(TAG, "Batch polish failed, using raw", e)
