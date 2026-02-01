@@ -15,6 +15,7 @@ import com.synapse.service.SynapseAccessibilityService
 import com.synapse.ui.settings.settingsDataStore
 import com.synapse.util.ApiKeyValidator
 import com.synapse.util.PermissionHelper
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -195,8 +196,9 @@ class OnboardingViewModel(
                     )
                 }
 
-                // Sync projects from the vault in the background
-                viewModelScope.launch {
+                // Sync projects from the vault in the background.
+                // Use SupervisorJob so a failure here doesn't cancel the parent scope.
+                viewModelScope.launch(SupervisorJob()) {
                     try {
                         projectRepository.syncProjectsFromVault(Uri.parse(vaultPath))
                         Log.d(TAG, "Synced projects from vault")
