@@ -298,8 +298,12 @@ class SyncRepositoryImpl(
                                             failedCount -= chunkFailedCount
                                             Log.d(TAG, "Segment $segIndex: recovered $chunkFailedCount failed chunks via vision Q&A")
                                         }
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Segment $segIndex Q&A failed", e)
+                                    } catch (e: TranscriptionError) {
+                                        Log.e(TAG, "Segment $segIndex Q&A transcription failed", e)
+                                    } catch (e: IOException) {
+                                        Log.e(TAG, "Segment $segIndex Q&A I/O failed", e)
+                                    } catch (e: IllegalStateException) {
+                                        Log.e(TAG, "Segment $segIndex Q&A illegal state", e)
                                     }
                                 }
                             }
