@@ -63,6 +63,7 @@ data class ReviewUiState(
     val previewChunk: Chunk? = null,
     val contexts: List<CapturedContext> = emptyList(),
     val costEstimate: CostEstimate? = null,
+    val costEstimateError: String? = null,
     val queueStatus: QueueStatus? = null,
     val pendingSyncCount: Int = 0,
     val queuedSyncCount: Int = 0,
@@ -152,10 +153,19 @@ class ReviewViewModel(
                 val (provider, _, _) = llmSettingsProvider?.readLlmSettings()
                     ?: return@launch
                 updateCostEstimate(provider.defaultModel)
+                _uiState.update { it.copy(costEstimateError = null) }
             } catch (e: Exception) {
                 android.util.Log.w("ReviewViewModel", "Failed to refresh cost estimate", e)
+                _uiState.update { it.copy(costEstimateError = "Failed to refresh cost estimate") }
             }
         }
+    }
+
+    /**
+     * Clears the cost estimate error after the UI has consumed it.
+     */
+    fun clearCostEstimateError() {
+        _uiState.update { it.copy(costEstimateError = null) }
     }
 
     /**
