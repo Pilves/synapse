@@ -27,7 +27,7 @@ open class OpenAiService(
             messagePath = "message",
             codeField = "code",
             authErrors = setOf("invalid_api_key"),
-            rateLimitErrors = setOf("rate_limit_exceeded", "tokens"),
+            rateLimitErrors = setOf("rate_limit_exceeded"),
             overloadedErrors = emptySet()
         )
     }
