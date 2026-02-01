@@ -127,6 +127,9 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     // Coroutine scope for the service
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
+    // Guard against double cleanup (onTaskRemoved → stopSelf → onDestroy)
+    private var isDestroyed = false
+
     // Managers
     private var bubbleManager: FloatingBubbleManager? = null
     private var overlayManager: CaptureOverlayManager? = null
@@ -298,15 +301,19 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        Log.d(TAG, "onTaskRemoved — cleaning up stale state")
-        overlayManager?.hide()
-        bubbleManager?.hideFloatingBubble()
-        stopForeground(STOP_FOREGROUND_REMOVE)
+        Log.d(TAG, "onTaskRemoved — delegating cleanup to onDestroy via stopSelf")
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
+        if (isDestroyed) {
+            Log.d(TAG, "onDestroy called again — skipping duplicate cleanup")
+            super.onDestroy()
+            return
+        }
+        isDestroyed = true
+        Log.d(TAG, "onDestroy — performing cleanup")
         permissionHealthMonitor.stopMonitoring()
         serviceScope.cancel()
         lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
