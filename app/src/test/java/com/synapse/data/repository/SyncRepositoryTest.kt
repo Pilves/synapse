@@ -148,4 +148,57 @@ class SyncRepositoryTest {
         // Should handle gracefully — either skip chunk or report error
         assertTrue(result is SyncStatus.Error || result is SyncStatus.PartialSuccess)
     }
+
+    @Test
+    fun `syncSession returns error when transcription service not configured`() = runTest {
+        coEvery { sessionStorage.getSession("s1") } returns testSession
+        coEvery { projectStorage.getProject("p1") } returns testProject
+
+        val unconfiguredRepo = SyncRepositoryImpl(
+            context = RuntimeEnvironment.getApplication(),
+            sessionStorage = sessionStorage,
+            chunkStorage = chunkStorage,
+            projectStorage = projectStorage,
+            syncStorage = syncStorage,
+            transcriptionServiceProvider = { null }
+        )
+
+        val result = unconfiguredRepo.syncSession("s1", "p1", "file.md")
+        assertTrue(result is SyncStatus.Error)
+        assertTrue((result as SyncStatus.Error).message.contains("not configured"))
+    }
+
+    @Test
+    fun `retryFailed resets failed items and processes queue`() = runTest {
+        coEvery { syncStorage.resetFailedItems() } returns 2
+        coEvery { syncStorage.getPendingItems() } returns emptyList()
+
+        repo.retryFailed()
+
+        coVerify { syncStorage.resetFailedItems() }
+    }
+
+    @Test
+    fun `retryFailed does nothing when no failed items`() = runTest {
+        coEvery { syncStorage.resetFailedItems() } returns 0
+
+        repo.retryFailed()
+
+        coVerify { syncStorage.resetFailedItems() }
+        // processQueue should not be called since resetCount is 0
+        coVerify(exactly = 0) { syncStorage.getPendingItems() }
+    }
+
+    @Test
+    fun `syncSession handles all chunks failed gracefully`() = runTest {
+        coEvery { sessionStorage.getSession("s1") } returns testSession
+        coEvery { projectStorage.getProject("p1") } returns testProject
+        coEvery { chunkStorage.loadChunkBytes("s1", "s1_0") } returns byteArrayOf(1, 2, 3)
+        coEvery { transcriptionService.transcribe(any(), any(), any()) } throws
+            TranscriptionError.NetworkError("Timeout")
+
+        val result = repo.syncSession("s1", "p1", "file.md")
+        // Should report the error since all chunks failed transcription
+        assertTrue(result is SyncStatus.Error)
+    }
 }
