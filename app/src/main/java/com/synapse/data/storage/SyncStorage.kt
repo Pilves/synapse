@@ -323,7 +323,12 @@ private data class SyncQueueItemDto(
         sessionId = sessionId,
         projectId = projectId,
         filename = filename,
-        status = try { SyncItemStatus.valueOf(status) } catch (_: IllegalArgumentException) { SyncItemStatus.FAILED },
+        status = try {
+            SyncItemStatus.valueOf(status)
+        } catch (_: IllegalArgumentException) {
+            Log.w("SyncStorage", "Unknown sync status '$status', defaulting to FAILED")
+            SyncItemStatus.FAILED
+        },
         createdAt = createdAt,
         lastAttemptAt = lastAttemptAt,
         attemptCount = attemptCount,
