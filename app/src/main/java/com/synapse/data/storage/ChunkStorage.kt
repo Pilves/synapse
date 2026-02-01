@@ -312,7 +312,7 @@ class ChunkStorage(
             }
             saveChunk(sessionId, nextIndex, bitmap)
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to save chunk: ${e.message}")
+            Log.e(TAG, "Failed to save chunk", e)
             null
         }
     }
