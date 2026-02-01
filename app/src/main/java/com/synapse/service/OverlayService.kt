@@ -65,6 +65,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.AbstractComposeView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.Lifecycle
@@ -833,7 +834,7 @@ internal fun CaptureOverlayContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.KeyboardArrowDown,
-                        contentDescription = "Minimize",
+                        contentDescription = stringResource(R.string.cd_minimize),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -845,7 +846,7 @@ internal fun CaptureOverlayContent(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Undo,
-                        contentDescription = "Undo",
+                        contentDescription = stringResource(R.string.cd_undo),
                         tint = MaterialTheme.colorScheme.onSecondary
                     )
                 }
@@ -860,7 +861,7 @@ internal fun CaptureOverlayContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Crop,
-                        contentDescription = if (isRegionMode) "Exit Region Mode" else "Region Select",
+                        contentDescription = if (isRegionMode) stringResource(R.string.cd_exit_region_mode) else stringResource(R.string.cd_region_select),
                         tint = if (isRegionMode)
                             MaterialTheme.colorScheme.onTertiary
                         else
@@ -875,7 +876,7 @@ internal fun CaptureOverlayContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Check,
-                        contentDescription = "End Session",
+                        contentDescription = stringResource(R.string.cd_end_session),
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
@@ -887,7 +888,7 @@ internal fun CaptureOverlayContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete last item",
+                        contentDescription = stringResource(R.string.cd_delete_last_item),
                         tint = MaterialTheme.colorScheme.onError
                     )
                 }
@@ -943,7 +944,7 @@ internal fun CaptureOverlayContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Dismiss preview",
+                        contentDescription = stringResource(R.string.cd_dismiss_preview),
                         tint = Color.White.copy(alpha = 0.7f),
                         modifier = Modifier.size(16.dp)
                     )

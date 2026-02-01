@@ -32,6 +32,50 @@
     <string name="accessibility_settings_what_we_skip">What we skip: Banking apps, password managers, payment apps, and authenticators are always excluded.</string>
     <string name="accessibility_settings_data_handling">Data handling: Captured text stays on-device unless you sync to your configured LLM provider. No data is sent to Synapse servers.</string>
 
+    <!-- Content Descriptions - Overlay -->
+    <string name="cd_minimize">Minimize</string>
+    <string name="cd_undo">Undo</string>
+    <string name="cd_exit_region_mode">Exit Region Mode</string>
+    <string name="cd_region_select">Region Select</string>
+    <string name="cd_end_session">End Session</string>
+    <string name="cd_delete_last_item">Delete last item</string>
+    <string name="cd_dismiss_preview">Dismiss preview</string>
+
+    <!-- Content Descriptions - Review -->
+    <string name="cd_no_internet">No internet connection</string>
+    <string name="cd_select_project">Select project</string>
+    <string name="cd_close">Close</string>
+    <string name="cd_chunk_preview">Chunk preview</string>
+    <string name="cd_chunk_selected">Chunk %1$d, selected</string>
+    <string name="cd_chunk_not_selected">Chunk %1$d, not selected</string>
+    <string name="cd_corrupted">Corrupted</string>
+    <string name="cd_selected">Selected</string>
+    <string name="cd_deselect_all">Deselect all</string>
+    <string name="cd_select_all">Select all</string>
+    <string name="cd_delete_session">Delete session</string>
+    <string name="cd_collapse">Collapse</string>
+    <string name="cd_expand">Expand</string>
+    <string name="cd_delete_chunk">Delete chunk</string>
+    <string name="cd_sync_queued">Sync status: queued</string>
+    <string name="cd_sync_in_progress">Sync status: in progress</string>
+    <string name="cd_sync_synced">Sync status: synced</string>
+    <string name="cd_sync_partial">Sync status: partial success</string>
+    <string name="cd_sync_error">Sync status: error</string>
+
+    <!-- Content Descriptions - Components -->
+    <string name="cd_queued_offline">Queued offline</string>
+    <string name="cd_synced">Synced</string>
+    <string name="cd_failed">Failed</string>
+    <string name="cd_ready_to_sync">Ready to sync</string>
+    <string name="cd_sync_failed">Sync failed</string>
+    <string name="cd_remove">Remove</string>
+
+    <!-- Content Descriptions - Settings & Onboarding -->
+    <string name="cd_navigate_back">Navigate back</string>
+    <string name="cd_go_back">Go back</string>
+    <string name="cd_hide_api_key">Hide API key</string>
+    <string name="cd_show_api_key">Show API key</string>
+
     <!-- Common Actions -->
     <string name="action_cancel">Cancel</string>
     <string name="action_confirm">Confirm</string>
