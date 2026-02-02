@@ -44,6 +44,9 @@ firebaseBom = "33.12.0"
 googleServices = "4.4.2"
 firebaseCrashlyticsPlugin = "3.0.2"
 
+# Coverage
+kover = "0.9.1"
+
 # Testing
 junit = "4.13.2"
 junitVersion = "1.1.5"
@@ -111,3 +114,4 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }
 firebase-crashlytics = { id = "com.google.firebase.crashlytics", version.ref = "firebaseCrashlyticsPlugin" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

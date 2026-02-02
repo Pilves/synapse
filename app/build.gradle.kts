@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.services)
     alias(libs.plugins.firebase.crashlytics)
+    alias(libs.plugins.kover)
 }
 
 android {
@@ -141,4 +142,24 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+}
+
+kover {
+    reports {
+        filters {
+            excludes {
+                classes(
+                    "*BuildConfig",
+                    "*.di.*",
+                    "*.model.*",
+                    "*_Factory",
+                    "*_MembersInjector"
+                )
+            }
+        }
+        total {
+            html { onCheck = false }
+            xml { onCheck = false }
+        }
+    }
 }
