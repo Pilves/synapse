@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.synapse.ui.theme.SynapseTheme
+import java.util.Locale
 import kotlin.math.roundToInt
 
 /**
@@ -115,7 +116,7 @@ fun formatMinutes(value: Float): String {
  * Convenience function to format decimal seconds.
  */
 fun formatDecimalSeconds(value: Float): String {
-    return String.format("%.1fs", value)
+    return String.format(Locale.US, "%.1fs", value)
 }
 
 @Preview(showBackground = true)

@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.synapse.model.CostEstimate
 import com.synapse.model.UsageStats
+import java.util.Locale
 
 @Composable
 fun SyncCostBanner(
@@ -15,7 +16,7 @@ fun SyncCostBanner(
 ) {
     if (costEstimate.estimatedCost > 0) {
         Text(
-            text = "Estimated cost: $${String.format("%.4f", costEstimate.estimatedCost)} (${costEstimate.model})",
+            text = "Estimated cost: $${String.format(Locale.US, "%.4f", costEstimate.estimatedCost)} (${costEstimate.model})",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = modifier
@@ -47,7 +48,7 @@ fun UsageStatsCard(
             ) {
                 Text("This month:", style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "$${String.format("%.2f", stats.monthlyCost)} (${stats.monthlySyncs} syncs)",
+                    "$${String.format(Locale.US, "%.2f", stats.monthlyCost)} (${stats.monthlySyncs} syncs)",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -60,7 +61,7 @@ fun UsageStatsCard(
             ) {
                 Text("All time:", style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "$${String.format("%.2f", stats.totalCost)}",
+                    "$${String.format(Locale.US, "%.2f", stats.totalCost)}",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
