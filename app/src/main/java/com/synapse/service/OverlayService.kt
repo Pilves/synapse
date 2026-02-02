@@ -332,11 +332,15 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
 
         val notification = createNotification()
         try {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            )
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
             Log.d(TAG, "Started foreground service")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start foreground service", e)
