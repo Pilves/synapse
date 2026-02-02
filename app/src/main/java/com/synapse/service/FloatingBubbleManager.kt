@@ -143,9 +143,7 @@ class FloatingBubbleManager(
             setColorFilter(onPrimaryColor, android.graphics.PorterDuff.Mode.SRC_IN)
             background = fabBackground
             scaleType = android.widget.ImageView.ScaleType.CENTER
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = elevationPx
-            }
+            elevation = elevationPx
             layoutParams = android.widget.FrameLayout.LayoutParams(bubbleSizePx, bubbleSizePx).apply {
                 gravity = Gravity.BOTTOM or Gravity.START
             }
@@ -164,9 +162,7 @@ class FloatingBubbleManager(
             }
             visibility = if (pendingChunkCount > 0) View.VISIBLE else View.GONE
             text = if (pendingChunkCount > 9) "9+" else pendingChunkCount.toString()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = elevationPx + 1
-            }
+            elevation = elevationPx + 1
             layoutParams = android.widget.FrameLayout.LayoutParams(badgeSizePx, badgeSizePx).apply {
                 gravity = Gravity.TOP or Gravity.END
             }
@@ -185,9 +181,7 @@ class FloatingBubbleManager(
                 setColor(amberColor)
             }
             visibility = if (showHealthWarning) View.VISIBLE else View.GONE
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                elevation = elevationPx + 1
-            }
+            elevation = elevationPx + 1
             layoutParams = android.widget.FrameLayout.LayoutParams(badgeSizePx, badgeSizePx).apply {
                 gravity = Gravity.TOP or Gravity.START
             }
