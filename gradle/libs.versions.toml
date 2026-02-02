@@ -34,7 +34,7 @@ documentfile = "1.0.1"
 securityCrypto = "1.1.0-alpha06"
 
 # Image Loading
-coil = "2.5.0"
+coil = "2.7.0"
 
 # Serialization
 kotlinxSerialization = "1.7.3"
