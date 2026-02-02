@@ -1,10 +1,12 @@
 package com.synapse.ui.onboarding
 
 import android.app.Application
+import androidx.datastore.preferences.core.edit
 import com.synapse.data.repository.ProjectRepository
 import com.synapse.data.storage.SecureKeyStorage
 import io.mockk.coEvery
 import io.mockk.mockk
+import com.synapse.ui.settings.settingsDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -34,9 +36,13 @@ class OnboardingViewModelTest {
     private lateinit var viewModel: OnboardingViewModel
 
     @Before
-    fun setup() {
+    fun setup() = runTest(testDispatcher) {
         Dispatchers.setMain(testDispatcher)
         application = RuntimeEnvironment.getApplication()
+
+        // Clear DataStore to prevent state leaking between tests
+        application.settingsDataStore.edit { it.clear() }
+
         projectRepository = mockk(relaxed = true)
         secureKeyStorage = mockk(relaxed = true)
 
