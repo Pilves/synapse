@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.util.Log
+import androidx.core.graphics.scale
 import com.synapse.model.Chunk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -788,7 +789,7 @@ class ChunkStorage(
             )
             val width = (bitmap.width * ratio).toInt().coerceAtLeast(1)
             val height = (bitmap.height * ratio).toInt().coerceAtLeast(1)
-            Bitmap.createScaledBitmap(bitmap, width, height, true)
+            bitmap.scale(width, height)
         } catch (e: OutOfMemoryError) {
             Log.e(TAG, "OOM creating thumbnail, skipping", RuntimeException(e))
             null

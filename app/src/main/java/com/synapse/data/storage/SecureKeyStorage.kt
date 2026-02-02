@@ -3,6 +3,7 @@ package com.synapse.data.storage
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import androidx.core.content.edit
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
@@ -41,7 +42,7 @@ class SecureKeyStorage(context: Context) {
      * Save an API key for the given provider.
      */
     fun saveKey(provider: String, key: String) {
-        prefs.edit().putString("$KEY_PREFIX$provider", key).apply()
+        prefs.edit { putString("$KEY_PREFIX$provider", key) }
     }
 
     /**
@@ -55,7 +56,7 @@ class SecureKeyStorage(context: Context) {
      * Delete the API key for the given provider.
      */
     fun deleteKey(provider: String) {
-        prefs.edit().remove("$KEY_PREFIX$provider").apply()
+        prefs.edit { remove("$KEY_PREFIX$provider") }
     }
 
     /**
@@ -92,7 +93,7 @@ class SecureKeyStorage(context: Context) {
                 prefs.remove(stringPreferencesKey("answering_api_key"))
             }
 
-            prefs.edit().putBoolean(MIGRATION_DONE_KEY, true).apply()
+            prefs.edit { putBoolean(MIGRATION_DONE_KEY, true) }
             Log.d(TAG, "API key migration to encrypted storage completed")
         } catch (e: Exception) {
             Log.e(TAG, "API key migration failed", e)
