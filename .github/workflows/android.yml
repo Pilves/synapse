@@ -80,9 +80,23 @@ jobs:
           name: test-results
           path: app/build/reports/tests/
 
+      - name: Generate coverage report
+        if: github.event_name != 'workflow_dispatch'
+        continue-on-error: true
+        run: ./gradlew koverHtmlReport koverXmlReport
+
       - name: Upload lint results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: lint-results
           path: app/build/reports/lint-results*.html
+          if-no-files-found: ignore
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: app/build/reports/kover/
+          if-no-files-found: ignore
