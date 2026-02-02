@@ -37,7 +37,7 @@ securityCrypto = "1.1.0-alpha06"
 coil = "2.5.0"
 
 # Serialization
-kotlinxSerialization = "1.6.3"
+kotlinxSerialization = "1.7.3"
 
 # Firebase
 firebaseBom = "33.7.0"
