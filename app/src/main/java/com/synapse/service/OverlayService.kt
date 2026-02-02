@@ -521,11 +521,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
             val intent = Intent(context, OverlayService::class.java).apply {
                 action = ACTION_START
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            context.startForegroundService(intent)
         }
 
         fun stop(context: Context) {

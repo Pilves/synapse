@@ -87,11 +87,7 @@ class MainActivity : ComponentActivity() {
                 putExtra(OverlayService.EXTRA_PROJECTION_RESULT_CODE, resultCode)
                 putExtra(OverlayService.EXTRA_PROJECTION_DATA, data)
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent)
-            } else {
-                startService(serviceIntent)
-            }
+            startForegroundService(serviceIntent)
             Log.d(TAG, "MediaProjection result forwarded to OverlayService")
             // Return to whatever was on screen before the permission prompt
             moveTaskToBack(true)
@@ -362,13 +358,8 @@ class MainActivity : ComponentActivity() {
             action = OverlayService.ACTION_START
         }
         try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                Log.d(TAG, "Starting foreground service")
-                startForegroundService(serviceIntent)
-            } else {
-                Log.d(TAG, "Starting service")
-                startService(serviceIntent)
-            }
+            Log.d(TAG, "Starting foreground service")
+            startForegroundService(serviceIntent)
             Log.d(TAG, "Service start initiated")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start service", e)

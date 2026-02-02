@@ -3,7 +3,6 @@ package com.synapse.service
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.os.Build
 
 /**
  * Helper class for creating notification channels for the Synapse overlay service.
@@ -33,32 +32,30 @@ class NotificationHelper(private val context: Context) {
      * Should be called once during app initialization or service creation.
      */
     fun createNotificationChannels() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Foreground service channel - IMPORTANCE_MIN for minimal visibility
-            val foregroundChannel = NotificationChannel(
-                CHANNEL_ID_FOREGROUND,
-                CHANNEL_NAME_FOREGROUND,
-                NotificationManager.IMPORTANCE_MIN
-            ).apply {
-                description = CHANNEL_DESC_FOREGROUND
-                setShowBadge(false)
-                enableLights(false)
-                enableVibration(false)
-                setSound(null, null)
-            }
-
-            // Sync status channel - IMPORTANCE_DEFAULT for user-visible updates
-            val syncStatusChannel = NotificationChannel(
-                CHANNEL_ID_SYNC_STATUS,
-                CHANNEL_NAME_SYNC_STATUS,
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = CHANNEL_DESC_SYNC_STATUS
-                setShowBadge(true)
-            }
-
-            notificationManager.createNotificationChannel(foregroundChannel)
-            notificationManager.createNotificationChannel(syncStatusChannel)
+        // Foreground service channel - IMPORTANCE_MIN for minimal visibility
+        val foregroundChannel = NotificationChannel(
+            CHANNEL_ID_FOREGROUND,
+            CHANNEL_NAME_FOREGROUND,
+            NotificationManager.IMPORTANCE_MIN
+        ).apply {
+            description = CHANNEL_DESC_FOREGROUND
+            setShowBadge(false)
+            enableLights(false)
+            enableVibration(false)
+            setSound(null, null)
         }
+
+        // Sync status channel - IMPORTANCE_DEFAULT for user-visible updates
+        val syncStatusChannel = NotificationChannel(
+            CHANNEL_ID_SYNC_STATUS,
+            CHANNEL_NAME_SYNC_STATUS,
+            NotificationManager.IMPORTANCE_DEFAULT
+        ).apply {
+            description = CHANNEL_DESC_SYNC_STATUS
+            setShowBadge(true)
+        }
+
+        notificationManager.createNotificationChannel(foregroundChannel)
+        notificationManager.createNotificationChannel(syncStatusChannel)
     }
 }

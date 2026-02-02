@@ -32,14 +32,9 @@ class InputDispatcher(private val context: Context) {
             } else {
                 @Suppress("DEPRECATION")
                 val vibrator = context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    vibrator.vibrate(
-                        VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
-                    )
-                } else {
-                    @Suppress("DEPRECATION")
-                    vibrator.vibrate(50)
-                }
+                vibrator.vibrate(
+                    VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE)
+                )
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to vibrate", e)

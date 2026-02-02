@@ -1,7 +1,6 @@
 package com.synapse.ui
 
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -25,11 +24,7 @@ class ProcessTextActivity : ComponentActivity() {
             val overlayIntent = Intent(this, OverlayService::class.java).apply {
                 action = OverlayService.ACTION_SHOW_WITH_CONTEXT
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(overlayIntent)
-            } else {
-                startService(overlayIntent)
-            }
+            startForegroundService(overlayIntent)
 
             val preview = if (text.length > 40) text.take(40) + "…" else text
             Toast.makeText(this, "✓ Text captured: $preview", Toast.LENGTH_SHORT).show()
