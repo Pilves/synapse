@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.synapse.util.OutputSanitizer
 import kotlinx.coroutines.Dispatchers
@@ -98,7 +99,7 @@ class VaultManager(private val context: Context) {
      */
     fun getVaultRoot(): Uri? {
         val uriString = prefs.getString(KEY_VAULT_ROOT_URI, null)
-        return uriString?.let { Uri.parse(it) }
+        return uriString?.let { it.toUri() }
     }
 
     /**

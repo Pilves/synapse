@@ -1,8 +1,8 @@
 package com.synapse.data.repository
 
 import android.content.Context
-import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.synapse.api.ChunkData
 import com.synapse.api.QuestionAnswerService
@@ -591,7 +591,7 @@ class SyncRepositoryImpl(
         segmentResults: List<String>
     ): Boolean = withContext(Dispatchers.IO) {
         try {
-            val projectUri = Uri.parse(projectPathUri)
+            val projectUri = projectPathUri.toUri()
             val projectDir = DocumentFile.fromTreeUri(context, projectUri)
                 ?: return@withContext false
 

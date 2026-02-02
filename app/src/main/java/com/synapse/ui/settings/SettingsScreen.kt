@@ -1,7 +1,7 @@
 package com.synapse.ui.settings
 
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -228,7 +228,7 @@ fun SettingsScreen(
                 icon = Icons.AutoMirrored.Filled.Help,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse("https://github.com/Pilves/synapse#readme")
+                        data = "https://github.com/Pilves/synapse#readme".toUri()
                     }
                     context.startActivity(intent)
                 }
@@ -244,7 +244,7 @@ fun SettingsScreen(
                 icon = Icons.Default.Code,
                 onClick = {
                     val intent = Intent(Intent.ACTION_VIEW).apply {
-                        data = Uri.parse("https://github.com/Pilves/synapse")
+                        data = "https://github.com/Pilves/synapse".toUri()
                     }
                     context.startActivity(intent)
                 }

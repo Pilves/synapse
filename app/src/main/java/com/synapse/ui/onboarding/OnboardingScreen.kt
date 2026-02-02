@@ -1,7 +1,7 @@
 package com.synapse.ui.onboarding
 
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -229,7 +229,7 @@ fun OnboardingScreen(
                             viewModel.saveApiKey(key)
                         },
                         onGetFreeKey = {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(viewModel.getGeminiApiKeyUrl()))
+                            val intent = Intent(Intent.ACTION_VIEW, viewModel.getGeminiApiKeyUrl().toUri())
                             context.startActivity(intent)
                         },
                         onSkip = { viewModel.completeOnboarding() },
@@ -642,7 +642,7 @@ private fun ApiKeyPage(
  */
 private fun getDisplayPath(uriString: String): String {
     return try {
-        val uri = Uri.parse(uriString)
+        val uri = uriString.toUri()
         val path = uri.path ?: uriString
         // Extract just the folder name from the path
         val segments = path.split("/")

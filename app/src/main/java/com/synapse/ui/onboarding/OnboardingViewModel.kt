@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import com.synapse.data.repository.ProjectRepository
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
@@ -200,7 +201,7 @@ class OnboardingViewModel(
                 // Use SupervisorJob so a failure here doesn't cancel the parent scope.
                 viewModelScope.launch(SupervisorJob()) {
                     try {
-                        projectRepository.syncProjectsFromVault(Uri.parse(vaultPath))
+                        projectRepository.syncProjectsFromVault(vaultPath.toUri())
                         Log.d(TAG, "Synced projects from vault")
                     } catch (e: Exception) {
                         Log.e(TAG, "Background vault sync failed", e)

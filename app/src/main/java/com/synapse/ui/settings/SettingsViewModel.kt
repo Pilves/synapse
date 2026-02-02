@@ -1,7 +1,7 @@
 package com.synapse.ui.settings
 
 import android.content.Context
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -319,7 +319,7 @@ class SettingsViewModel(
             dataStore.edit { it[PreferenceKeys.VAULT_LOCATION] = path }
             // Auto-sync projects from vault folders
             if (path.isNotBlank()) {
-                projectRepository.syncProjectsFromVault(Uri.parse(path))
+                projectRepository.syncProjectsFromVault(path.toUri())
             }
         }
     }
