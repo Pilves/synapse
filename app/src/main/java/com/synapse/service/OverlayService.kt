@@ -321,7 +321,7 @@ class OverlayService : Service(), LifecycleOwner, SavedStateRegistryOwner {
         Log.d(TAG, "startOverlay called (userInitiated=$userInitiated)")
 
         // Check overlay permission
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+        if (!Settings.canDrawOverlays(this)) {
             Log.e(TAG, "Overlay permission not granted!")
             return
         }
