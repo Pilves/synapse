@@ -66,6 +66,13 @@ jobs:
           files: app/build/outputs/apk/debug/*.apk
           generate_release_notes: true
 
+      - name: Publish test results
+        if: always() && github.event_name == 'pull_request'
+        uses: mikepenz/action-junit-report@v4
+        with:
+          report_paths: 'app/build/test-results/*/TEST-*.xml'
+          check_name: 'Unit Test Results'
+
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
