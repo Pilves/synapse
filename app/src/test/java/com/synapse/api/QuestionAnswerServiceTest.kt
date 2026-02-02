@@ -1,5 +1,6 @@
 package com.synapse.api
 
+import android.graphics.Rect
 import com.synapse.model.CapturedContext
 import com.synapse.model.LlmConfig
 import io.mockk.coEvery
@@ -60,7 +61,7 @@ class QuestionAnswerServiceTest {
         coEvery { transcriptionService.textQuery(any(), any()) } returns "Answer with context"
 
         val contexts = listOf(
-            CapturedContext.SelectedText(text = "important text")
+            CapturedContext.SelectedText(text = "important text", sourceApp = null, sourceUrl = null)
         )
         val result = service.answerQuestion("summarize", testConfig, contexts)
         assertEquals("Answer with context", result)
@@ -90,6 +91,7 @@ class QuestionAnswerServiceTest {
         val contexts = listOf(
             CapturedContext.RegionImage(
                 imagePath = imageFile.absolutePath,
+                bounds = Rect(0, 0, 100, 100),
                 description = "screenshot"
             )
         )
@@ -105,6 +107,7 @@ class QuestionAnswerServiceTest {
         val contexts = listOf(
             CapturedContext.RegionImage(
                 imagePath = outsideFile.absolutePath,
+                bounds = Rect(0, 0, 100, 100),
                 description = "screenshot"
             )
         )
@@ -125,6 +128,7 @@ class QuestionAnswerServiceTest {
         val contexts = listOf(
             CapturedContext.RegionImage(
                 imagePath = bigFile.absolutePath,
+                bounds = Rect(0, 0, 100, 100),
                 description = "huge"
             )
         )

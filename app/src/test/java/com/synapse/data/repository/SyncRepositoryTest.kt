@@ -222,7 +222,7 @@ class SyncRepositoryTest {
         coEvery { projectStorage.getProject("p1") } returns testProject
         coEvery { chunkStorage.loadChunkBytes("s1", "s1_0") } returns byteArrayOf(1, 2, 3)
         coEvery { transcriptionService.transcribe(any(), any(), any()) } throws
-            TranscriptionError.RateLimited("Too many requests")
+            TranscriptionError.RateLimitError(retryAfterSeconds = 30)
 
         val result = repo.syncSession("s1", "p1", "file.md")
         assertTrue(result is SyncStatus.Error)

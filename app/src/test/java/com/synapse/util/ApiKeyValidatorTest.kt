@@ -56,9 +56,10 @@ class ApiKeyValidatorTest {
     }
 
     @Test
-    fun `validateFormat accepts generic 20+ char key`() {
+    fun `validateFormat rejects unknown key format`() {
         val result = ApiKeyValidator.validateFormat("a".repeat(20))
-        assertTrue(result.isValid)
+        assertFalse(result.isValid)
+        assertTrue(result.errorMessage!!.contains("Unrecognized"))
     }
 
     @Test
