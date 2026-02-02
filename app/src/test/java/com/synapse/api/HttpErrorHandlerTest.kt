@@ -86,7 +86,7 @@ class HttpErrorHandlerTest {
         try {
             service.testHandleHttpError(401, "Unauthorized", response)
         } catch (e: TranscriptionError.ApiKeyInvalid) {
-            assertTrue(e.message!!.contains("401"))
+            assertTrue(e.message.contains("401"))
             return
         }
         throw AssertionError("Expected ApiKeyInvalid")
@@ -98,7 +98,7 @@ class HttpErrorHandlerTest {
         try {
             service.testHandleHttpError(403, "Forbidden", response)
         } catch (e: TranscriptionError.ApiKeyInvalid) {
-            assertTrue(e.message!!.contains("403"))
+            assertTrue(e.message.contains("403"))
             return
         }
         throw AssertionError("Expected ApiKeyInvalid")
@@ -184,7 +184,7 @@ class HttpErrorHandlerTest {
         try {
             service.testHandleHttpErrorWith529(529, "Overloaded", response)
         } catch (e: TranscriptionError.ServiceUnavailable) {
-            assertTrue(e.message!!.contains("overloaded"))
+            assertTrue(e.message.contains("overloaded"))
             return
         }
         throw AssertionError("Expected ServiceUnavailable")
@@ -208,7 +208,7 @@ class HttpErrorHandlerTest {
         try {
             service.testHandleHttpError(400, "Bad Request", response)
         } catch (e: TranscriptionError.Unknown) {
-            assertTrue(e.message!!.contains("400"))
+            assertTrue(e.message.contains("400"))
             return
         }
         throw AssertionError("Expected Unknown")
@@ -220,7 +220,7 @@ class HttpErrorHandlerTest {
         try {
             service.testHandleHttpError(404, "Not Found", response)
         } catch (e: TranscriptionError.Unknown) {
-            assertTrue(e.message!!.contains("404"))
+            assertTrue(e.message.contains("404"))
             return
         }
         throw AssertionError("Expected Unknown")
@@ -232,7 +232,7 @@ class HttpErrorHandlerTest {
         try {
             service.testHandleHttpError(400, "custom error body", response)
         } catch (e: TranscriptionError.Unknown) {
-            assertTrue(e.message!!.contains("custom error body"))
+            assertTrue(e.message.contains("custom error body"))
             return
         }
         throw AssertionError("Expected Unknown with body")
