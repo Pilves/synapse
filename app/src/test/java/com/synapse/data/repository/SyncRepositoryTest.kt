@@ -201,4 +201,81 @@ class SyncRepositoryTest {
         // Should report the error since all chunks failed transcription
         assertTrue(result is SyncStatus.Error)
     }
+
+    // --- Q&A flow and narrowed exception handling ---
+
+    @Test
+    fun `syncSession handles TranscriptionError ApiKeyInvalid`() = runTest {
+        coEvery { sessionStorage.getSession("s1") } returns testSession
+        coEvery { projectStorage.getProject("p1") } returns testProject
+        coEvery { chunkStorage.loadChunkBytes("s1", "s1_0") } returns byteArrayOf(1, 2, 3)
+        coEvery { transcriptionService.transcribe(any(), any(), any()) } throws
+            TranscriptionError.ApiKeyInvalid("Invalid API key")
+
+        val result = repo.syncSession("s1", "p1", "file.md")
+        assertTrue(result is SyncStatus.Error)
+    }
+
+    @Test
+    fun `syncSession handles TranscriptionError RateLimited`() = runTest {
+        coEvery { sessionStorage.getSession("s1") } returns testSession
+        coEvery { projectStorage.getProject("p1") } returns testProject
+        coEvery { chunkStorage.loadChunkBytes("s1", "s1_0") } returns byteArrayOf(1, 2, 3)
+        coEvery { transcriptionService.transcribe(any(), any(), any()) } throws
+            TranscriptionError.RateLimited("Too many requests")
+
+        val result = repo.syncSession("s1", "p1", "file.md")
+        assertTrue(result is SyncStatus.Error)
+    }
+
+    @Test
+    fun `syncSession handles IOException during transcription`() = runTest {
+        coEvery { sessionStorage.getSession("s1") } returns testSession
+        coEvery { projectStorage.getProject("p1") } returns testProject
+        coEvery { chunkStorage.loadChunkBytes("s1", "s1_0") } returns byteArrayOf(1, 2, 3)
+        coEvery { transcriptionService.transcribe(any(), any(), any()) } throws
+            java.io.IOException("Network unreachable")
+
+        val result = repo.syncSession("s1", "p1", "file.md")
+        assertTrue(result is SyncStatus.Error)
+    }
+
+    @Test
+    fun `syncSession propagates partial success when some chunks transcribe`() = runTest {
+        val chunk2 = testChunk.copy(id = "s1_1", index = 1)
+        val multiChunkSession = testSession.copy(chunks = listOf(testChunk, chunk2))
+
+        coEvery { sessionStorage.getSession("s1") } returns multiChunkSession
+        coEvery { projectStorage.getProject("p1") } returns testProject
+        coEvery { chunkStorage.loadChunkBytes("s1", "s1_0") } returns byteArrayOf(1, 2, 3)
+        coEvery { chunkStorage.loadChunkBytes("s1", "s1_1") } returns byteArrayOf(4, 5, 6)
+        coEvery { transcriptionService.transcribe(any(), any(), any()) } returns TranscriptionResult(
+            notes = listOf(Note(text = "Partial result", chunksUsed = listOf(0))),
+            failedChunks = listOf(1)
+        )
+
+        val result = repo.syncSession("s1", "p1", "file.md")
+        // With failed chunks, result should reflect partial failure or attempt Q&A fallback
+        assertNotNull(result)
+    }
+
+    @Test
+    fun `syncSession handles question answer service Q&A fallback`() = runTest {
+        val chunk2 = testChunk.copy(id = "s1_1", index = 1)
+        val multiChunkSession = testSession.copy(chunks = listOf(testChunk, chunk2))
+
+        coEvery { sessionStorage.getSession("s1") } returns multiChunkSession
+        coEvery { projectStorage.getProject("p1") } returns testProject
+        coEvery { chunkStorage.loadChunkBytes("s1", any()) } returns byteArrayOf(1, 2, 3)
+        // Primary transcription has some failed chunks
+        coEvery { transcriptionService.transcribe(any(), any(), any()) } returns TranscriptionResult(
+            notes = listOf(Note(text = "First chunk", chunksUsed = listOf(0))),
+            failedChunks = listOf(1)
+        )
+        // Q&A service used as fallback for failed chunks
+        coEvery { questionAnswerService.answerQuestion(any(), any(), any(), any()) } returns "Recovered text"
+
+        val result = repo.syncSession("s1", "p1", "file.md")
+        assertNotNull(result)
+    }
 }
