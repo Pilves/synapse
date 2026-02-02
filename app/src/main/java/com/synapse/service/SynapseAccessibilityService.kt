@@ -124,6 +124,7 @@ class SynapseAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 updateNodeCache()
             }
+            else -> { /* Ignore unhandled event types */ }
         }
     }
 
