@@ -921,7 +921,7 @@ internal fun CaptureOverlayContent(
             ) {
                 Text(
                     text = if (capturedTextPreview?.startsWith("Draw") == true || capturedTextPreview?.startsWith("[") == true) {
-                        capturedTextPreview ?: ""
+                        capturedTextPreview
                     } else {
                         "\u2713 Selected: ${capturedTextPreview ?: ""}"
                     },

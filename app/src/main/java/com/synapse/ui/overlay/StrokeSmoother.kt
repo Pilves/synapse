@@ -135,7 +135,7 @@ object StrokeSmoother {
             val current = points[i]
             val midX = (prev.x + current.x) / 2
             val midY = (prev.y + current.y) / 2
-            path.quadraticBezierTo(prev.x, prev.y, midX, midY)
+            path.quadraticTo(prev.x, prev.y, midX, midY)
         }
 
         val lastPoint = points.last()

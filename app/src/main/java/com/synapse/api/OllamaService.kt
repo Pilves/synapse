@@ -232,7 +232,7 @@ open class OllamaService(
             healthCheckClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@use false
 
-                val body = response.body?.string() ?: return@use false
+                val body = response.body.string()
                 val jsonResponse = JSONObject(body)
                 val models = jsonResponse.optJSONArray("models") ?: return@use false
 

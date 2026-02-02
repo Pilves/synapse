@@ -210,6 +210,7 @@ fun SynapseTheme(
             SideEffect {
                 val window = activity.window
                 // Make status bar transparent for edge-to-edge
+                @Suppress("DEPRECATION")
                 window.statusBarColor = Color.Transparent.toArgb()
                 // Set status bar icon color based on theme
                 WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme

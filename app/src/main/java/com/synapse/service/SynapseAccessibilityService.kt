@@ -100,7 +100,7 @@ class SynapseAccessibilityService : AccessibilityService() {
 
         when (event.eventType) {
             AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> {
-                val text = event.text?.joinToString("") ?: ""
+                val text = event.text.joinToString("")
                 if (text.isNotBlank()) {
                     currentSelectedText = text
                 }

@@ -449,7 +449,7 @@ abstract class BaseLlmService(
      * Checks Content-Length header first to reject oversized responses early.
      */
     private fun readResponseBody(response: okhttp3.Response): String {
-        val body = response.body ?: return ""
+        val body = response.body
         // Early reject if Content-Length exceeds limit (avoids reading into memory)
         val contentLength = body.contentLength()
         if (contentLength > MAX_RESPONSE_BODY_BYTES) {
