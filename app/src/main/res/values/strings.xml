@@ -74,6 +74,7 @@
     <string name="action_continue">Continue</string>
     <string name="action_skip_for_now">Skip for now</string>
     <string name="action_grant">Grant</string>
+    <string name="action_cancel">Cancel</string>
 
     <!-- Review Screen -->
     <string name="review_title">Review</string>

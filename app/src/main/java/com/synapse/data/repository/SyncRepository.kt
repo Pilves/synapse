@@ -8,6 +8,7 @@ import com.synapse.api.ChunkData
 import com.synapse.api.QuestionAnswerService
 import com.synapse.api.TranscriptionError
 import com.synapse.api.TranscriptionService
+import java.io.IOException
 import com.synapse.model.CapturedContext
 import com.synapse.model.LlmConfig
 import com.synapse.data.storage.ChunkStorage
