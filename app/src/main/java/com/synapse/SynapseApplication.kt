@@ -17,7 +17,8 @@ import kotlinx.coroutines.launch
 import com.synapse.util.CrashReporter
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
-import org.koin.java.KoinJavaComponent.get
+import org.koin.core.component.KoinComponent
+import org.koin.core.component.get
 
 /**
  * Application class for Synapse - Handwriting Capture App
@@ -30,7 +31,7 @@ import org.koin.java.KoinJavaComponent.get
  * 3. repositoryModule - Business logic and service helpers (repositories, helpers)
  * 4. viewModelModule - UI ViewModels
  */
-class SynapseApplication : Application() {
+class SynapseApplication : Application(), KoinComponent {
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -40,22 +41,16 @@ class SynapseApplication : Application() {
         CrashReporter.initialize(this)
         initKoin()
         createNotificationChannels()
-        get<com.synapse.service.NotificationHelper>(com.synapse.service.NotificationHelper::class.java).createNotificationChannels()
+        get<com.synapse.service.NotificationHelper>().createNotificationChannels()
 
         // Initialize storage and migrate API keys asynchronously
         appScope.launch {
             // Initialize SessionStorage from disk (was previously blocking startup)
-            get<com.synapse.data.storage.SessionStorage>(
-                com.synapse.data.storage.SessionStorage::class.java
-            ).initialize()
+            get<com.synapse.data.storage.SessionStorage>().initialize()
         }
         appScope.launch {
-            val secureKeyStorage = get<com.synapse.data.storage.SecureKeyStorage>(
-                com.synapse.data.storage.SecureKeyStorage::class.java
-            )
-            val dataStore = get<androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>>(
-                androidx.datastore.core.DataStore::class.java
-            )
+            val secureKeyStorage = get<com.synapse.data.storage.SecureKeyStorage>()
+            val dataStore = get<androidx.datastore.core.DataStore<androidx.datastore.preferences.core.Preferences>>()
             secureKeyStorage.migrateFromDataStore(dataStore)
         }
     }
