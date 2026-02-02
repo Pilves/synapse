@@ -6,7 +6,7 @@ compileSdk = "36"
 
 # Core
 agp = "9.0.0"
-kotlin = "2.2.10"
+kotlin = "2.3.0"
 
 # Compose
 composeBom = "2025.06.00"
