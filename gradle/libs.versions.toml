@@ -23,7 +23,7 @@ koin = "4.0.4"
 koinCompose = "4.0.4"
 
 # Networking
-okhttp = "5.0.0-alpha.14"
+okhttp = "5.4.0"
 
 # Data
 datastorePreferences = "1.2.0"

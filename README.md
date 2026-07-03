@@ -1,5 +1,9 @@
 # Synapse
 
+[![Android CI](https://github.com/Pilves/synapse/actions/workflows/android.yml/badge.svg)](https://github.com/Pilves/synapse/actions/workflows/android.yml)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+![API](https://img.shields.io/badge/API-26%2B-brightgreen.svg)
+
 **Zero-friction handwriting capture for Obsidian.**
 
 Synapse is an Android overlay app that lets you capture handwritten notes without leaving your current app. Scribble quick thoughts, and later sync them to your Obsidian vault as clean, formatted markdown — transcribed by your choice of LLM.
@@ -286,7 +290,7 @@ app/src/main/java/com/synapse/
 │   ├── QuestionAnswerService.kt   # Q&A via text-based LLM calls
 │   ├── PromptTemplate.kt         # Base transcription prompt
 │   ├── TranscriptionServiceFactory.kt # Factory for TranscriptionService instances
-│   └── TranscriptionModels.kt    # TranscribedNote, ProcessedResult, ChunkData
+│   └── TranscriptionModels.kt    # ChunkData, Note, TranscriptionResult, TranscriptionError
 ├── data/
 │   ├── LlmSettingsProvider.kt    # Reads LLM config from DataStore + SecureKeyStorage
 │   ├── cost/
@@ -309,15 +313,15 @@ app/src/main/java/com/synapse/
 │       ├── StorageHelper.kt      # Common storage utilities
 │       └── StorageJson.kt        # JSON serialization models
 ├── di/
-│   └── AppModule.kt              # Koin DI modules (7 module groups)
+│   └── AppModule.kt              # Koin DI modules (storage, api, repository, viewModel)
 ├── model/
 │   ├── CapturedContext.kt        # Sealed class: SelectedText, RegionText, RegionImage, AutoContext
 │   ├── Chunk.kt                  # Chunk data model
 │   ├── Session.kt                # Session data model
 │   ├── Project.kt                # Project data model
-│   ├── CostModels.kt            # CostEstimate, UsageStats, TokenPricing
+│   ├── CostModels.kt            # CostEstimate, TokenPricing
 │   ├── LlmConfig.kt             # Multi-provider configuration
-│   ├── QueuedSync.kt            # Offline queue item
+│   ├── QueueStatus.kt           # Sync queue item status
 │   └── SyncStatus.kt            # Sealed class: Idle, Queued, InProgress, Success, PartialSuccess, Error
 ├── service/
 │   ├── OverlayService.kt         # Main floating overlay service (bubble + canvas + region mode)
@@ -336,7 +340,7 @@ app/src/main/java/com/synapse/
 │   ├── ProcessTextActivity.kt    # Android ACTION_PROCESS_TEXT handler
 │   ├── components/
 │   │   ├── ContextCard.kt        # Context display cards in review
-│   │   ├── CostDisplay.kt        # Cost banner and usage stats
+│   │   ├── CostDisplay.kt        # Sync cost banner
 │   │   ├── LlmSettingsSection.kt # Multi-provider settings UI
 │   │   └── SyncStatusIndicator.kt # Queue status display
 │   ├── navigation/
@@ -392,18 +396,18 @@ app/src/main/java/com/synapse/
 
 | Component | Technology |
 |---|---|
-| Language | Kotlin 2.2.10 |
+| Language | Kotlin 2.3.0 |
 | UI | Jetpack Compose + Material 3 |
-| DI | Koin 3.5.6 |
+| DI | Koin 4.0.4 |
 | State | ViewModel + StateFlow |
 | Storage | DataStore, SAF, WebP |
-| Networking | OkHttp 4.12.0 |
-| Images | Coil 2.5.0 |
-| Serialization | Kotlinx Serialization JSON 1.6.3 |
+| Networking | OkHttp 5.4.0 |
+| Images | Coil 2.7.0 |
+| Serialization | Kotlinx Serialization JSON 1.7.3 |
 | Security | AndroidX Security Crypto (EncryptedSharedPreferences) |
-| Crash Reporting | Firebase Crashlytics (BOM 33.7.0) |
+| Crash Reporting | Firebase Crashlytics (BOM 33.12.0) |
 | Min SDK | API 26 (Android 8.0) |
-| Target SDK | API 35 (Android 15) |
+| Target SDK | API 36 |
 | JVM | Java 17 |
 | Build | AGP 9.0, Gradle Kotlin DSL |
 

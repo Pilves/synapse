@@ -4,11 +4,23 @@ All notable changes to Synapse are documented here.
 
 ## [Unreleased]
 
+### Changed
+- OkHttp updated from 5.0.0-alpha.14 to 5.4.0 (stable)
+
+### Removed
+- Dead code: unused `QueuedSync` model, `UsageStats` model, `UsageStatsCard` composable
+- Stale internal docs (`FEATURES.md`, `PIPELINES.md`, `REFACTORING_PLAN.md`) — README is the single source of truth
+- Stale `UnusedResources` entries in the lint baseline
+
+## [1.0.0-build.32] - 2026-02-02
+
+Rolling build releases (`v1.0.0-build.N` tags) between 2026-01-29 and 2026-02-02.
+
 ### Added
 - **Haptic feedback** -- `HapticFeedbackHelper` provides vibration feedback on region selection and confirmation dialogs
 - **Confirmation dialogs** -- delete session and delete chunk actions now require confirmation
 - **Offline indicator** -- network status shown in UI
-- **Expanded test suite** -- 24 unit test files covering API services, repositories, storage, ViewModels, and utilities
+- **Expanded test suite** -- 37 unit test files covering API services, repositories, storage, ViewModels, and utilities
 - **Context capture** -- select text in any app and share to Synapse via Android text processing; auto-capture active app info via accessibility service
 - **Region capture** -- hold-and-drag gesture to select screen regions; extract text via accessibility or screenshot via MediaProjection
 - **Multi-provider LLM routing** -- configure separate providers for transcription (image-based) vs. question answering (text-based)

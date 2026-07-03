@@ -7,12 +7,6 @@ data class CostEstimate(
     val model: String
 )
 
-data class UsageStats(
-    val totalCost: Double,
-    val monthlyCost: Double,
-    val monthlySyncs: Int
-)
-
 data class TokenPricing(
     val input: Double,
     val output: Double
