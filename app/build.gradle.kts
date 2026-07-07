@@ -129,15 +129,15 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     // Memory leak detection (debug only)
-    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
+    debugImplementation(libs.leakcanary.android)
 
     // Testing
     testImplementation(libs.junit)
-    testImplementation("org.robolectric:robolectric:4.16.1")
-    testImplementation("io.mockk:mockk:1.14.7")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.1")
-    testImplementation("app.cash.turbine:turbine:1.2.1")
-    testImplementation("androidx.arch.core:core-testing:2.2.0")
+    testImplementation(libs.robolectric)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.turbine)
+    testImplementation(libs.androidx.arch.core.testing)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

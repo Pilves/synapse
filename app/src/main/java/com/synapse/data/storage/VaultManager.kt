@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
 import com.synapse.util.OutputSanitizer
@@ -81,9 +82,9 @@ class VaultManager(private val context: Context) {
             context.contentResolver.takePersistableUriPermission(uri, takeFlags)
 
             // Store the URI
-            prefs.edit()
-                .putString(KEY_VAULT_ROOT_URI, uri.toString())
-                .apply()
+            prefs.edit {
+                putString(KEY_VAULT_ROOT_URI, uri.toString())
+            }
 
             Log.d(TAG, "Vault root set: $uri")
         } catch (e: SecurityException) {
@@ -348,9 +349,9 @@ class VaultManager(private val context: Context) {
                 }
             }
 
-            prefs.edit()
-                .remove(KEY_VAULT_ROOT_URI)
-                .apply()
+            prefs.edit {
+                remove(KEY_VAULT_ROOT_URI)
+            }
 
             Log.d(TAG, "Vault root cleared")
         } catch (e: Exception) {
