@@ -87,7 +87,7 @@ Before submitting a PR, run the following locally:
 ./gradlew lint
 ```
 
-The project has 24 unit test files covering API services, repositories, storage managers, ViewModels, and utilities. CI runs these automatically on push to `main` and on pull requests.
+Unit tests cover API services, repositories, storage managers, ViewModels, and utilities. CI runs these automatically on push to `main` and on pull requests.
 
 For overlay, accessibility, and MediaProjection features, manual testing on a physical device is required -- emulators do not support these.
 
