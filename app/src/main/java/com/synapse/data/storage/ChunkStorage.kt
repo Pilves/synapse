@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.core.graphics.scale
 import com.synapse.model.Chunk
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CoroutineScope
@@ -43,15 +42,6 @@ class ChunkStorage(
         /** Chunks cache directory name */
         private const val CHUNKS_DIR = "chunks"
 
-        /** Chunk filename prefix */
-        private const val CHUNK_PREFIX = "session_"
-
-        /** Chunk filename middle segment */
-        private const val CHUNK_MIDDLE = "_chunk_"
-
-        /** Thumbnail suffix */
-        private const val THUMB_SUFFIX = "_thumb"
-
         /** Thumbnail size in pixels */
         private const val THUMBNAIL_SIZE = 150
 
@@ -66,9 +56,6 @@ class ChunkStorage(
 
         /** Minimum valid image size in bytes */
         private const val MIN_VALID_IMAGE_SIZE = 100L
-
-        /** Maximum number of per-session mutexes to keep in memory */
-        private const val MAX_MUTEX_ENTRIES = 100
     }
 
     private val validIdRegex = Regex("^[a-zA-Z0-9_-]+$")
@@ -79,42 +66,11 @@ class ChunkStorage(
         }
     }
 
-    /** Mutex map for per-session locking. Cleaned up manually to avoid race conditions. */
-    private val sessionMutexes = LinkedHashMap<String, Mutex>(16, 0.75f, true)
-    private val mutexMapLock = Any()
+    /** Per-session mutex bookkeeping. Cleaned up manually to avoid race conditions. */
+    private val mutexRegistry = SessionMutexRegistry()
 
     private val chunksDir: File
         get() = File(context.cacheDir, CHUNKS_DIR).also { it.mkdirs() }
-
-    /**
-     * Get or create a mutex for a specific session.
-     *
-     * Unlike an LRU with removeEldestEntry, this never auto-evicts mutexes.
-     * Instead, cleanup happens after operations complete via [pruneUnlockedMutexes].
-     */
-    private fun getSessionMutex(sessionId: String): Mutex {
-        synchronized(mutexMapLock) {
-            return sessionMutexes.getOrPut(sessionId) { Mutex() }
-        }
-    }
-
-    /**
-     * Prune unlocked mutexes when the map exceeds [MAX_MUTEX_ENTRIES].
-     * Only removes mutexes that are not currently locked, iterating from
-     * eldest to newest (LinkedHashMap access order) until we are at the limit.
-     */
-    private fun pruneUnlockedMutexes() {
-        synchronized(mutexMapLock) {
-            if (sessionMutexes.size <= MAX_MUTEX_ENTRIES) return
-            val iterator = sessionMutexes.entries.iterator()
-            while (iterator.hasNext() && sessionMutexes.size > MAX_MUTEX_ENTRIES) {
-                val entry = iterator.next()
-                if (!entry.value.isLocked) {
-                    iterator.remove()
-                }
-            }
-        }
-    }
 
     /**
      * Removes the session mutex from the map if it is not currently locked.
@@ -123,12 +79,7 @@ class ChunkStorage(
      * @param sessionId The session ID whose mutex to clean up
      */
     fun cleanupSessionMutex(sessionId: String) {
-        synchronized(mutexMapLock) {
-            val mutex = sessionMutexes[sessionId]
-            if (mutex != null && !mutex.isLocked) {
-                sessionMutexes.remove(sessionId)
-            }
-        }
+        mutexRegistry.removeIfUnlocked(sessionId)
     }
 
     /**
@@ -139,7 +90,7 @@ class ChunkStorage(
      * @return Filename in format: session_{timestamp}_chunk_{index}.webp
      */
     fun generateChunkFilename(sessionTimestamp: String, index: Int): String {
-        return "$CHUNK_PREFIX${sessionTimestamp}$CHUNK_MIDDLE${index}$StorageHelper.WEBP_EXTENSION"
+        return ChunkNaming.generateChunkFilename(sessionTimestamp, index)
     }
 
     /**
@@ -149,28 +100,7 @@ class ChunkStorage(
      * @return Pair of (sessionTimestamp, index), or null if parsing fails
      */
     fun parseChunkFilename(filename: String): Pair<String, Int>? {
-        if (!filename.startsWith(CHUNK_PREFIX) || !filename.endsWith(StorageHelper.WEBP_EXTENSION)) {
-            return null
-        }
-
-        // Handle thumb files
-        if (filename.contains(THUMB_SUFFIX)) {
-            return null
-        }
-
-        val withoutExtension = filename.removeSuffix(StorageHelper.WEBP_EXTENSION)
-        val chunkIndex = withoutExtension.lastIndexOf(CHUNK_MIDDLE)
-
-        if (chunkIndex == -1) return null
-
-        val sessionTimestamp = withoutExtension.substring(CHUNK_PREFIX.length, chunkIndex)
-        val indexStr = withoutExtension.substring(chunkIndex + CHUNK_MIDDLE.length)
-
-        return try {
-            sessionTimestamp to indexStr.toInt()
-        } catch (e: NumberFormatException) {
-            null
-        }
+        return ChunkNaming.parseChunkFilename(filename)
     }
 
     /**
@@ -212,7 +142,7 @@ class ChunkStorage(
         bitmap: Bitmap
     ): Pair<String, String> = withContext(Dispatchers.IO) {
         validateId(sessionId)
-        val mutex = getSessionMutex(sessionId)
+        val mutex = mutexRegistry.getOrCreate(sessionId)
 
         try {
             mutex.withLock {
@@ -289,7 +219,7 @@ class ChunkStorage(
                 }
             }
         } finally {
-            pruneUnlockedMutexes()
+            mutexRegistry.prune()
         }
     }
 
@@ -302,14 +232,14 @@ class ChunkStorage(
      */
     suspend fun saveChunk(sessionId: String, bitmap: Bitmap): Pair<String, String>? = withContext(Dispatchers.IO) {
         try {
-            val mutex = getSessionMutex(sessionId)
+            val mutex = mutexRegistry.getOrCreate(sessionId)
             val nextIndex = try {
                 mutex.withLock {
                     val existingChunks = listChunksForSession(sessionId)
                     (existingChunks.maxOfOrNull { it.index } ?: -1) + 1
                 }
             } finally {
-                pruneUnlockedMutexes()
+                mutexRegistry.prune()
             }
             saveChunk(sessionId, nextIndex, bitmap)
         } catch (e: Exception) {
@@ -324,7 +254,7 @@ class ChunkStorage(
     private fun saveThumbnail(sessionDir: File, sessionId: String, index: Int, bitmap: Bitmap) {
         try {
             val thumbnail = createThumbnail(bitmap) ?: return
-            val thumbFilename = "${CHUNK_PREFIX}${sessionId}${CHUNK_MIDDLE}${index}${THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION"
+            val thumbFilename = ChunkNaming.thumbnailFilename(sessionId, index)
             val thumbFile = File(sessionDir, thumbFilename)
 
             FileOutputStream(thumbFile).use { out ->
@@ -433,7 +363,7 @@ class ChunkStorage(
             sessionDir.listFiles()?.find {
                 it.name.contains(chunkId) &&
                 it.name.endsWith(StorageHelper.WEBP_EXTENSION) &&
-                !it.name.contains(THUMB_SUFFIX)
+                !it.name.contains(ChunkNaming.THUMB_SUFFIX)
             }
         }
     }
@@ -458,13 +388,13 @@ class ChunkStorage(
             }
 
             val thumbFile = if (index != null) {
-                val thumbFilename = "${CHUNK_PREFIX}${sessionId}${CHUNK_MIDDLE}${index}${THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION"
+                val thumbFilename = ChunkNaming.thumbnailFilename(sessionId, index)
                 File(sessionDir, thumbFilename)
             } else {
                 // Legacy support
                 sessionDir.listFiles()?.find {
                     it.name.contains(chunkId) &&
-                    it.name.contains(THUMB_SUFFIX)
+                    it.name.contains(ChunkNaming.THUMB_SUFFIX)
                 }
             }
 
@@ -566,7 +496,7 @@ class ChunkStorage(
                 deleted = chunkFile.delete()
 
                 // Delete thumbnail
-                val thumbFilename = chunkFile.name.replace(StorageHelper.WEBP_EXTENSION, "${THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION")
+                val thumbFilename = chunkFile.name.replace(StorageHelper.WEBP_EXTENSION, "${ChunkNaming.THUMB_SUFFIX}$StorageHelper.WEBP_EXTENSION")
                 val thumbFile = File(sessionDir, thumbFilename)
                 if (thumbFile.exists()) {
                     thumbFile.delete()
@@ -594,7 +524,7 @@ class ChunkStorage(
      * @return true if deletion was successful
      */
     suspend fun deleteSessionChunks(sessionId: String): Boolean = withContext(Dispatchers.IO) {
-        val mutex = getSessionMutex(sessionId)
+        val mutex = mutexRegistry.getOrCreate(sessionId)
 
         try {
             mutex.withLock {
@@ -605,7 +535,7 @@ class ChunkStorage(
                     }
 
                     // Clean up mutex for this session explicitly
-                    synchronized(mutexMapLock) { sessionMutexes.remove(sessionId) }
+                    mutexRegistry.remove(sessionId)
 
                     Log.d(TAG, "Deleted all chunks for session $sessionId")
                     true
@@ -615,7 +545,7 @@ class ChunkStorage(
                 }
             }
         } finally {
-            pruneUnlockedMutexes()
+            mutexRegistry.prune()
         }
     }
 
@@ -632,7 +562,7 @@ class ChunkStorage(
         val chunks = mutableListOf<Chunk>()
 
         sessionDir.listFiles()?.forEach { file ->
-            if (file.isFile && file.name.endsWith(StorageHelper.WEBP_EXTENSION) && !file.name.contains(THUMB_SUFFIX)) {
+            if (file.isFile && file.name.endsWith(StorageHelper.WEBP_EXTENSION) && !file.name.contains(ChunkNaming.THUMB_SUFFIX)) {
                 val parsed = parseChunkFilename(file.name)
                 if (parsed != null) {
                     val (_, index) = parsed
