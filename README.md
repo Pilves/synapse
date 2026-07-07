@@ -415,7 +415,9 @@ app/src/main/java/com/synapse/
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide. In short:
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full guide, [ARCHITECTURE.md](ARCHITECTURE.md)
+for a map of the codebase, and [MAINTAINERS.md](MAINTAINERS.md) for CI, testing,
+and release conventions. In short:
 
 1. Check existing issues first
 2. Open an issue to discuss major changes
