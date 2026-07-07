@@ -4,18 +4,14 @@ import android.content.Context
 import android.util.Log
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
-import com.synapse.api.ChunkData
 import com.synapse.api.QuestionAnswerService
-import com.synapse.api.TranscriptionError
 import com.synapse.api.TranscriptionService
-import java.io.IOException
 import com.synapse.model.CapturedContext
 import com.synapse.model.LlmConfig
 import com.synapse.data.storage.ChunkStorage
 import com.synapse.data.storage.ProjectStorage
 import com.synapse.data.storage.SessionStorage
 import com.synapse.data.storage.SyncStorage
-import com.synapse.model.Chunk
 import com.synapse.model.SyncStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -104,13 +100,20 @@ class SyncRepositoryImpl(
 
     companion object {
         private const val TAG = "SyncRepository"
-        private const val MAX_CHUNKS_PER_REQUEST = 10
         private const val MAX_BATCH_BYTES = 50L * 1024 * 1024 // 50MB
         private const val NETWORK_STABILIZATION_DELAY_MS = 3000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _syncStatus = MutableStateFlow<SyncStatus>(SyncStatus.Idle)
+
+    // Owns per-segment processing; an internal implementation detail (not wired via Koin).
+    private val segmentTranscriber = SegmentTranscriber(
+        chunkStorage = chunkStorage,
+        questionAnswerService = questionAnswerService,
+        llmConfigProvider = llmConfigProvider,
+        maxBatchBytes = MAX_BATCH_BYTES
+    )
 
     init {
         observeNetwork()
@@ -190,150 +193,13 @@ class SyncRepositoryImpl(
                 val segProgress = 0.1f + 0.8f * segIndex / segments.size
                 _syncStatus.value = SyncStatus.InProgress(segProgress)
 
-                when {
-                    // Context-only segment: write context text as markdown quotes,
-                    // but send RegionImage contexts through vision LLM for transcription
-                    segment.contexts.isNotEmpty() && segment.chunks.isEmpty() -> {
-                        val sb = StringBuilder()
-                        for (ctx in segment.contexts) {
-                            if (ctx is CapturedContext.RegionImage && transcriptionService != null) {
-                                // Send screenshot image to LLM for transcription
-                                val transcribed = transcribeRegionImage(ctx, transcriptionService)
-                                if (transcribed != null) {
-                                    sb.append(transcribed)
-                                    sb.append("\n\n")
-                                } else {
-                                    sb.append("> (image transcription failed)\n\n")
-                                }
-                            } else {
-                                val text = contextToText(ctx)
-                                if (transcriptionService != null) {
-                                    val formatted = formatContextText(text, transcriptionService)
-                                    sb.append(formatted)
-                                    sb.append("\n\n")
-                                } else {
-                                    sb.append("> $text\n\n")
-                                }
-                            }
-                        }
-                        segmentResults.add(sb.toString())
-                        Log.d(TAG, "Segment $segIndex: context-only (${segment.contexts.size} contexts)")
-                    }
-
-                    // Chunk-only segment: transcribe and write
-                    segment.contexts.isEmpty() && segment.chunks.isNotEmpty() -> {
-                        val result = transcribeChunks(
-                            sessionId, segment.chunks, requireNotNull(transcriptionService) { "Transcription service not available" }
-                        )
-                        failedCount += result.failedCount
-                        if (result.notes.isNotEmpty()) {
-                            segmentResults.add(result.notes.joinToString("\n\n"))
-                        }
-                        if (result.lastError != null) {
-                            lastTranscriptionError = result.lastError
-                        }
-                        Log.d(TAG, "Segment $segIndex: chunks-only (${segment.chunks.size} chunks, ${result.failedCount} failed, error=${result.lastError})")
-                    }
-
-                    // Context + Chunks segment: Q&A flow
-                    segment.contexts.isNotEmpty() && segment.chunks.isNotEmpty() -> {
-                        val hasImageContext = segment.contexts.any { it is CapturedContext.RegionImage }
-
-                        // Load chunk image bytes for sending directly to the vision LLM (with size cap)
-                        val chunkImageBytes = mutableListOf<ByteArray>()
-                        if (hasImageContext) {
-                            var cumulativeSize = 0L
-                            for (chunk in segment.chunks.filter { !it.isCorrupted }) {
-                                if (cumulativeSize >= MAX_BATCH_BYTES) {
-                                    Log.w(TAG, "Chunk image batch size cap reached ($cumulativeSize bytes), skipping remaining")
-                                    break
-                                }
-                                val bytes = chunkStorage.loadChunkBytes(sessionId, chunk.id) ?: continue
-                                cumulativeSize += bytes.size
-                                chunkImageBytes.add(bytes)
-                            }
-                        }
-
-                        // Try transcribing chunks to text (for the question)
-                        val transcribeResult = transcribeChunks(
-                            sessionId, segment.chunks, requireNotNull(transcriptionService) { "Transcription service not available" }
-                        )
-                        val notes = transcribeResult.notes
-                        val failed = transcribeResult.failedCount
-                        if (transcribeResult.lastError != null) {
-                            lastTranscriptionError = transcribeResult.lastError
-                        }
-                        // Track failed transcriptions, but if we send images directly
-                        // and get an answer, we'll subtract them back
-                        failedCount += failed
-                        val chunkFailedCount = failed
-
-                        var answerText: String? = null
-                        Log.d(TAG, "Segment $segIndex: qaService=${questionAnswerService != null}, configProvider=${llmConfigProvider != null}, notes=${notes.size}, failed=$failed, chunkImages=${chunkImageBytes.size}")
-                        try {
-                        if (questionAnswerService != null && llmConfigProvider != null) {
-                            val llmConfig = llmConfigProvider.invoke()
-                            Log.d(TAG, "Segment $segIndex: llmConfig=${llmConfig != null}")
-                            if (llmConfig != null) {
-                                val question = notes.joinToString(" ")
-                                val sendImages = if (hasImageContext && chunkImageBytes.isNotEmpty()) chunkImageBytes.map { it.copyOf() } else emptyList()
-                                Log.d(TAG, "Segment $segIndex: question='${question.take(80)}', sendImages=${sendImages.size}, hasImageCtx=$hasImageContext")
-
-                                if (question.isNotBlank() || sendImages.isNotEmpty()) {
-                                    try {
-                                        val rawAnswer = questionAnswerService.answerQuestion(
-                                            question = question,
-                                            config = llmConfig,
-                                            contexts = segment.contexts,
-                                            additionalImages = sendImages
-                                        )
-                                        if (OutputSanitizer.isLlmErrorContent(rawAnswer)) {
-                                            Log.w(TAG, "Segment $segIndex Q&A returned LLM error content: ${rawAnswer.take(80)}")
-                                        } else {
-                                            answerText = rawAnswer
-                                        }
-                                        Log.d(TAG, "Segment $segIndex Q&A answer: ${(answerText ?: rawAnswer).take(80)}")
-                                        // If transcription failed but vision Q&A succeeded,
-                                        // don't count those chunks as failed
-                                        if (chunkFailedCount > 0 && sendImages.isNotEmpty()) {
-                                            failedCount -= chunkFailedCount
-                                            Log.d(TAG, "Segment $segIndex: recovered $chunkFailedCount failed chunks via vision Q&A")
-                                        }
-                                    } catch (e: TranscriptionError) {
-                                        Log.e(TAG, "Segment $segIndex Q&A transcription failed", e)
-                                    } catch (e: IOException) {
-                                        Log.e(TAG, "Segment $segIndex Q&A I/O failed", e)
-                                    } catch (e: IllegalStateException) {
-                                        Log.e(TAG, "Segment $segIndex Q&A illegal state", e)
-                                    }
-                                }
-                            }
-                        }
-                        } finally {
-                            // Safe to clear now — sendImages holds deep copies of the byte arrays,
-                            // so the QuestionAnswerService is not affected by this clear.
-                            chunkImageBytes.clear()
-                        }
-
-                        val content = buildString {
-                            if (answerText != null) {
-                                // LLM produced a result — output it directly
-                                append(answerText)
-                                append("\n\n")
-                            } else {
-                                // Fallback: no LLM answer, show raw context + notes
-                                for (ctx in segment.contexts) {
-                                    append("> ${contextToText(ctx)}\n\n")
-                                }
-                                notes.forEach { note ->
-                                    append(note)
-                                    append("\n\n")
-                                }
-                            }
-                        }
-                        segmentResults.add(content)
-                        Log.d(TAG, "Segment $segIndex: Q&A (${segment.contexts.size} contexts, ${segment.chunks.size} chunks, ${chunkImageBytes.size} chunk images sent)")
-                    }
+                val output = segmentTranscriber.processSegment(
+                    segIndex, segment, sessionId, transcriptionService
+                )
+                failedCount += output.failedDelta
+                output.markdown?.let { segmentResults.add(it) }
+                if (output.lastError != null) {
+                    lastTranscriptionError = output.lastError
                 }
             }
 
@@ -406,71 +272,6 @@ class SyncRepositoryImpl(
     }
 
     /**
-     * Extracts display text from a CapturedContext.
-     */
-    private fun contextToText(ctx: CapturedContext): String = when (ctx) {
-        is CapturedContext.RegionText -> ctx.text
-        is CapturedContext.SelectedText -> ctx.text
-        is CapturedContext.AutoContext -> buildString {
-            append(ctx.sourceApp)
-            if (ctx.sourceUrl != null) append(" (${ctx.sourceUrl})")
-            if (ctx.pageTitle != null) append(" - ${ctx.pageTitle}")
-        }
-        is CapturedContext.RegionImage -> ctx.description ?: "(image)"
-    }
-
-    /**
-     * Sends a RegionImage to the LLM vision API for transcription.
-     * Returns the transcribed text, or null if transcription fails.
-     */
-    private suspend fun transcribeRegionImage(
-        ctx: CapturedContext.RegionImage,
-        transcriptionService: TranscriptionService
-    ): String? {
-        return try {
-            val file = File(ctx.imagePath)
-            if (!file.exists() || !file.canRead()) {
-                Log.w(TAG, "RegionImage file not accessible: ${ctx.imagePath}")
-                return null
-            }
-            val imageBytes = file.readBytes()
-            if (imageBytes.size < 1024) {
-                Log.w(TAG, "RegionImage file too small (${imageBytes.size} bytes), likely corrupt: ${ctx.imagePath}")
-                return null
-            }
-
-            val result = transcriptionService.visionQuery(
-                SyncPrompts.REGION_IMAGE_TRANSCRIPTION_PROMPT, listOf(imageBytes)
-            )
-            if (OutputSanitizer.isLlmErrorContent(result)) {
-                Log.w(TAG, "RegionImage transcription returned LLM error content: ${result.take(80)}")
-                return null
-            }
-            Log.d(TAG, "RegionImage transcribed: ${result.take(80)}")
-            result
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to transcribe RegionImage: ${ctx.imagePath}", e)
-            null
-        }
-    }
-
-    /**
-     * Sends raw captured text through the LLM to format it as clean markdown.
-     * Falls back to a blockquote if the LLM call fails.
-     */
-    private suspend fun formatContextText(
-        rawText: String,
-        transcriptionService: TranscriptionService
-    ): String {
-        return try {
-            transcriptionService.textQuery(rawText, SyncPrompts.CONTEXT_FORMAT_SYSTEM_PROMPT)
-        } catch (e: Exception) {
-            Log.w(TAG, "Context text formatting failed, using raw", e)
-            "> $rawText"
-        }
-    }
-
-    /**
      * Sends all segments in a single LLM call to clean up formatting for Obsidian.
      * Uses a delimiter to split the response back into individual segments.
      * Falls back to raw segments if the LLM call fails or returns unexpected output.
@@ -514,73 +315,6 @@ class SyncRepositoryImpl(
             Log.w(TAG, "Batch polish failed, using raw", e)
             rawSegments
         }
-    }
-
-    /**
-     * Result of transcribing chunks: notes, failed count, and optional error message.
-     */
-    private data class TranscribeResult(
-        val notes: List<String>,
-        val failedCount: Int,
-        val lastError: String? = null
-    )
-
-    /**
-     * Transcribes a list of chunks and returns the transcribed notes, failed count,
-     * and the last error message (if any chunks failed).
-     */
-    private suspend fun transcribeChunks(
-        sessionId: String,
-        chunks: List<Chunk>,
-        transcriptionService: TranscriptionService
-    ): TranscribeResult {
-        val chunkDataList = mutableListOf<ChunkData>()
-        val validChunks = chunks.filter { !it.isCorrupted }
-
-        // Load sequentially — local disk I/O doesn't benefit from parallelism
-        // and sequential loading reduces peak memory allocation
-        for ((index, chunk) in validChunks.withIndex()) {
-            val imageBytes = chunkStorage.loadChunkBytes(sessionId, chunk.id)
-            if (imageBytes != null) {
-                chunkDataList.add(
-                    ChunkData(
-                        image = imageBytes,
-                        timestampSeconds = chunk.timestampSeconds,
-                        index = index
-                    )
-                )
-            } else {
-                Log.w(TAG, "Failed to load chunk image: ${chunk.id}")
-            }
-        }
-
-        if (chunkDataList.isEmpty()) {
-            Log.e(TAG, "All ${chunks.size} chunk images failed to load from disk")
-            return TranscribeResult(emptyList(), chunks.size, "Failed to load chunk images from disk")
-        }
-
-        val transcribedNotes = mutableListOf<String>()
-        var failedCount = 0
-        var lastError: String? = null
-
-        val totalBatches = (chunkDataList.size + MAX_CHUNKS_PER_REQUEST - 1) / MAX_CHUNKS_PER_REQUEST
-        chunkDataList.chunked(MAX_CHUNKS_PER_REQUEST).forEachIndexed { batchIndex, batch ->
-            try {
-                val result = transcriptionService.transcribe(
-                    chunks = batch,
-                    cleanupEnabled = true,
-                    advancedFormatting = false
-                )
-                transcribedNotes.addAll(result.notes.map { it.text })
-                failedCount += result.failedChunks.size
-            } catch (e: TranscriptionError) {
-                Log.e(TAG, "Transcription error on batch $batchIndex", e)
-                failedCount += batch.size
-                lastError = e.message ?: e::class.simpleName
-            }
-        }
-
-        return TranscribeResult(transcribedNotes, failedCount, lastError)
     }
 
     /**
