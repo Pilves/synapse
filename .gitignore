@@ -89,3 +89,6 @@ secrets.properties
 
 # Kotlin
 *.kotlin_module
+
+# Claude Code agent worktrees and local state
+.claude/
